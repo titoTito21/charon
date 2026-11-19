@@ -1,0 +1,49 @@
+Charon r373 — budzenie, łączenie sterowników, nowy tryb dosadny (2026-11-17)
+
+1. Budzenie komputera (CharonSystemTools.h WakeText/SetWake/DisableWake)
+- Narzędzia systemowe, „Budzenie komputera, podmenu”: stan z GetWakeupTime,
+  pola jak przy zegarze (domyślnie za 5 minut), „Ustaw budzenie na: …” i
+  „Wyłącz budzenie”, oba z potwierdzeniem; zapis sprawdzany odczytem.
+  Firmware bez budzenia: powiedziane wprost. Odrzucona godzina: wyjaśnienie,
+  że wiele komputerów przyjmuje tylko najbliższe 24 godziny zegara firmware.
+- Nieudane operacje z potwierdzeniem podają teraz kod UEFI.
+- VM (OVMF): „Budzenie wyłączone.” → ustawienie 07:37 → „Operacja
+  zakończona” → „Budzenie włączone: wtorek, 17 listopada 2026, godzina
+  07:37.” → wyłączenie → „Operacja zakończona”. Godzina z przeszłości:
+  odrzucona przez firmware (0x8000000000000003) z wyjaśnieniem.
+
+2. Połącz sterowniki ze wszystkimi urządzeniami (ConnectAll)
+- ConnectController (rekurencyjnie) na wszystkich uchwytach, potem
+  odświeżenie listy urządzeń; VM: „Sterowniki połączone. Urządzenia
+  rozruchowe: 1.”
+
+3. Tryb dosadny (QRWA) od nowa — na prośbę użytkownika: bez monotonii
+- Bez stałego przedrostka „O kurwa!”/„Fuck!”. Wtrącenie zależy od tonu
+  (błąd, sukces, informacja), z puli kilkunastu zwrotów PL/EN; krótkie
+  etykiety (np. „Rok, 2027, suwak”) bez wtrąceń; informacje co drugi raz.
+  Czasem pocisk na końcu — w sprzęt albo w użytkownika (użytkownik sam
+  włącza ten tryb i tego chciał).
+- Gotowe dosadne wersje (koniec listy, zapis, operacja zakończona, tempo
+  itd.) mają po 3 warianty i dopasowują się także z dopiskiem kodu lub
+  „Enter lub Escape…”.
+- Etykiety menu (główne, ustawienia, narzędzia, melodie, język,
+  potwierdzenie, komunikat) po 3 warianty; wariant zmienia się z każdym
+  klawiszem, sąsiednie wiersze startują od innych wariantów; usunięte
+  powtarzalne „cholerny/do cholery”, dodane m.in. „idzie w pizdu”, „w chuj”,
+  „przejebane”, „ja jebię”, „o w dupę”, „chuj wie”, „pierdolnik”.
+- „No to chuj!” → „No i chuj!” (poprawka użytkownika).
+- Czytnik ekranu w trybie dosadnym: własne zwroty Charona (menedżer
+  rozruchu, uruchomione narzędzie, „menu, N pozycji”, pusty ekran, ekran
+  graficzny, system przejmuje sterowanie, pomoc skrótów) z bluzgami; tekst
+  czytany z ekranu programu bez zmian. Ustawienie trafia też do sterownika
+  głosu od włączenia komputera (bit 1 parametru polish w ReaderControl
+  Resume; starsze menu podają 0/1).
+- VM: „Koniec listy” trzy razy różnie („No i co tak walisz? Tu się lista
+  kończy.” / „Dupa, dalej nic nie ma. Koniec listy.” / „Ściana, kurwa.
+  Koniec listy.”); GRUB: „O w dupę, menedżer rozruchu: GRUB.”, „GRUB:
+  kurewskie menu, 6 pozycji…”, po ponownym wejściu „GRUB: menu, ja
+  pierdolę, 6 pozycji…”, Ctrl+Alt+H z wtrąceniem.
+
+4. Testy hosta — PASS: CharonMessageModeTests (ton, warianty, w miejscu,
+   etykiety bez wtrąceń, sąsiednie wiersze różne), BootPreOSMenuTests,
+   CharonSystemToolsTests (budzenie), CharonFirmwareBrowserTests.

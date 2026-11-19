@@ -1,0 +1,8 @@
+{
+  "unicode_version": "17.0.0",
+  "sha256": {
+    "g2p_pl.py": "36f58e25500c13bf93e3702e2a83e8aeac240b1a3383abc1893693777b9c673d",
+    "phonemes.py": "717ee047210e581894eebff3c28f7ff802d8a685f843e58366fcea9583ec0e2a",
+    "data/pl_lexicon.tsv": "e063b7018268d21704e234ba68715c1d9d63110805ed9bbcc937b1df6c425e06"
+  }
+}

@@ -1,0 +1,36 @@
+Charon r365 — Clover (2026-11-17)
+
+1. Rozpoznawanie (src/efi/CharonBootManagers.h)
+- Clover 5176 (BSD-2-Clause) po „Clover revision”, przed innymi: Clover zawiera
+  biblioteki OpenCore (napis „OpenCore”, czcionka Terminus), a sterownik
+  Ext4Dxe z paczki Clovera zawiera „CloverBootloader”.
+- OpenCore po „OpenCore Boot Menu” (OpenCore.efi) lub ścieżce
+  „EFI\OC\OpenCore.efi” (Bootstrap BOOTx64.efi).
+- tests/CharonBootManagersTests.cpp: 15 obrazów (Clover x2, Ext4Dxe=brak,
+  OpenCore x2, OpenRuntime=brak, systemd-boot, stub=brak, Limine, CHARON,
+  GRUB, rEFInd, bootmgfw, memtest=brak, PROBE=brak) — PASS. Porównanie „ta
+  sama nazwa w drugim obrazie” po treści.
+
+2. Czcionka z obrazu PNG (src/efi/CharonPng.h)
+- Inflate (bloki stored/fixed/dynamic, RFC 1951), filtry PNG 0–4, obrazy z
+  paletą 1/2/4/8 bitów, wszystko z kontrolą granic; siatka 16x16 komórek
+  (strona kodowa) -> czcionka komórkowa (tusz = ciemniejszy z dwóch
+  najczęstszych kolorów palety).
+- tests/CharonPngTests.cpp: czcionka Clovera 176x288 1 bit oraz obrazy
+  301x157 2/4/8 bit wygenerowane przez PIL — każdy piksel zgodny, PASS.
+- Czcionki komórkowe uogólnione do 16x24 (wiersz 16-bitowy); Limine i
+  OpenCore w tym formacie — testy hosta PASS.
+- Czytnik: po czcionce konsolowej (VGA/Terminus) szuka też obrazu-siatki PNG
+  w obrazie menedżera; ładuje obie (Clover ma obie), duplikaty pomijane.
+
+3. Odczyt Clovera (wbudowany motyw, tekst 2-kolorowy, odstęp 9 px)
+- Host: tests/ttf-clover-menu (3 linie: „Boot Microsoft EFI Boot from
+  GRUBTEST”, „F1:Help”, „5176 GRUBTEST\EFI\CLOVER”) PASS, 9 ms.
+- VM, dysk GPT z Cloverem jako programem startowym: „Menedżer rozruchu:
+  Clover. Boot Microsoft EFI Boot from GRUBTEST. F1:Help”; strzałki: „Clover
+  Boot Options”, „Options”, „About Clover”.
+- VM, GRUB -> Clover (łańcuchowo): „Menedżer rozruchu: Clover. … Welcome to
+  Clover 5176. ... scan entries ...”, „Options. F1:Help”.
+- Regresja host: 6 ekranów Windows/Memory Diagnostic, Limine, OpenCore PASS.
+- Pakiet r365 (EN): GRUB -> „Clover (embedded theme, font image)”: „Boot manager:
+  Clover.”, „Welcome to Clover 5176 …”, „F1:Help” (zliczone w logu).

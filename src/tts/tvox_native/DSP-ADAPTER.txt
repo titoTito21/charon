@@ -1,0 +1,43 @@
+TVox native DSP adapter and bounded renderer
+==========================================
+
+These files are an MIT-0 translation/extraction of the bundled
+original TVox, not a substitute synthesizer and not recorded announcements.
+upstream/tvox_dsp.c is unchanged. generate_dsp_adapter.py freezes original
+LF glottal waveforms, Adam/PL/default calibration, source shelves and clarity
+0.5 EQ coefficients. These are synthesis model data, independent of text.
+
+tvox_dsp_render_pl is the synchronous reference. tvox_dsp_stream provides
+caller-owned state and a resumable frame loop. generate_dsp_stream.py extracts
+the original loop and explicitly saves/restores its persistent locals; each
+call evaluates at most ceil(maximumOutputSamples/110) original acoustic frames.
+Unused samples stay in a 110-sample PCM buffer. Leading silent frames consume
+the same work allowance, so a pending render can return zero samples. All
+random draws, lookahead interpolation, filter history and original time steps
+are preserved. Scalar EQ follows the original supported Python algorithm.
+The original numpy convolution optimization is not required.
+
+No allocator, OS calls, callbacks or Python are used by the C renderer. Link
+tvox_dsp_stream.c and upstream/tvox_dsp.c (original pcm16) with the target math
+runtime. Stream state must be double-aligned and calls serialized. The caller
+retains immutable frame data through completion/cancellation. Cancellation
+zeroes state and drops the borrowed pointer; it cannot revoke samples already
+submitted by the caller to an audio device. Audio queues must also be stopped
+by the MenuVoice provider when cancelling/handoff occurs.
+
+The frontend supplies 28-double rows and actual leading/trailing pause segment
+lengths via tvox_pl_frames_ex. Do not derive pause identity from zero amplitude.
+The adapter implements original _edges and leading fast-forward behavior;
+trimmed trailing pause becomes zero PCM after EQ, as in the original stream.
+Frames must follow the original sentence grouping. The whole-text frontend
+and firmware audio provider still require separate integration/verification.
+
+Test: test_dsp_adapter.py SHARED_LIBRARY. The shared library exports reference
+and streaming APIs and links the unchanged original DSP. The test requires
+the bundled original native TVox library plus numpy as an independent oracle.
+It checks pitch/formant/Rd/creak variation, silence trimming, calibration/EQ,
+capacity/errors, block sizes 1/17/480/4096, nonadvancing polls, cancellation
+and a fresh restart. Streaming PCM must match the reference bit-for-bit;
+reference versus original Python/native DSP allows at most one PCM unit.
+MSVC x64 tests passed. This does not establish an EFI audio-device test or a
+complete interruptible text frontend.

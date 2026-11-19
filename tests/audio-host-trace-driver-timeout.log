@@ -1,0 +1,73 @@
+1
+AUDIO_HOST time=281278993054 thread=57686 phase=application-created operation=0 control=0
+AUDIO_HOST time=281278995223 thread=57686 phase=request-start operation=1 control=0
+SendToPort: write_port failed, msgcode 0x702, port 93692: Operation timed out
+AUDIO_HOST time=281294044105 thread=57686 phase=request-finished operation=1 control=0
+AUDIO_HOST time=281294051778 thread=57689 phase=request-start operation=8 control=1
+AUDIO_HOST time=281294052338 thread=57689 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281294058220 thread=57686 phase=request-start operation=15 control=0
+AUDIO_HOST time=281294062848 thread=57686 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281294086309 thread=57689 phase=channel-ended operation=0 control=1
+AUDIO_HOST time=281294088030 thread=57686 phase=channel-ended operation=0 control=0
+AUDIO_HOST time=281294089313 thread=57686 phase=cancel-on-disconnect operation=0 control=0
+AUDIO_HOST time=281294089527 thread=57686 phase=join-control operation=0 control=0
+AUDIO_HOST time=281294089632 thread=57686 phase=control-joined operation=0 control=0
+AUDIO_HOST time=281294089804 thread=57686 phase=owner-close-stream operation=0 control=0
+Traceback (most recent call last):
+  File "/boot/home/nvda-text-dev/tests/audio-host-lifecycle-stress.py", line 25, in <module>
+    assert backend.nvda_audio_close(handle.value)==0,(index,'close')
+           ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioHostBackend.py", line 128, in nvda_audio_close
+    self._close()
+    ~~~~~~~~~~~^^
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioHostBackend.py", line 53, in _close
+    if host is not None: host.close()
+                         ~~~~~~~~~~^^
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioTransport.py", line 132, in close
+    self.process.wait(timeout=5)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/subprocess.py", line 1279, in wait
+    return self._wait(timeout=timeout)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/subprocess.py", line 2078, in _wait
+    raise TimeoutExpired(self.args, timeout)
+subprocess.TimeoutExpired: Command '['/boot/home/nvda-original-runtime-logging/bin/NVDAAudioHost', '3', '6']' timed out after 5 seconds
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/boot/home/nvda-text-dev/tests/audio-host-lifecycle-stress.py", line 27, in <module>
+    finally:backend._close()
+            ~~~~~~~~~~~~~~^^
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioHostBackend.py", line 53, in _close
+    if host is not None: host.close()
+                         ~~~~~~~~~~^^
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioTransport.py", line 132, in close
+    self.process.wait(timeout=5)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/subprocess.py", line 1279, in wait
+    return self._wait(timeout=timeout)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/subprocess.py", line 2078, in _wait
+    raise TimeoutExpired(self.args, timeout)
+subprocess.TimeoutExpired: Command '['/boot/home/nvda-original-runtime-logging/bin/NVDAAudioHost', '3', '6']' timed out after 5 seconds
+Traceback (most recent call last):
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/weakref.py", line 566, in _exitfunc
+    f()
+    ~^^
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/weakref.py", line 490, in __call__
+    return info.func(*info.args, **(info.kwargs or {}))
+           ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioTransport.py", line 132, in close
+    self.process.wait(timeout=5)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/subprocess.py", line 1279, in wait
+    return self._wait(timeout=timeout)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/subprocess.py", line 2078, in _wait
+    raise TimeoutExpired(self.args, timeout)
+subprocess.TimeoutExpired: Command '['/boot/home/nvda-original-runtime-logging/bin/NVDAAudioHost', '3', '6']' timed out after 5 seconds
+SendToPort: write_port failed, msgcode 0x703, port 93692: Operation timed out
+AUDIO_HOST time=281309487937 thread=57686 phase=owner-close-silence operation=0 control=0
+AUDIO_HOST time=281309488060 thread=57686 phase=owner-closed operation=0 control=0
+AUDIO_HOST time=281309488136 thread=57686 phase=application-destruct operation=0 control=0

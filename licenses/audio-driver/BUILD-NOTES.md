@@ -1,0 +1,100 @@
+# AudioDxe streaming extension: source acquisition
+
+The pinned baseline and extended driver both compile successfully with MSVC
+14.51 and NASM 2.16.03. Actual audio-device tests remain separate; successful
+compilation and simulated DMA tests do not prove audible playback.
+
+Resolved inputs (download hashes retained in
+`work/charon-audio-driver-r347/sources.json` and companion dependency manifests):
+
+- OpenCorePkg 1.0.8: `6fe4d15cb66596d99d8cfedce69d8fc6dad71886`.
+- ocbuild: `020b14fa68a9825642e0c0fb643c2963bd679ae3`.
+- AUDK: `dfd5516702b4911f1fc1919a429d637b456df913`.
+- Brotli: `e230f474b87134e8c6c85b630084c612057f253e`.
+- MipiSysT: `370b5944c046bab043dd8b133727b2135af7747a`.
+- libfdt: `cfff805481bdea27f900c32698171286542b8d3c`.
+
+The original extracted sources remain under `work/charon-audio-driver-r347`.
+The actual build copy is `work/ha`, shortened because NMAKE rejected generated
+paths under the archive's full commit name. No junction or system directory
+modification was required. `prepare-driver-dsc.py` retains upstream library,
+PCD and compiler mappings but selects only AudioDxe, omits the full firmware
+FDF, and removes unrelated Network/Ext4 include fragments. This avoids pulling
+unrelated Redfish packages solely through the platform's component list.
+
+`build-host-baseline.cmd work/charon-audio-driver-r347` sets the explicit MSVC
+VS2022-prefix path, HOST_ARCH=X64, Win64 BaseTools path, Python3.15 and NASM.
+Host BaseTools alone suppresses MSVC14.51 warnings 4366 (packed HII GUID address
+passed to CopyGuid) and 4319 (UINT32 firmware alignment mask widening). Driver
+warning policy is unchanged. No remote bootstrap is executed.
+
+Apply the extension to the build copy with:
+
+```text
+python3.15 outputs/nvda-haiku/src/efi/audio_stream/driver/apply-driver-extension.py work/charon-audio-driver-r347/opencore/OpenCorePkg-6fe4d15cb66596d99d8cfedce69d8fc6dad71886 work/ha
+```
+
+The script checks every patch anchor and records original file hashes in
+PATCH-BASE-SHA256.json. Original license notices are preserved. Added queue and
+controller code is in this directory. HakAudioRingTests.c passed 100000
+simulated cursor-interval checks for FIFO, backpressure, wrap and padding drain.
+It is a queue-accounting test, not a hardware audio test.
+
+Revision 1 uses actual HDA LPIB progress, a temporary 8192-byte DMA ring with
+two 4096-byte blocks, and a 2048-frame copy-in queue. The old 512 KiB DMA layout
+is restored on successful Stop. Calls are serialized against the polling event
+at TPL_NOTIFY. Poll gaps over 20 ms or no observed progress for 200 ms fault
+instead of inventing consumption. The application must yield frequently enough
+for firmware timers. The 128-frame final pipeline allowance derives from the
+original driver's 512-byte padding; physical-controller drain latency still
+requires verification. Restrict the initial format to 48 kHz stereo PCM16.
+
+The current binary is unsigned build output; signing and normal firmware
+LoadImage verification remain required. See BUILD-RESULT.json for its hash.
+
+The existing binary provenance identifies OpenCorePkg release 1.0.8. Its actual
+driver module is `Staging/AudioDxe/AudioDxe.inf`, not `Platform/AudioDxe`.
+The module consumes MdePkg, UefiCpuPkg and OpenCorePkg plus OpenCore's
+OcBootManagementLib, OcDeviceMiscLib, OcDevicePathLib, OcFlexArrayLib,
+OcHdaDevicesLib, OcMp3Lib, OcStringLib and OcWaveLib. Preserve the module's
+MIT notices and the licenses of all dependent libraries.
+
+Official acquisition endpoints:
+
+- https://api.github.com/repos/acidanthera/OpenCorePkg/git/ref/tags/1.0.8
+- https://codeload.github.com/acidanthera/OpenCorePkg/tar.gz/refs/tags/1.0.8
+- https://raw.githubusercontent.com/acidanthera/OpenCorePkg/1.0.8/Staging/AudioDxe/AudioDxe.inf
+- https://raw.githubusercontent.com/acidanthera/OpenCorePkg/1.0.8/build_oc.tool
+- https://api.github.com/repos/acidanthera/ocbuild/commits/master
+- https://raw.githubusercontent.com/acidanthera/ocbuild/master/efibuild.sh
+- https://api.github.com/repos/acidanthera/audk/commits/master
+
+OpenCore's tagged build_oc.tool dynamically downloads ocbuild/master/efibuild.sh
+(line 380). That script clones acidanthera/audk master as UDK (line 372) and
+initializes its submodules (line 64). Consequently, the release tag alone does
+not pin the build. Resolve and record full commits and archive hashes for all
+three repositories and the AUDK submodules; inspect the pinned files rather
+than execute an unpinned remote bootstrap. If historical binary reproduction
+is needed, release-time dependency commits require separate evidence.
+
+Supported upstream Windows build path uses Visual Studio and EDK2 BaseTools
+with nmake, Python, NASM and IASL. Host MSVC 14.51 is installed at
+`C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231`;
+the corresponding vcvars64.bat exists. NASM was acquired separately; IASL was
+not needed by this driver-only build. Plain `python` resolves to an unusable
+Windows alias here; `python3.15` successfully built and ran these BaseTools.
+
+After constructing a pinned workspace, building BaseTools and running its
+edksetup, a narrow module build should take this form (toolchain tag must match
+the acquired AUDK tools_def and installed compiler):
+
+```text
+build -a X64 -b RELEASE -t <verified-MSVC-tag> -p OpenCorePkg/OpenCorePkg.dsc -m OpenCorePkg/Staging/AudioDxe/AudioDxe.inf
+```
+
+First compile the unchanged driver. Only then add a separately negotiated
+continuous-stream protocol, preserving AudioIo revision 4 behavior. Required
+controller changes and the bounded DMA/mixer ownership contract are described
+in `../README.md`. A protocol declaration alone does not implement streaming.
+The rebuilt extended image must pass normal Secure Boot signing/authentication;
+no Haiku system changes or firmware verification bypass are involved.

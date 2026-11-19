@@ -1,0 +1,105 @@
+diff --git a/src/include/core/document.hpp b/src/include/core/document.hpp
+index 36e1b50..7caecf5 100644
+--- a/src/include/core/document.hpp
++++ b/src/include/core/document.hpp
+@@ -425,11 +425,7 @@ namespace RHVoice
+     template<typename some_iterator>
+     static std::unique_ptr<document> create_from_plain_text(const std::shared_ptr<engine>& engine_ptr,const some_iterator& text_start,const some_iterator& text_end,content_type say_as=content_text,const voice_profile& profile=voice_profile())
+     {
+-      #ifdef _MSC_VER
+-      return create_from_plain_text(engine_ptr,text_start,text_end,say_as,profile,std::iterator_traits<some_iterator>::iterator_category());
+-            #else
+       return create_from_plain_text(engine_ptr,text_start,text_end,say_as,profile,typename std::iterator_traits<some_iterator>::iterator_category());
+-      #endif
+     }
+ 
+     template<typename input_iterator>
+@@ -505,20 +501,12 @@ namespace RHVoice
+     template<typename input_iterator>
+     static std::unique_ptr<document> create_from_plain_text(const std::shared_ptr<engine>& engine_ptr,const input_iterator& text_start,const input_iterator& text_end,content_type say_as,const voice_profile& profile,std::input_iterator_tag)
+     {
+-      #ifdef _MSC_VER
+-      typedef std::iterator_traits<input_iterator>::value_type char_type;
+-      #else
+       typedef typename std::iterator_traits<input_iterator>::value_type char_type;
+-      #endif
+       std::vector<char_type> tmp_buf(text_start,text_end);
+       tts_markup m;
+       m.say_as=say_as;
+       std::unique_ptr<document> doc_ptr(new document(engine_ptr,profile));
+-      #ifdef _MSC_VER
+-      typedef utf::text_iterator<std::vector<char_type>::const_iterator> char_iterator;
+-      #else
+       typedef utf::text_iterator<typename std::vector<char_type>::const_iterator> char_iterator;
+-      #endif
+       doc_ptr->add_text(char_iterator(tmp_buf.begin(),tmp_buf.begin(),tmp_buf.end()),char_iterator(tmp_buf.end(),tmp_buf.begin(),tmp_buf.end()),m);
+       return doc_ptr;
+     }
+@@ -685,11 +673,7 @@ namespace RHVoice
+   std::unique_ptr<document> document::create_from_ssml(const std::shared_ptr<engine>& engine_ptr,const input_iterator& text_start,const input_iterator& text_end,const voice_profile& profile)
+   {
+     std::unique_ptr<document> doc_ptr(new document(engine_ptr,profile));
+-    #ifdef _MSC_VER
+-    typedef std::iterator_traits<input_iterator>::value_type char_type;
+-    #else
+     typedef typename std::iterator_traits<input_iterator>::value_type char_type;
+-    #endif
+     xml::parser<char_type> parser;
+     xml::text_handler<char_type> text_handler;
+     parser.set_text_handler(text_handler);
+diff --git a/src/include/core/property.hpp b/src/include/core/property.hpp
+index 6fae54d..8aa1d59 100644
+--- a/src/include/core/property.hpp
++++ b/src/include/core/property.hpp
+@@ -236,11 +236,7 @@ namespace RHVoice
+ 
+     bool set_from_string(const std::string& s)
+     {
+-      #ifdef _MSC_VER
+-      name_map::const_iterator it=names_to_values.find(s);
+-      #else
+       typename name_map::const_iterator it=names_to_values.find(s);
+-      #endif
+       return ((it!=names_to_values.end())&&this->set_value(it->second));
+     }
+ 
+@@ -252,11 +248,7 @@ namespace RHVoice
+ 
+     void define(const std::string& name,T val)
+     {
+-      #ifdef _MSC_VER
+-      names_to_values.insert(name_map::value_type(name,val));
+-      #else
+       names_to_values.insert(typename name_map::value_type(name,val));
+-      #endif
+     }
+ 
+   private:
+diff --git a/src/include/core/xml.hpp b/src/include/core/xml.hpp
+index 78dfe5e..b4fc5f1 100644
+--- a/src/include/core/xml.hpp
++++ b/src/include/core/xml.hpp
+@@ -324,11 +324,7 @@ namespace RHVoice
+ 
+       void add_element_handler(element_handler<ch>& handler)
+       {
+-        #ifdef _MSC_VER
+-        element_handlers.insert(element_handler_table::value_type(handler.get_name(),&handler));
+-        #else
+         element_handlers.insert(typename element_handler_table::value_type(handler.get_name(),&handler));
+-        #endif
+       }
+ 
+       void set_text_handler(text_handler<ch>& handler)
+@@ -343,11 +339,7 @@ namespace RHVoice
+       element_handler<ch>* find_element_handler(const rapidxml::xml_node<ch>* node)
+       {
+         std::basic_string<ch> name(node->name(),node->name_size());
+-        #ifdef _MSC_VER
+-        element_handler_table::iterator it(element_handlers.find(name));
+-        #else
+         typename element_handler_table::iterator it(element_handlers.find(name));
+-        #endif
+         return ((it==element_handlers.end())?0:(it->second));
+       }
+ 

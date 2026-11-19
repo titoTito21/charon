@@ -1,0 +1,67 @@
+#include "BootSettings.h"
+#include <cstring>
+#include <vector>
+#include <cstdio>
+#include <cstdlib>
+#include <string>
+#define CHECK(x) do {if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);exit(1);}}while(false)
+using efi_status=uint64_t;using efi_handle=void*;using efi_device_path_protocol=void;
+constexpr efi_status EFI_SUCCESS=0,EFI_NOT_FOUND=14,EFI_DEVICE_ERROR=7,EFI_INVALID_PARAMETER=2,EFI_UNSUPPORTED=3,EFI_ACCESS_DENIED=15,EFI_SECURITY_VIOLATION=26;
+constexpr unsigned EFI_FILE_MODE_READ=1,EFI_FILE_MODE_WRITE=2;
+struct efi_loaded_image_protocol {uint32_t LoadOptionsSize=0;void* LoadOptions=nullptr;} fixtureLoaded;
+static uint8_t optionBytes[65536],requestBytes[65543];static int globalGuid=0,imageGuid=0;
+static std::vector<uint8_t> fixtureRequest,fixtureOption,fixtureSnapshot;
+static efi_status openStatus=0,readStatus=0,deleteStatus=0,setStatus=0,loadStatus=0,startStatus=0;
+static bool saveResult=true,saveSnapshot=true,returnHandle=true;
+static int reads=0,sets=0,loads=0,starts=0,unloads=0,snapshots=0,exports=0;
+struct efi_file_protocol {
+    efi_status Open(efi_file_protocol*,efi_file_protocol** file,const char16_t*,unsigned,unsigned) {*file=this;return openStatus;}
+    efi_status Read(efi_file_protocol*,size_t* size,void* out) {++reads;CHECK(*size>=fixtureRequest.size());*size=fixtureRequest.size();memcpy(out,fixtureRequest.data(),*size);return readStatus;}
+    efi_status Delete(efi_file_protocol*) {return deleteStatus;}
+} fixtureRoot;
+struct Runtime {
+    efi_status SetVariable(char16_t*,int*,uint32_t,size_t,void*) {++sets;return setStatus;}
+} fixtureRuntime;
+struct Boot {
+    efi_status LoadImage(bool,efi_handle,efi_device_path_protocol*,void*,size_t,efi_handle* image) {++loads;*image=returnHandle?&fixtureLoaded:nullptr;return loadStatus;}
+    efi_status UnloadImage(efi_handle image) {CHECK(image==&fixtureLoaded);++unloads;return EFI_SUCCESS;}
+    efi_status HandleProtocol(efi_handle image,int*,void** output) {CHECK(image==&fixtureLoaded);*output=&fixtureLoaded;return EFI_SUCCESS;}
+    efi_status StartImage(efi_handle image,void*,void*) {CHECK(image==&fixtureLoaded);++starts;return startStatus;}
+} fixtureBoot;
+struct Table {Runtime* RuntimeServices=&fixtureRuntime;Boot* BootServices=&fixtureBoot;} table;
+static Table* systemTable=&table;
+static efi_status SnapshotSettings(uint16_t,uint8_t* out,size_t& length,uint32_t& orderAttributes,uint32_t& timeoutAttributes) {
+    ++snapshots;length=fixtureSnapshot.size();memcpy(out,fixtureSnapshot.data(),length);orderAttributes=timeoutAttributes=7;return EFI_SUCCESS;
+}
+static bool SaveSettingsFile(efi_file_protocol*,const char16_t* name,const uint8_t*,size_t) {
+    if(std::u16string(name).find(u"settings-result")!=std::u16string::npos)return saveResult;
+    ++exports;return saveSnapshot;
+}
+static efi_status ReadOption(uint16_t,size_t& size) {size=fixtureOption.size();memcpy(optionBytes,fixtureOption.data(),size);return EFI_SUCCESS;}
+static void Say(const char16_t*) {}
+// ACTUAL_PRODUCTION_FUNCTIONS
+void Reset(bool bootRequest=false) {
+    openStatus=readStatus=deleteStatus=setStatus=loadStatus=startStatus=0;
+    saveResult=saveSnapshot=returnHandle=true;reads=sets=loads=starts=unloads=snapshots=exports=0;
+    fixtureOption={1,0,0,0,8,0,'O',0,'S',0,0,0,1,1,4,0,0x7f,0xff,4,0,9,8};
+    fixtureSnapshot.assign(28,0);memcpy(fixtureSnapshot.data(),"HAKSET1",8);fixtureSnapshot[8]=1;fixtureSnapshot[10]=1;fixtureSnapshot[14]=2;fixtureSnapshot[24]=1;fixtureSnapshot[26]=2;
+    if(bootRequest) {fixtureRequest.assign(6,0);fixtureRequest[0]=2;fixtureRequest[2]=uint8_t(fixtureOption.size());fixtureRequest.insert(fixtureRequest.end(),fixtureOption.begin(),fixtureOption.end());}
+    else {fixtureRequest={1,0,5,0};fixtureRequest.insert(fixtureRequest.end(),fixtureSnapshot.begin(),fixtureSnapshot.end());}
+}
+int main() {
+    Reset();setStatus=EFI_ACCESS_DENIED;CHECK(ProcessSettings(&fixtureRoot,1)==EFI_ACCESS_DENIED);CHECK(sets==1 && snapshots==2 && exports==1);
+    Reset();fixtureRequest[6]^=1;CHECK(ProcessSettings(&fixtureRoot,1)==EFI_INVALID_PARAMETER);CHECK(sets==0 && exports==1);
+    Reset();setStatus=EFI_SECURITY_VIOLATION;saveSnapshot=false;CHECK(ProcessSettings(&fixtureRoot,1)==EFI_SECURITY_VIOLATION && exports==1);
+    Reset();saveResult=false;CHECK(ProcessSettings(&fixtureRoot,1)==EFI_DEVICE_ERROR && exports==1);
+    Reset();saveSnapshot=false;CHECK(ProcessSettings(&fixtureRoot,1)==EFI_DEVICE_ERROR);
+    Reset();openStatus=EFI_ACCESS_DENIED;CHECK(ProcessSettings(&fixtureRoot,1)==EFI_ACCESS_DENIED && reads==0 && exports==1);
+    Reset();openStatus=EFI_NOT_FOUND;CHECK(ProcessSettings(&fixtureRoot,1)==EFI_SUCCESS && reads==0 && exports==1);
+    Reset();CHECK(ProcessSettings(&fixtureRoot,1)==EFI_SUCCESS && sets==1);
+    Reset();deleteStatus=EFI_DEVICE_ERROR;CHECK(ProcessSettings(&fixtureRoot,1)==EFI_DEVICE_ERROR && sets==0);
+    Reset(true);loadStatus=EFI_SECURITY_VIOLATION;CHECK(StartRequested(nullptr,&fixtureRoot,1)==EFI_SECURITY_VIOLATION && loads==1 && starts==0 && unloads==1);
+    Reset(true);loadStatus=EFI_NOT_FOUND;returnHandle=false;CHECK(StartRequested(nullptr,&fixtureRoot,1)==EFI_NOT_FOUND && starts==0 && unloads==0);
+    Reset(true);startStatus=EFI_ACCESS_DENIED;CHECK(StartRequested(nullptr,&fixtureRoot,1)==EFI_ACCESS_DENIED && starts==1 && unloads==1);
+    Reset(true);CHECK(StartRequested(nullptr,&fixtureRoot,1)==EFI_SUCCESS && starts==1 && unloads==1 && fixtureLoaded.LoadOptionsSize==2);
+    Reset(true);deleteStatus=EFI_DEVICE_ERROR;CHECK(StartRequested(nullptr,&fixtureRoot,1)==EFI_DEVICE_ERROR && loads==0);
+    puts("PASS actual EFI request operation/result precedence, stale request and load-failure child cleanup");
+}

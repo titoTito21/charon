@@ -1,0 +1,48 @@
+engine/NVDAObjects/haiku.py e83e90c52adc4b4f3f6e2252710f035ae5d61ec12ed4737eb6addaefd3d71cf2
+engine/haikuFocusIdentity.py a99186ad3acf9e1998a8a2e4896bb860c0bd01abaf626d5cc1eb83ee1e8ecb49
+setSynth failed for espeak
+Traceback (most recent call last):
+  File "/boot/home/nvda-original-runtime-logging/engine/synthDriverHandler.py", line 537, in setSynth
+    _curSynth = getSynthInstance(name, asDefault)
+  File "/boot/home/nvda-original-runtime-logging/engine/synthDriverHandler.py", line 491, in getSynthInstance
+    newSynth = _getSynthDriver(name)()
+  File "/boot/home/nvda-original-runtime-logging/engine/synthDrivers/espeak.py", line 79, in __init__
+    _espeak.initialize(self._onIndexReached)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "/boot/home/nvda-original-runtime-logging/engine/synthDrivers/_espeak.py", line 386, in initialize
+    player = nvwave.WavePlayer(
+    	channels=1,
+    ...<2 lines>...
+    	outputDevice=config.conf["audio"]["outputDevice"],
+    )
+  File "/boot/home/nvda-original-runtime-logging/engine/nvwave.py", line 257, in __init__
+    self._player = haikuAudioPlatform.Stream(samplesPerSec, channels, bitsPerSample, WavePlayer._callback)
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioPlatform.py", line 118, in __init__
+    self._check('create', rate, channels, formats[bits], 200, c.byref(self.handle))
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioPlatform.py", line 125, in _check
+    raise OSError(status, f'Haiku audio {name} failed: {os.strerror(status)} ({status})')
+OSError: [Errno -2147467158] Haiku audio create failed: Too many buffers (-2147467158)
+setSynth failed for oneCore
+Traceback (most recent call last):
+  File "/boot/home/nvda-original-runtime-logging/engine/synthDriverHandler.py", line 537, in setSynth
+    _curSynth = getSynthInstance(name, asDefault)
+  File "/boot/home/nvda-original-runtime-logging/engine/synthDriverHandler.py", line 491, in getSynthInstance
+    newSynth = _getSynthDriver(name)()
+               ~~~~~~~~~~~~~~~^^^^^^
+  File "/boot/home/nvda-original-runtime-logging/engine/synthDriverHandler.py", line 453, in _getSynthDriver
+    return importlib.import_module("synthDrivers.%s" % name, package="synthDrivers").SynthDriver  # noqa: UP031
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/importlib/__init__.py", line 88, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1406, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1335, in _find_and_load_unlocked
+ModuleNotFoundError: No module named 'synthDrivers.oneCore'
+Traceback (most recent call last):
+  File "/boot/home/nvda-text-dev/tests/original-observed-focus-speech-native.py", line 33, in <module>
+    assert synthDriverHandler.getSynth().name == 'espeak'
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

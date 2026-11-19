@@ -1,0 +1,12 @@
+GRUB Boot Menu
+Test entry one
+Test entry two
+UEFI firmware settings
+Probe loader (progress and handoff)
+Graphical probe (graphics menu, progress bar, picture)
+Graphical GRUB menu (gfxterm, text read from pixels)
+rEFInd boot manager (icons, anti-aliased text)
+rEFInd with a theme (wallpaper, Ubuntu Mono)
+The highlighted entry will be executed automatically in 6s.
+The highlighted entry will be executed
+Press enter to boot the selected OS, `e' to edit the commands before booting or `c' for a command-line

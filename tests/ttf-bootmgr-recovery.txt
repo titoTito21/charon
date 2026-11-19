@@ -1,0 +1,9 @@
+Recovery
+Your PC/Device needs to be repaired
+A required device isn't connected or can't be accessed.
+Error code: 0xc000000f
+You'll need to use recovery tools. If you don't have any installation media (like a disc or USB
+device), contact your PC administrator or PC/Device manufacturer.
+Press Enter to try again
+Press F8 for Startup Settings
+Press Esc for UEFI Firmware Settings

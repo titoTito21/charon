@@ -1,0 +1,42 @@
+diff --git a/src/core/voice.cpp b/src/core/voice.cpp
+index 7f5a424..f247aae 100644
+--- a/src/core/voice.cpp
++++ b/src/core/voice.cpp
+@@ -15,7 +15,6 @@
+ 
+ 
+ #include <locale>
+-#include "boost/algorithm/string.hpp"
+ #include "core/path.hpp"
+ #include "core/exception.hpp"
+ #include "core/config.hpp"
+@@ -24,6 +23,20 @@
+ 
+ namespace RHVoice
+ {
++  namespace
++  {
++    // Charon port: lower-case the name (classic locale) and replace '-'
++    // with '_', as the Boost string algorithms did (the only Boost use in
++    // the core), so the core builds without Boost.
++    std::string make_voice_id(const std::string& name)
++    {
++      std::string id;
++      for(char c: name)
++        id.push_back(c=='-'?'_':std::tolower(c, std::locale::classic()));
++      return id;
++    }
++  }
++
+   voice::voice(const voice_info& info_):
+     info(info_),
+     engine_pool(info_)
+@@ -72,7 +85,7 @@ namespace RHVoice
+     if(voice_id.is_set(true))
+       id=voice_id;
+     else {
+-      id=boost::replace_all_copy(boost::to_lower_copy(name.get(), std::locale::classic()), "-", "_");
++      id=make_voice_id(name.get());
+     }
+     if(!language_name.is_set())
+       throw file_format_error("Voice language is not set");

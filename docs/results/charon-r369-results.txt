@@ -1,0 +1,28 @@
+Charon r369 — skróty czytnika w innych programach (2026-11-17)
+
+1. Mechanizm (src/efi/CharonKeyNotify.h, CharonResident.h)
+- RegisterKeyNotify z EFI_SIMPLE_TEXT_INPUT_EX_PROTOCOL na ConsoleInHandle
+  (splitter konsoli: wszystkie klawiatury); litera, wielka litera i kod
+  sterujący (sterowniki zamieniają Ctrl+litera na 1..26), lewy/prawy Ctrl i
+  Alt — 36 rejestracji. Nic nie jest przechwytywane: klawisz trafia też do
+  programu. Rejestracja ponawiana co 0,5 s, dopóki konsola nie istnieje
+  (tryb sterownika Driver####); wyrejestrowanie razem z hakami.
+- Wywołanie firmware tylko zapisuje polecenie; wykonuje je timer czytnika.
+  Powtórzenia trzymanego klawisza (< 2 s) pomijane; klawisze wpisane w
+  menu Charona (czytnik wstrzymany) nie są poleceniami.
+- Ctrl+Alt+R: wszystkie wiersze jako nowe, menu przedstawiane od nowa
+  („GRUB: menu, 6 pozycji …”); pusty ekran: „Brak tekstu na ekranie, który
+  Charon może odczytać.” Ctrl+Alt+S: pusta wypowiedź przerywa bieżącą.
+  Ctrl+Alt+H: lista skrótów.
+- work/charon-vm.py keys: kombinacje „ctrl+alt+r”.
+
+2. Testy (VM, GRUB, PL)
+- Ctrl+Alt+H, Ctrl+Alt+R: 3 polecenia w śladzie, pomoc i ponowne „GRUB:
+  menu, 6 pozycji” wypowiedziane; z melodią bez przerw dźwięku.
+- Bez melodii: Ctrl+Alt+R, po 2 s Ctrl+Alt+S — mowa (dłuższy odczyt menu)
+  urywa się po ok. 2,5 s, potem 10 s ciszy.
+- Pakiet r369 (EN, Windows Boot Manager, menu z BCD): Ctrl+Alt+H — „Charon
+  shortcuts …”, Ctrl+Alt+R — ponownie „Windows Boot Manager: menu, 2 items”.
+- Okno QEMU launchera (-display sdl): według źródła QEMU ui/sdl2.c
+  (handle_keydown) Ctrl+Alt zatrzymuje tylko 2–9, F, G i 0; R, S i H idą do
+  gościa. Nie sprawdzone fizyczną klawiaturą.

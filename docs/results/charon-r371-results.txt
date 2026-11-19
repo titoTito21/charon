@@ -1,0 +1,50 @@
+Charon r371 — przeglądarki firmware i Windows Recovery (2026-11-17)
+
+1. Funkcja (src/efi/CharonFirmwareBrowser.h, BootMenu.h, BootMenuModel.h)
+- Narzędzia systemowe mają 8 pozycji: informacje, data i godzina, Zmienne
+  firmware (lista), Sterowniki UEFI (lista), Aktualizacje firmware (ESRT),
+  restart, wyłączenie, restart do ustawień firmware. Wszystko tylko odczyt.
+- Zmienne: każda zmienna z GetNextVariableName (do 512; nazwa za długa lub
+  więcej zmiennych — „lista niepełna”), wiersz: nazwa, przestrzeń (UEFI, baza
+  Secure Boot, shim, „producent XXXXXXXX”), rozmiar. Enter odczytuje zmienną
+  ponownie: pełny GUID, rozmiar, atrybuty słowami i wartość — BootOrder/
+  DriverOrder/SysPrepOrder jako lista, BootCurrent/BootNext, Timeout,
+  Boot####/Driver####/SysPrep####/PlatformRecovery#### z opisem i stanem,
+  tryby Secure Boot, OsIndications(Supported) z nazwami bitów, tekst ASCII
+  lub UTF-16 (tylko znaki zwykłego tekstu), inaczej pierwsze 24 bajty hex.
+  Zmienna usunięta w międzyczasie: „Zmienna już nie istnieje.”
+- Sterowniki: uchwyty DriverBinding, nazwa z ComponentName2 (język pl, potem
+  en-US/en/eng, potem pierwszy obsługiwany); Enter: wersja, źródło (wbudowany
+  w firmware / plik), rozmiar obrazu; sterownik usunięty — komunikat.
+- ESRT: liczba zasobów, typ, wersja, najniższa dozwolona, ostatnia próba i
+  jej wynik słowami, klasa GUID; brak tablicy — wprost.
+- PageUp/PageDown przesuwają listy o 10 pozycji; Home/End jak dotąd.
+
+2. Testy hosta: tests/CharonFirmwareBrowserTests.cpp (lista zmiennych,
+   szczegóły BootOrder/Boot0001/Timeout/binarne, zmienna usunięta,
+   sterowniki z ComponentName2 i bez, wybór języka, ESRT z błędem podpisu),
+   CharonSystemToolsTests.cpp, BootPreOSMenuTests.cpp (PageUp/PageDown, powrót
+   z listy do tego samego wiersza) — PASS.
+
+3. VM (OVMF, PL, dźwięk na głośnikach hosta)
+- „Zmienne firmware, tylko odczyt. 34 pozycje. … OsIndicationsSupported,
+  UEFI, 8 bajtów”; Enter: „… Wartość: 0x0000000000000041, start ustawień
+  firmware.”; zmienna producenta „Attempt 1” jako dane binarne.
+- „Sterowniki UEFI, tylko odczyt. 65 pozycji. … PCI Bus Driver”; Enter:
+  „Wersja: 0x0000000a. Źródło: wbudowany w firmware”.
+- ESRT: „Firmware nie publikuje tablicy zasobów aktualizacji (ESRT)…”.
+
+4. Windows po bootmgr (zgoda użytkownika na kopię winload.efi hosta w
+   testowym boot.wim; work/win8menu, nie trafia do wydania)
+- BCD z DVD z dwiema pozycjami i polityką Standard: bootmgr uruchamia winload
+  z ramdysku; winload rysuje niebieski ekran „Recovery” (brak rejestru —
+  oczekiwane, WIM nie ma systemu). Charon czyta go: „Recovery. Your PC/Device
+  needs to be repaired. … Error code: 0xc000000f. …”.
+- F9 („użyj innego systemu”) otwiera menu Windows Boot Managera; Charon:
+  „Menedżer rozruchu Windows: menu, 2 pozycje. Windows Setup, 1 z 2. …”.
+- Graficzne menu Windows 8+ („Choose an operating system” w kafelkach) NIE
+  jest programem UEFI: pokazuje je startujący już Windows (bootim.exe, po
+  ExitBootServices), dlatego wybór innego systemu restartuje komputer.
+  Charon jako czytnik UEFI go nie przeczyta; wymagałoby to składnika
+  działającego w Windowsie. Wcześniejsza notatka „rysuje je winload” była
+  nieścisła.

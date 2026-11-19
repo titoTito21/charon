@@ -1,0 +1,25 @@
+Charon r368 — nazwy menedżerów na liście urządzeń, poprawki odczytu (2026-11-17)
+
+1. Lista „Urządzenia rozruchowe” (src/efi/CharonManagerProbe.h, BootMenu.h)
+- Dla każdej opcji rozruchu: system plików jej urządzenia (prefiks ścieżki
+  urządzenia albo węzeł HD() krótkiej ścieżki), plik z opcji lub
+  \EFI\BOOT\BOOTX64.EFI (do 8 MiB, tylko odczyt), rozpoznanie
+  CharonBootManagers.h; dopisek „(nazwa)”, chyba że opis z firmware już ją
+  zawiera.
+- Błąd znaleziony w VM: długość części urządzenia obejmowała węzeł końca
+  ścieżki — żaden system plików nie pasował; poprawione.
+- VM: „Dysk — UEFI QEMU HARDDISK QM00003 (GRUB)”, „Dysk — UEFI QEMU HARDDISK
+  QM00007 (Windows Boot Manager)”; z Cloverem na dysku GPT: „… QM00007
+  (Clover)”. Dźwięk: tylko przerwa startowa.
+
+2. Odczyt
+- Odległe części linii bez liter i cyfr (krawędź paska postępu GRUB-a „|”)
+  pomijane; tests/ttf-grub-starfield-progress PASS; OpenCore „|Shutdown|”
+  zostaje.
+- OCR Unifont podaje dźwięk między wierszami i przed/po szukaniu siatki.
+- Przerwa 78 ms przy wejściu w motyw GRUB-a występuje też z r366 (która
+  motywów nie czyta): to GRUB wczytujący motyw z dysku (operacje dyskowe
+  firmware blokują timer Charona), nie odczyt Charona.
+- Pakiet r368 (EN, dysk Windows jak z launchera — vvfat, partycja MBR): „Disk — UEFI
+  QEMU HARDDISK QM00003 (GRUB)”, „Disk — UEFI QEMU HARDDISK QM00007 (Windows
+  Boot Manager)”.

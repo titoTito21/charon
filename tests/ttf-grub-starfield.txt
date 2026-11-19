@@ -1,0 +1,8 @@
+GRUB Boot Menu
+Charon test entry one
+Charon test entry two
+UEFI firmware settings
+Probe loader
+Graphical probe
+Graphical GRUB menu
+Press enter to boot the selected OS, `e' to edit the commands before booting or `c' for a command-line

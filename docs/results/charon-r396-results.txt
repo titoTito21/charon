@@ -1,0 +1,229 @@
+Charon r396f - wyniki (2026-11-19, build charon-r396f-release(-drv))
+==================================================================
+
+Pierścień: wybór syntezatora
+- Zgłoszone: przełączenie syntezatora w pierścieniu nie uruchamiało go.
+  Przyczyna: moduł można wczytać tylko na TPL_APPLICATION, a zmiana czekała
+  na odczyt klawisza przez program; OpenCore (własny sterownik klawiatury,
+  zapis prosto do bufora obrazu) nigdy go nie robił. Teraz wszystkie dodatki
+  są wczytywane raz przy StartImage (TPL_APPLICATION), a pierścień przełącza
+  wczytany moduł od razu (TPL_CALLBACK). Dodatkowo zaczepy WaitForEvent,
+  OutputString, Blt i Stall. QEMU OpenCore: "Syntezator eSpeak NG, eSpeak NG
+  polski" od razu; ślad CHARON synth=...20/33 (eSpeak, RHVoice) bez błędu.
+
+Formatowanie (Emacspeak)
+- Zgłoszone: głos i ikony dźwiękowe formatowania nie działają.
+  Przyczyny: ikony szły kolejką dźwięków menu (milkły przy wyłączonych
+  dźwiękach menu); zmiany głosu były za małe (zaznaczenie: wysokość -3%),
+  ikony 35 ms i ciche. Teraz: ikony grają zawsze, gdy są włączone w
+  formatowaniu; kroki głosu 1,8x szersze, zaznaczenie +3 stopnie wysokości i
+  mocniejsze echo; ikony do 100 ms i ok. 2x głośniejsze.
+  QEMU GRUB: znacznik zaznaczonej pozycji "fmon1ac" (wyższy głos, echo, ton
+  koloru, ćwierknięcie). Słyszalność nie zmierzona z nagrania (ikony giną w
+  analizie widma mowy) - do odsłuchu.
+- Porady i komunikaty Charona (jego własne słowa) nie są tekstem ekranu i
+  nie mają formatowania; tekst ekranu w komunikatach ma, gdy różni się
+  kolorem/czcionką od reszty ekranu.
+
+Charon r396e - wyniki (2026-11-18, build charon-r396e-release(-drv))
+==================================================================
+
+OpenCore (zgłoszone: niedostępny dla niewidomego)
+- Fałszywy "kursor blokowy" w powiększonej czcionce OpenCore sklejał wiersze
+  "1. CHARON" i "2. GRUBTEST" (czytany był tylko "3. Windows"). Kursor musi
+  być teraz wypełnionym prostokątem z pełnymi bokami, odciętym od góry i dołu
+  (CharonTtfOcr.h FindBlockCaret). Host: wszystkie 6 wierszy ekranu OpenCore.
+- QEMU: "OpenCore: menu, 7 pozycji. 1. CHARON, 1 z 7"; strzałki z zawijaniem;
+  pozycje pomocnicze (CHARON_OC_TOOLS=1: UEFI Shell, Reset NVRAM, Toggle SIP,
+  Firmware Settings); Tab: "Shutdown, przycisk, 1 z 2", "Restart, przycisk,
+  2 z 2", Tab z powrotem: "1. CHARON, 1 z 7"; Alt+F1 klawisze OpenCore.
+- Ogólnie (każdy program): rząd przycisków w kreskach/nawiasach, z fokusem w
+  [nawiasach], jest czytany jako przycisk z pozycją.
+
+rEFInd i Clover
+- Zamiast "ikona 2 z 3": nazwa elementu z pozycją ("Boot EFI\probe\PROBE.EFI
+  from GRUBTEST, 2 z 3"), też na pierwszym ekranie rEFInd. Strzałka w dół: rząd
+  narzędzi ("Manage Hidden Tags Menu", "Shut Down Computer", "Reboot Computer",
+  "Reboot to Computer Setup Utility").
+
+Ustawienia UEFI firmware
+- Narzędzia systemowe -> "Menu ustawień firmware z czytnikiem, bez restartu":
+  Charon uruchamia UiApp firmware (edk2) sam; QEMU: "Ustawienia firmware: menu,
+  6 pozycji. Select Language, lista rozwijana, Standard English, 1 z 6",
+  Device Manager, Boot Manager z urządzeniami, Boot Maintenance Manager.
+- "Uruchom ponownie do ustawień firmware" włącza najpierw mowę od włączenia
+  komputera (CHARONVOICE, Driver####), gdy jest wyłączona; QEMU: po restarcie
+  CHARONVOICE czyta ustawienia, działa pierścień, Insert+T, lista klawiszy.
+- Opis pomocy w formularzach jest czytany w całości po klawiszu ("This
+  selection will take you to the Boot Maintenance Manager", było "take you
+  to the Boot").
+
+Inne
+- "Uruchamiam: ..." zamiast "Uruchomię: ...".
+- Harness: dodatki syntezy domyślnie (synth-modules-r395c; CHARON_SYNTHS=none
+  tylko TVox).
+
+Charon r396d - wyniki (2026-11-18, build charon-r396d-release(-drv))
+==================================================================
+
+Edytor pozycji Limine (CharonTtfOcr.h, CharonResident.h)
+- Kursor blokowy (komórka odwrócona) jest odwracany z powrotem przed
+  rozpoznaniem ("path" nie jest już "Bath"); ramka edytora nie skleja wierszy.
+- Położenie kursora przechodzi do siatki czytnika jako jedna komórka w innym
+  tle (DrawnCaret), kolumna liczona od początku wiersza. QEMU: e -> oba wiersze;
+  strzałka w dół -> "path: boot(): /EFI/probe/PROBE.EFI"; w prawo p->r->o->t,
+  w lewo o; w dół i w prawo "h".
+- Jedna podświetlona komórka w słowie nie jest kartą (było "r, karta 2 z 3").
+
+Kontynuuj bez zapisanego celu (BootMenu.h FallbackContinue)
+- Bez continue.bin Charon bierze pierwszą pozycję BootOrder, która nie jest
+  Charonem ani programem firmware, potem nośnik znaleziony przez Charona, na
+  końcu program firmware z BootOrder (UEFI Shell). Mówi "Uruchomię: ...".
+  QEMU: "Witaj w Charon. Uruchomię: Dysk — GRUBTEST (GRUB, znalazł Charon)."
+- Esc/Kontynuuj nie oddaje już sterowania firmware, gdy jest co uruchomić:
+  UEFI Shell startuje z czytnikiem (baner, "Shell>", echo liter, komunikat
+  błędu polecenia czytane). Wcześniej firmware uruchamiał Shell bez czytnika.
+- Nic do uruchomienia: "Nie znaleziono systemu do uruchomienia..." zamiast
+  "Brak pliku zapisanego celu".
+- Wykrycie innego Charona: DetectBootManager ustawia lastImageWasCharon.
+
+Syntezatory
+- Ustawienia Charona: wiersze "Syntezator" i "Głos syntezatora" (ten sam
+  wybór co w ustawieniach czytnika). Potwierdzenie bez modalnego okna.
+- Pierścień: Tempo, Głośność, Wysokość, Syntezator (TVox i dodatki,
+  zawsze), Głos (tylko głosy wybranego syntezatora; TVox: jeden głos).
+  Zmiana syntezatora przy podniesionym TPL ładuje moduł przy następnym
+  odczycie klawisza. QEMU: TVox -> eSpeak NG (English <-> polski) ->
+  RHVoice (Natan <-> Slt).
+- work/synth-modules-r395b nie ma eSpeaka; pełny zestaw: synth-modules-r395c.
+
+Framework dostępności (src/efi/sdk, README.md)
+- Publiczny protokół HAK_BOOT_A11Y_PROTOCOL (hak_boot_accessibility.h, MIT-0):
+  BeginScreen, Focus (rola, nazwa, wartość, stany, pozycja, kursor), Countdown,
+  Progress, SetKeyHelp, Speak, EndScreen, GetSettings. Publikowany przez
+  czytnik (aplikacja i CHARONVOICE). Podczas BeginScreen czytnik nie czyta
+  ekranu programu sam.
+- Profile z plików \EFI\HAK\profiles\*.txt (name, signature, key, reveal,
+  hidden); harness CHARON_PROFILES=katalog.
+- Przykład: sdk/example/A11yDemoLoader.c, tools/build-a11y-demo.py.
+  QEMU: tytuł, "Automatyczny start za 10 sekund", pozycje z rolą/stanem i
+  "1 z 5", pole wyboru zaznaczone/niezaznaczone, edytor z echem liter i
+  kursora, Alt+F1 z klawiszami programu, pasek postępu; nazwa z pliku profilu
+  na liście urządzeń.
+
+Windows: winload.efi
+- F8 w Windows Boot Manager (BCD legacy): "Wczytywanie, czekaj", potem ekran
+  Advanced Boot Options rysowany przez winload jest czytany (tytuł, opis,
+  "Safe Mode with Networking, 2 z 9").
+
+Wyjaśnione
+- "Samoczynny" pierścień głosu w próbach: prawdziwe Ctrl+Alt (stan 0x28) z
+  okna QEMU, nie błąd.
+
+Usunięte (na prośbę użytkownika): 512 katalogów charon-win-r*, ~830
+katalogów prób rNNN-*, rozpakowane r383/r384, charon-release-r393, wydania
+r396/r396b (ok. 42 GB).
+
+Charon r396 - wyniki (2026-11-18)
+==================================
+
+Zmiana
+- Nowy komunikat przerywa komunikat jeszcze czytany (VoiceProvider::MessageThunk:
+  CancelSpeech + QueueText zamiast AppendText). Mowa czytnika (ekran, klawisze)
+  nie jest ucinana; bufor sterownika dźwięku jest czyszczony tylko, gdy czytnik
+  milczy (oba głosy są w nim zmiksowane). Ślad: "CHARON message interrupted".
+- r395 (w tym samym drzewie): głos drugiego języka dodatku syntezy doczytywany
+  przy pierwszym tekście w tym języku; moduły syntezy otwierają ponownie
+  wolumin po ścieżce urządzenia, gdy BDS podłączy dysk od nowa.
+- Harness: dysk Charona z bootindex=0 (OVMF uruchamia go pierwszy także przy
+  pustych zmiennych); charon-r396-pick.py wybiera urządzenie po nazwie, którą
+  mówi czytnik; r396-regression.sh, r396-rerun.sh, r396-media.sh,
+  r396-regression2.sh. Kompilacja: work/charon-win-r396 (ślad).
+
+Próby w QEMU (OVMF, q35) - wejście z listy urządzeń Charona, strzałki, mowa
+(R: czytnik, M: komunikat; pełny zapis: work/r396-regression.txt, r396-round2.txt)
+
+GRUB 2.12 (Debian)    strzałki: "Charon test entry two, 2 z 6", "UEFI firmware
+                      settings, 3 z 6", w górę wraca; 1 komunikat przerwany
+systemd-boot 257      "systemd-boot: menu, 3 pozycje"; w dół "Windows Setup,
+                      2 z 3", w górę wraca
+Limine 11.4.1         "Limine: menu, 2 pozycje"; w dół "Windows Boot Manager,
+                      2 z 2", w górę wraca
+OpenCore 1.0.8        "OpenCore: menu, 3 pozycje. 1. CHARON"; w dół "2. GRUBTEST",
+                      "3. Windows", w górę wraca; 1 komunikat przerwany
+Clover 5176           w prawo "Clover Boot Options, ikona 1 z 5", w lewo
+                      "Boot Microsoft EFI Boot from GRUBTEST"; 1 przerwany
+rEFInd 0.14.2         "ikona 1 z 3", w prawo "ikona 2 z 3" + etykieta, w lewo
+                      "duże G, ikona 1 z 3" (litera z ikony: szum OCR)
+Windows Boot Manager  czyta ekran Recovery 0xc000000f (BCD z płyty Windows bez
+                      boot.wim); ten ekran nie ma menu, strzałki bez zmian
+Memtest86+ 9.00       "Uruchomiono: Memtest86 plus. System przejmuje sterowanie."
+Syslinux 6.04 (USB)   "Syslinux: menu, 3 pozycje"; w dół "Debian test two",
+                      "Rescue shell", w górę wraca
+iPXE 2.0 (USB)        czyta komunikaty iPXE; bez sieci zwraca błąd 0x...07,
+                      Charon mówi o powrocie; 1 komunikat przerwany
+Ventoy 1.1.18 (USB)   "Menu GRUB jest ukryte ..." odsłonięte; "Ventoy: menu,
+                      3 pozycje. debian-mini.iso"; strzałki po obrazach ISO
+Haiku loader (CD)     "Haiku: menu, 6 pozycji"; w dół "Select safe mode
+                      options", w górę wraca
+FreeBSD loader (CD)   czyta menu powitalne (okno); FreeBSD nie używa strzałek:
+                      strzałka (ESC [) zamyka jego menu do znaku zachęty
+Debian netinst (CD)   GRUB instalatora: "Graphical install", w dół "Install",
+                      "Advanced options", w górę wraca
+NetBSD 11 boot (CD)   czyta komunikaty programu rozruchowego (odliczanie 0 s,
+                      błąd odczytu jądra z tej płyty); 2 komunikaty przerwane
+OpenBSD 8.0 (CD)      czyta "probing ... OpenBSD/amd64 BOOTX64 3.71", potem
+                      "System przejmuje sterowanie" (jądro kończy usługi UEFI)
+ZFSBootMenu 3.1.0     (pobrany: get.zfsbootmenu.org/efi) to jądro Linux:
+(USB)                 "System przejmuje sterowanie" od razu; po tym nikt w UEFI
+                      nie może mówić
+FreeDOS 1.4 (USB)     lista: "USB — FD14-LITE (FreeDOS, tylko BIOS)"; Enter: "Ten
+                      nośnik uruchamia się tylko w trybie BIOS. Charon działa
+                      w UEFI i nie może go uruchomić. Włącz tryb zgodności CSM
+                      ..." (obraz nie ma programu rozruchowego UEFI)
+
+Przerwania komunikatów: łącznie 6 w GRUB, OpenCore, Clover, iPXE, NetBSD;
+mowa czytnika nie została ucięta w żadnym przebiegu.
+
+Naprawione w r396b
+- OpenCore, po 30 s bez klawisza, uruchamia pozycję 1 ("CHARON", ten sam
+  dysk). Drugi egzemplarz Charona dostawał NOT_READY od urządzenia dźwięku
+  trzymanego przez pierwszy i milczał. Teraz Charon, uruchamiając program z
+  czytnikiem w tle, publikuje ReaderControl (jak CHARONVOICE.EFI, BootMenu.h
+  PublishAppReaderControl); drugi Charon mówi jego głosem i wstrzymuje jego
+  czytnik na czas swojego menu. QEMU (work/charon-win-r396b): "Brak pliku
+  zapisanego celu Kontynuuj ... Enter lub Escape zamyka komunikat.", porady,
+  strzałki odpowiadają. GRUB po zmianie bez różnic.
+
+Naprawione w r396c (CharonResident.h)
+- rEFInd: po strzałce czytnik mówił "duże G, ikona 1 z 3". Podpis zmieniał
+  się z "...\PROBE.EFI" na "...\GPROBE.EFI", a echo edycji edytorów
+  rysowanych (gałąź bez kursora konsoli) brało wstawioną literę za wpisaną
+  po strzałce. Ta gałąź działa teraz tylko po klawiszu, który edytuje
+  (znak, Backspace, Delete). QEMU: "ikona 1 z 3" + pełny podpis.
+- Limine, wejście do edytora: komunikat mieszał stary pasek klawiszy z nowym
+  ("Discard and ExitNTER BoF10 BootE Edit ..."). Obszar rozpoznawania zaczyna
+  się od pierwszego zmienionego piksela, poniżej pustej góry wiersza, więc
+  wiersz nie był czyszczony. Teraz wiersz, w którym rozpoznano nowy tekst, jest
+  czyszczony w kolumnach obszaru. QEMU: "escape Discard and Exit. F 10 Boot.
+  Configuration is valid." Bez zmian: rEFInd, Clover, OpenCore, Windows Boot
+  Manager, Ventoy, Syslinux (work/r396-ocr.txt).
+
+Nienaprawione
+- W pierwszym przebiegu OpenCore raz otworzyła się sama lista klawiszy
+  ("rozruch wstrzymany") bez wysłanego klawisza; w czterech kolejnych
+  przebiegach się nie powtórzyło, przyczyny nie ustalono.
+- Edytor pozycji Limine: strzałki i wpisane znaki bez echa (rozpoznawanie nie
+  znajduje tekstu w wierszu z kursorem: "reader ocr=...0000"); tak samo przed
+  r396.
+
+Nie sprawdzono: prawdziwego sprzętu; wersji wydania (bez śladu) poza GRUB-em.
+
+Archiwum maszyny testowej (outputs/Charon-testvm-r396.zip, r396c), po rozpakowaniu,
+z jego własnego polecenia QEMU (work/check-testvm.py; tryb "chain": pozycje menu GRUB):
+- lista urządzeń: Syslinux, iPXE, Ventoy, ZFSBootMenu, rEFInd, GRUB, systemd-boot -
+  każda się otwiera, strzałka przesuwa zaznaczenie, mowa w nagraniu 39-50% czasu;
+- z menu GRUB-a: systemd-boot, Limine (po odliczaniu uruchamia program próbny),
+  OpenCore (menu 8 pozycji), Clover (ikony), Memtest86+ (test pamięci), Windows Boot
+  Manager (ekran Recovery 0xc000000f) - każdy uruchomiony, mowa w nagraniu 42-52%.
+  Pierwsza strzałka po pojawieniu się GRUB-a zatrzymuje jego odliczanie.

@@ -1,0 +1,1207 @@
+guest exit0 (exit file and no remaining processes)
+SINGLE_PAGE_PID 57822
+PASS ordinary title, native focus and IDs, original VBuf XML {'version': 1, 'epoch': 2, 'generation': 1, 'process_start': 281460918792, 'units': 67}
+OBSERVER_LIFECYCLE time=281466727342 thread=57819 kind=application phase=start-wait handle=(nil)
+OBSERVER_LIFECYCLE time=281466727778 thread=57819 kind=application phase=construct handle=(nil)
+OBSERVER_LIFECYCLE time=281466728056 thread=57819 kind=application phase=run handle=0x7bc3c3c800
+OBSERVER_LIFECYCLE time=281466729315 thread=57819 kind=application phase=register handle=0x7bc3c3c800
+OBSERVER_LIFECYCLE time=281466729906 thread=57819 kind=application phase=started handle=0x7bc3c3c800
+OBSERVER_LIFECYCLE time=281466731038 thread=57819 kind=settings phase=start-wait handle=(nil)
+OBSERVER_LIFECYCLE time=281466731153 thread=57819 kind=settings phase=construct handle=(nil)
+OBSERVER_LIFECYCLE time=281466731665 thread=57819 kind=settings phase=initialize handle=0x7bc3413480
+OBSERVER_LIFECYCLE time=281466732400 thread=57819 kind=settings phase=run handle=0x7bc3413480
+OBSERVER_LIFECYCLE time=281466732928 thread=57819 kind=settings phase=started handle=0x7bc3413480
+AUDIO_HOST time=281469341229 team=57873 thread=57873 phase=application-created operation=0 control=0
+AUDIO_HOST time=281469342193 team=57873 thread=57873 phase=request-start operation=1 control=0
+AUDIO_HOST time=281469379413 team=57873 thread=57873 phase=request-finished operation=1 control=0
+AUDIO_HOST time=281469382526 team=57873 thread=57876 phase=request-start operation=8 control=1
+AUDIO_HOST time=281469382820 team=57873 thread=57876 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281469384325 team=57873 thread=57876 phase=request-start operation=8 control=1
+AUDIO_HOST time=281469384443 team=57873 thread=57876 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281469386366 team=57873 thread=57876 phase=request-start operation=9 control=1
+AUDIO_HOST time=281469386580 team=57873 thread=57876 phase=request-finished operation=9 control=1
+AUDIO_HOST time=281469387373 team=57873 thread=57876 phase=request-start operation=9 control=1
+AUDIO_HOST time=281469387485 team=57873 thread=57876 phase=request-finished operation=9 control=1
+AUDIO_HOST time=281469546035 team=57879 thread=57879 phase=application-created operation=0 control=0
+AUDIO_HOST time=281469547361 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281469589958 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281469592639 team=57873 thread=57876 phase=request-start operation=10 control=1
+AUDIO_HOST time=281469592899 team=57873 thread=57876 phase=request-finished operation=10 control=1
+AUDIO_HOST time=281469773299 team=57886 thread=57886 phase=application-created operation=0 control=0
+AUDIO_HOST time=281469774373 team=57886 thread=57886 phase=request-start operation=1 control=0
+AUDIO_HOST time=281469795136 team=57886 thread=57886 phase=request-finished operation=1 control=0
+AUDIO_HOST time=281469797512 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281469797834 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281469799940 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281469800131 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281469802672 team=57886 thread=57889 phase=request-start operation=10 control=1
+AUDIO_HOST time=281469802829 team=57886 thread=57889 phase=request-finished operation=10 control=1
+OBSERVER_LIFECYCLE time=281471427389 thread=57895 kind=application phase=start-wait handle=(nil)
+OBSERVER_LIFECYCLE time=281471428216 thread=57895 kind=application phase=construct handle=(nil)
+OBSERVER_LIFECYCLE time=281471428637 thread=57895 kind=application phase=run handle=0x7bc48b6000
+OBSERVER_LIFECYCLE time=281471431106 thread=57895 kind=application phase=register handle=0x7bc48b6000
+OBSERVER_LIFECYCLE time=281471431802 thread=57895 kind=application phase=started handle=0x7bc48b6000
+OBSERVER_LIFECYCLE time=281471432525 thread=57895 kind=settings phase=start-wait handle=(nil)
+OBSERVER_LIFECYCLE time=281471432614 thread=57895 kind=settings phase=construct handle=(nil)
+OBSERVER_LIFECYCLE time=281471432761 thread=57895 kind=settings phase=initialize handle=0x7bc48f0000
+OBSERVER_LIFECYCLE time=281471433095 thread=57895 kind=settings phase=run handle=0x7bc48f0000
+OBSERVER_LIFECYCLE time=281471433370 thread=57895 kind=settings phase=started handle=0x7bc48f0000
+OBSERVER_LIFECYCLE time=281471437422 thread=57819 kind=application phase=start-wait handle=(nil)
+OBSERVER_LIFECYCLE time=281471437526 thread=57819 kind=application phase=construct handle=(nil)
+OBSERVER_LIFECYCLE time=281471437704 thread=57819 kind=application phase=run handle=0x7bc3c3c900
+OBSERVER_LIFECYCLE time=281471438581 thread=57819 kind=application phase=register handle=0x7bc3c3c900
+OBSERVER_LIFECYCLE time=281471438970 thread=57819 kind=application phase=started handle=0x7bc3c3c900
+OBSERVER_LIFECYCLE time=281471439285 thread=57819 kind=settings phase=start-wait handle=(nil)
+OBSERVER_LIFECYCLE time=281471439330 thread=57819 kind=settings phase=construct handle=(nil)
+OBSERVER_LIFECYCLE time=281471439441 thread=57819 kind=settings phase=initialize handle=0x7bc3413c00
+OBSERVER_LIFECYCLE time=281471439730 thread=57819 kind=settings phase=run handle=0x7bc3413c00
+OBSERVER_LIFECYCLE time=281471439907 thread=57819 kind=settings phase=started handle=0x7bc3413c00
+OBSERVER_LIFECYCLE time=281471497840 thread=57819 kind=application phase=start-wait handle=(nil)
+OBSERVER_LIFECYCLE time=281471498048 thread=57819 kind=application phase=construct handle=(nil)
+OBSERVER_LIFECYCLE time=281471498229 thread=57819 kind=application phase=run handle=0x7bc3c3ca00
+OBSERVER_LIFECYCLE time=281471499413 thread=57819 kind=application phase=register handle=0x7bc3c3ca00
+OBSERVER_LIFECYCLE time=281471499946 thread=57819 kind=application phase=started handle=0x7bc3c3ca00
+AUDIO_HOST time=281474908277 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281474908525 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281474913910 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281474916487 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281474921690 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281474944689 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281474945104 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281474967213 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281474967623 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281474993212 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281474993589 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475016677 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475017041 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475029859 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281475031135 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475031398 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475033391 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281475033510 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281475034230 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281475034739 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281475040450 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281475040629 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281475042412 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475042683 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475052462 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281475065967 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475066298 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475090008 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475090351 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475114380 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475119721 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475144164 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475144538 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475168769 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475169533 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475193682 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475194057 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475229798 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475230165 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475253551 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475253916 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475278471 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475278820 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475302130 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475302514 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475326289 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475326697 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475332056 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281475335819 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475336160 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475346056 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281475346248 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281475347479 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281475347588 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281475351006 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281475351167 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281475353130 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475354315 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475355182 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281475377818 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475378233 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475420711 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475421070 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475447181 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475447550 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475474718 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475475099 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475499126 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475499519 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475534741 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475535167 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475561997 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475562402 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475587250 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475587623 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475612135 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475612780 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475620057 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281475627265 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475627673 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475641363 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281475641910 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281475643667 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281475643779 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281475648251 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281475648416 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281475651965 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475652264 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475653651 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281475679781 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475680852 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475707773 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475708217 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475749552 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475749940 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475774324 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475774692 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475798015 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475799114 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475824846 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475825205 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281475858357 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281475919820 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281476135033 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476142830 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476143173 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476144391 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281476144503 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281476145660 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281476145765 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281476149494 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281476149644 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281476151646 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476151909 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476153636 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281476177364 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476178369 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476217034 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476217504 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476241838 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476242212 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476257204 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281476258807 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476259095 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476271085 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281476271288 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281476274129 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281476274274 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281476276947 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281476277117 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281476279561 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476279826 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476281859 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281476308127 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476308493 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476332633 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476332983 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476365420 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476365795 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476389968 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476390854 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476429438 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476429846 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476452837 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476453289 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476478307 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476478664 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476502430 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476502959 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476542269 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476542883 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476554835 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281476567573 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476567965 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476585456 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281476585653 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281476605470 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281476605672 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281476609530 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281476610497 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281476619197 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476619546 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476621266 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281476646697 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476647064 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476676021 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476676374 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476705003 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476705378 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476729478 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476729841 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476851217 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476851672 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476864468 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281476866488 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476866761 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476868487 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281476868606 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281476869317 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281476869419 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281476873676 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281476874211 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281476877017 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476877310 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476878240 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281476901625 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476902038 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476926399 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476926752 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281476957411 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281476957807 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477004694 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477005159 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477031766 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477032296 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477062475 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477062950 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477088918 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477089276 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477115726 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477116091 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477140860 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477141240 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477148410 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281477149851 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477150084 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477151440 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281477151548 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281477153207 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281477153435 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281477156192 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281477156321 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281477158870 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477159091 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477168565 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281477190422 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477190796 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477213516 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477213881 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477242688 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477243208 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477266982 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477267362 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477288752 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281477290907 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477291214 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477292693 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281477292812 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281477294301 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281477294430 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281477299802 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281477299977 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281477307614 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477307929 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477309446 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281477318775 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281477319989 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477320253 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477322817 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281477322931 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281477324218 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281477324382 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281477326926 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477327146 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477328335 team=57886 thread=57886 phase=request-start operation=3 control=0
+AUDIO_HOST time=281477351732 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477352214 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477376342 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477376928 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477402648 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477403005 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477429274 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477429631 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477454148 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477454474 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477508663 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477509013 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477540349 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477540704 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477578168 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477578524 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477604466 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477604826 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477629082 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477629477 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477663175 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477664059 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477689772 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477690143 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477702602 team=57886 thread=57886 phase=request-finished operation=3 control=0
+AUDIO_HOST time=281477706977 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281477707768 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281477714579 team=57886 thread=57889 phase=request-start operation=10 control=1
+AUDIO_HOST time=281477714802 team=57886 thread=57889 phase=request-finished operation=10 control=1
+AUDIO_HOST time=281477741361 team=57886 thread=57889 phase=request-start operation=5 control=1
+AUDIO_HOST time=281477741626 team=57886 thread=57889 phase=request-finished operation=5 control=1
+AUDIO_HOST time=281477742568 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281477742718 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281477744442 team=57886 thread=57889 phase=request-start operation=10 control=1
+AUDIO_HOST time=281477744572 team=57886 thread=57889 phase=request-finished operation=10 control=1
+AUDIO_HOST time=281478147176 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281478147405 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281478149425 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478149680 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478150806 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281478188091 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478188452 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478216944 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478217305 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478239730 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478240081 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478245799 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281478246928 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478247392 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478252865 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281478253021 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281478253815 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281478253921 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281478255692 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281478255813 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281478258573 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478258825 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478259744 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281478281905 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478282273 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478307008 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478308064 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478349663 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478350021 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478374080 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478374441 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478398164 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478398738 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478426986 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478427929 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478464382 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478464771 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478507439 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478508062 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478541217 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478541608 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478555328 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281478556832 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478557170 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478560826 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281478561005 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281478563487 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281478563645 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281478568566 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281478568772 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281478571028 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478571788 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478616960 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478617362 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478618981 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281478641274 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478642428 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478666880 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478667282 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478692393 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478693260 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478726054 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478726402 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478752954 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478753305 team=57886 thread=57889 phase=request-finished operation=7 control=1
+PASS native page/view focus anchor; parent and stale generation rejected
+AUDIO_HOST time=281478782918 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478783241 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478809892 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478810320 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478834770 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478835491 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478859648 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478860008 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478861951 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281478863492 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478863797 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478865974 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281478866101 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281478866766 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281478866862 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281478871238 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281478871432 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281478873617 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478874150 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478875645 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281478897365 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478898042 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478928360 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478928748 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281478952616 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478953590 team=57886 thread=57889 phase=request-finished operation=7 control=1
+PASS ordinary page original NVDA buffer, heading navigation, focus and speech ['Local reading page - WebPositive', 'okno', 'web view', 'web view', 'nagłówek', '', 'poziom 1', 'Independent document heading', 'Ordinary page content.', 'Reading field', 'pole edycji']
+AUDIO_HOST time=281478977384 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281478978095 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479011237 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479012823 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479037412 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479037768 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479083070 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479083452 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479107362 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479107727 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479155046 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479155998 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479167467 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281479196520 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479196893 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479199963 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281479200140 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281479200923 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281479201307 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281479205865 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281479206061 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281479209397 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479209719 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479210673 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281479256732 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479257747 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479282817 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479283775 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479310479 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479310857 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479336289 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479336733 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479360523 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479361007 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479385908 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479386276 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479410219 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479410600 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479437000 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479437364 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479445554 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281479447332 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479447592 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479448916 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281479449043 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281479451416 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281479451549 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281479454419 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281479454546 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281479457198 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479457474 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479458386 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281479485059 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479485597 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479508910 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479509425 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479533454 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479533822 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479565190 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479565841 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479588989 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479589424 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479619248 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479619609 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479625429 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281479627524 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479627800 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479630222 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281479630406 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281479631828 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281479631944 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281479632787 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281479633035 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281479636430 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479636718 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479638314 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281479639980 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281479641744 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479641964 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479643783 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281479643909 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281479644690 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281479644958 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281479646352 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479646556 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479647329 team=57886 thread=57886 phase=request-start operation=3 control=0
+AUDIO_HOST time=281479675572 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479675936 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479720183 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479720614 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479747056 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479747506 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479771039 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479771383 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479808448 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479809550 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479832579 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479833041 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479857501 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479857957 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479881279 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479881680 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479904593 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479904951 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479931212 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479931986 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479970606 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479971110 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281479994596 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281479995056 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281480019233 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281480019586 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281480043298 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281480043772 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281480051231 team=57886 thread=57886 phase=request-finished operation=3 control=0
+AUDIO_HOST time=281480052238 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281480053101 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281480054285 team=57886 thread=57889 phase=request-start operation=10 control=1
+AUDIO_HOST time=281480054627 team=57886 thread=57889 phase=request-finished operation=10 control=1
+AUDIO_HOST time=281480294506 team=57915 thread=57915 phase=application-created operation=0 control=0
+AUDIO_HOST time=281480295145 team=57915 thread=57915 phase=request-start operation=1 control=0
+AUDIO_HOST time=281480336430 team=57915 thread=57915 phase=request-finished operation=1 control=0
+AUDIO_HOST time=281480338888 team=57915 thread=57918 phase=request-start operation=8 control=1
+AUDIO_HOST time=281480339132 team=57915 thread=57918 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281480341362 team=57915 thread=57918 phase=request-start operation=8 control=1
+AUDIO_HOST time=281480341497 team=57915 thread=57918 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281480343548 team=57915 thread=57918 phase=request-start operation=9 control=1
+AUDIO_HOST time=281480343675 team=57915 thread=57918 phase=request-finished operation=9 control=1
+AUDIO_HOST time=281480344829 team=57915 thread=57918 phase=request-start operation=10 control=1
+AUDIO_HOST time=281480344942 team=57915 thread=57918 phase=request-finished operation=10 control=1
+AUDIO_HOST time=281480355676 team=57915 thread=57918 phase=request-start operation=8 control=1
+AUDIO_HOST time=281480355877 team=57915 thread=57918 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281480356977 team=57915 thread=57918 phase=request-start operation=9 control=1
+AUDIO_HOST time=281480357101 team=57915 thread=57918 phase=request-finished operation=9 control=1
+AUDIO_HOST time=281480361196 team=57915 thread=57918 phase=request-start operation=7 control=1
+AUDIO_HOST time=281480361923 team=57915 thread=57918 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281480363311 team=57915 thread=57915 phase=request-start operation=15 control=0
+AUDIO_HOST time=281480373453 team=57915 thread=57915 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281480375655 team=57915 thread=57918 phase=request-start operation=7 control=1
+AUDIO_HOST time=281480375904 team=57915 thread=57918 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281480379806 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281480379941 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281480386043 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281480386209 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281480391960 team=57915 thread=57918 phase=request-start operation=7 control=1
+AUDIO_HOST time=281480392262 team=57915 thread=57918 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281480393086 team=57915 thread=57915 phase=request-start operation=3 control=0
+AUDIO_HOST time=281480416954 team=57915 thread=57918 phase=request-start operation=7 control=1
+AUDIO_HOST time=281480417299 team=57915 thread=57918 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281480449235 team=57915 thread=57918 phase=request-start operation=7 control=1
+AUDIO_HOST time=281480449571 team=57915 thread=57918 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281480478630 team=57915 thread=57918 phase=request-start operation=7 control=1
+AUDIO_HOST time=281480478982 team=57915 thread=57918 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281480503637 team=57915 thread=57918 phase=request-start operation=7 control=1
+AUDIO_HOST time=281480503978 team=57915 thread=57918 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281480528684 team=57915 thread=57918 phase=request-start operation=7 control=1
+AUDIO_HOST time=281480529464 team=57915 thread=57918 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281480557666 team=57915 thread=57918 phase=request-start operation=7 control=1
+AUDIO_HOST time=281480558014 team=57915 thread=57918 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281480588579 team=57915 thread=57918 phase=request-start operation=7 control=1
+AUDIO_HOST time=281480588934 team=57915 thread=57918 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281480617318 team=57915 thread=57918 phase=request-start operation=7 control=1
+AUDIO_HOST time=281480617678 team=57915 thread=57918 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281480640522 team=57915 thread=57918 phase=request-start operation=7 control=1
+AUDIO_HOST time=281480640885 team=57915 thread=57918 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281480670993 team=57915 thread=57918 phase=request-start operation=7 control=1
+AUDIO_HOST time=281480671353 team=57915 thread=57918 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281480723433 team=57915 thread=57918 phase=request-start operation=7 control=1
+AUDIO_HOST time=281480725629 team=57915 thread=57918 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281480748663 team=57915 thread=57918 phase=request-start operation=7 control=1
+AUDIO_HOST time=281480749053 team=57915 thread=57918 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281480762611 team=57915 thread=57915 phase=request-finished operation=3 control=0
+AUDIO_HOST time=281480763891 team=57915 thread=57918 phase=request-start operation=7 control=1
+AUDIO_HOST time=281480764138 team=57915 thread=57918 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281480767001 team=57915 thread=57915 phase=channel-ended operation=0 control=0
+AUDIO_HOST time=281480767120 team=57915 thread=57915 phase=cancel-on-disconnect operation=0 control=0
+AUDIO_HOST time=281480767242 team=57915 thread=57915 phase=join-control operation=0 control=0
+AUDIO_HOST time=281480767367 team=57915 thread=57918 phase=channel-ended operation=0 control=1
+AUDIO_HOST time=281480767791 team=57915 thread=57915 phase=control-joined operation=0 control=0
+AUDIO_HOST time=281480767935 team=57915 thread=57915 phase=owner-close-stream operation=0 control=0
+AUDIO_HOST time=281480962650 team=57915 thread=57915 phase=owner-close-silence operation=0 control=0
+AUDIO_HOST time=281480962844 team=57915 thread=57915 phase=owner-closed operation=0 control=0
+AUDIO_HOST time=281480962879 team=57915 thread=57915 phase=application-destruct operation=0 control=0
+AUDIO_HOST time=281490443484 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281490443832 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281490444725 team=57886 thread=57886 phase=request-start operation=3 control=0
+AUDIO_HOST time=281490445273 team=57886 thread=57886 phase=request-finished operation=3 control=0
+AUDIO_HOST time=281490446212 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281490446391 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281490447527 team=57886 thread=57886 phase=request-start operation=11 control=0
+AUDIO_HOST time=281490723717 team=57886 thread=57886 phase=request-finished operation=11 control=0
+AUDIO_HOST time=281490760793 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281490761051 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281490786942 team=57886 thread=57889 phase=request-start operation=10 control=1
+AUDIO_HOST time=281490787232 team=57886 thread=57889 phase=request-finished operation=10 control=1
+PASS stale snapshot and removed objects rejected; cross-document, process and backward generation advances rejected
+PASS surviving native AXIDs retain field IDs across preceding insertion; new IDs do not reuse retired IDs {'16': 1, '20': 2, '24': 3, '21': 4, '25': 5, '22': 6, '23': 7, '27': 8} {'16': 1, '28': 9, '29': 10, '20': 2, '24': 3, '21': 4, '30': 11, '22': 6, '23': 7, '27': 8}
+PASS content-only update retains original interceptor/handle/focus, corrects caret and emits no repeated speech
+AUDIO_HOST time=281495193562 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281495193820 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281495216243 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495216602 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495217505 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281495242825 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495243177 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495276666 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495277027 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495301982 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495302369 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495326550 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281495326831 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495327041 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495328610 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495328834 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495335653 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281495335807 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281495336726 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281495336834 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281495340546 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281495340694 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281495342384 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495342634 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495344200 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281495365845 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495366185 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495389041 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495389352 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495418505 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495418844 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495445009 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495445377 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495494759 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495495108 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495522862 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495523222 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495551187 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495551547 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495574088 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281495608982 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495622675 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495624903 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495625372 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495627565 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281495627709 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281495629554 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281495629685 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281495630575 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281495630696 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281495654294 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495654589 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495655893 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281495657247 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281495659694 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495659958 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495667222 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281495667413 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281495675326 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281495675548 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281495677532 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495677846 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495679835 team=57886 thread=57886 phase=request-start operation=3 control=0
+AUDIO_HOST time=281495701186 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495701586 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495724873 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495725256 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495766023 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495766658 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495801043 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495801468 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495825963 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495826327 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495875340 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495875693 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495899957 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495900325 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495924103 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495924459 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495950998 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495951444 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281495977372 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281495977722 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281496003230 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281496003596 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281496026790 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281496027197 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281496051409 team=57886 thread=57886 phase=request-finished operation=3 control=0
+AUDIO_HOST time=281496066857 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281496067532 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281496072174 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281496072452 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281496081239 team=57886 thread=57889 phase=request-start operation=10 control=1
+AUDIO_HOST time=281496081415 team=57886 thread=57889 phase=request-finished operation=10 control=1
+AUDIO_HOST time=281496776752 team=57924 thread=57924 phase=application-created operation=0 control=0
+AUDIO_HOST time=281496777386 team=57924 thread=57924 phase=request-start operation=1 control=0
+AUDIO_HOST time=281496799013 team=57924 thread=57924 phase=request-finished operation=1 control=0
+AUDIO_HOST time=281496802000 team=57924 thread=57927 phase=request-start operation=8 control=1
+AUDIO_HOST time=281496802288 team=57924 thread=57927 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281496804866 team=57924 thread=57927 phase=request-start operation=8 control=1
+AUDIO_HOST time=281496805062 team=57924 thread=57927 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281496808055 team=57924 thread=57927 phase=request-start operation=9 control=1
+AUDIO_HOST time=281496808249 team=57924 thread=57927 phase=request-finished operation=9 control=1
+AUDIO_HOST time=281496810008 team=57924 thread=57927 phase=request-start operation=10 control=1
+AUDIO_HOST time=281496810290 team=57924 thread=57927 phase=request-finished operation=10 control=1
+AUDIO_HOST time=281496827849 team=57924 thread=57927 phase=request-start operation=8 control=1
+AUDIO_HOST time=281496828083 team=57924 thread=57927 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281496830169 team=57924 thread=57927 phase=request-start operation=9 control=1
+AUDIO_HOST time=281496830312 team=57924 thread=57927 phase=request-finished operation=9 control=1
+AUDIO_HOST time=281496832682 team=57924 thread=57927 phase=request-start operation=7 control=1
+AUDIO_HOST time=281496833074 team=57924 thread=57927 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281496834216 team=57924 thread=57924 phase=request-start operation=15 control=0
+AUDIO_HOST time=281496835240 team=57924 thread=57924 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281496836342 team=57924 thread=57927 phase=request-start operation=7 control=1
+AUDIO_HOST time=281496837418 team=57924 thread=57927 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281496839074 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281496839208 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281496841596 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281496841754 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281496843875 team=57924 thread=57927 phase=request-start operation=7 control=1
+AUDIO_HOST time=281496844156 team=57924 thread=57927 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281496847003 team=57924 thread=57924 phase=request-start operation=3 control=0
+AUDIO_HOST time=281496871267 team=57924 thread=57927 phase=request-start operation=7 control=1
+AUDIO_HOST time=281496871618 team=57924 thread=57927 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281496896395 team=57924 thread=57927 phase=request-start operation=7 control=1
+AUDIO_HOST time=281496896748 team=57924 thread=57927 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281496922994 team=57924 thread=57927 phase=request-start operation=7 control=1
+AUDIO_HOST time=281496923355 team=57924 thread=57927 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281496951925 team=57924 thread=57927 phase=request-start operation=7 control=1
+AUDIO_HOST time=281496952286 team=57924 thread=57927 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281496984938 team=57924 thread=57927 phase=request-start operation=7 control=1
+AUDIO_HOST time=281496985292 team=57924 thread=57927 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497011025 team=57924 thread=57927 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497011379 team=57924 thread=57927 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497036151 team=57924 thread=57927 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497036654 team=57924 thread=57927 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497063794 team=57924 thread=57927 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497064310 team=57924 thread=57927 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497089738 team=57924 thread=57927 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497090145 team=57924 thread=57927 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497120343 team=57924 thread=57927 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497120723 team=57924 thread=57927 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497210687 team=57924 thread=57927 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497211090 team=57924 thread=57927 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497213849 team=57924 thread=57924 phase=request-finished operation=3 control=0
+AUDIO_HOST time=281497216793 team=57924 thread=57927 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497217406 team=57924 thread=57927 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497222135 team=57924 thread=57924 phase=channel-ended operation=0 control=0
+AUDIO_HOST time=281497222303 team=57924 thread=57924 phase=cancel-on-disconnect operation=0 control=0
+AUDIO_HOST time=281497222421 team=57924 thread=57924 phase=join-control operation=0 control=0
+AUDIO_HOST time=281497222579 team=57924 thread=57927 phase=channel-ended operation=0 control=1
+AUDIO_HOST time=281497224299 team=57924 thread=57924 phase=control-joined operation=0 control=0
+AUDIO_HOST time=281497224488 team=57924 thread=57924 phase=owner-close-stream operation=0 control=0
+AUDIO_HOST time=281497305115 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281497305564 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281497311189 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497311518 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497321090 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281497348221 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497348879 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497375706 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497376100 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497404933 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281497406163 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497409302 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497410946 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497411206 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497412729 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281497412910 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281497414136 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281497414262 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281497417781 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281497417945 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281497422716 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497423032 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497423827 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281497436620 team=57924 thread=57924 phase=owner-close-silence operation=0 control=0
+AUDIO_HOST time=281497437810 team=57924 thread=57924 phase=owner-closed operation=0 control=0
+AUDIO_HOST time=281497437895 team=57924 thread=57924 phase=application-destruct operation=0 control=0
+AUDIO_HOST time=281497458568 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497458982 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497482540 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497482893 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497507160 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497507539 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497543848 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497546379 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497573557 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497573927 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497586238 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281497589750 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497590047 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497593803 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281497593932 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281497594646 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281497594745 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281497595507 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281497595620 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281497599453 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497599798 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497602305 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281497603190 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281497604513 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497604748 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497606825 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281497606939 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281497607662 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281497607762 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281497609645 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497609895 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497617468 team=57886 thread=57886 phase=request-start operation=3 control=0
+AUDIO_HOST time=281497634411 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497634767 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497661531 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497661875 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497690740 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497691386 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497718396 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497718733 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497757282 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497757634 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497787750 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497788161 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497813592 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497814083 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497836901 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497837332 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497861850 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497862260 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497887331 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497887698 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497916135 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497917339 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497941975 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497942356 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497975030 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497975391 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281497997909 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281497998305 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281498027288 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281498027738 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281498052206 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281498052557 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281498072957 team=57886 thread=57886 phase=request-finished operation=3 control=0
+AUDIO_HOST time=281498082682 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281498083050 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281498086101 team=57886 thread=57889 phase=request-start operation=10 control=1
+AUDIO_HOST time=281498086254 team=57886 thread=57889 phase=request-finished operation=10 control=1
+AUDIO_HOST time=281498352872 team=57886 thread=57889 phase=request-start operation=5 control=1
+AUDIO_HOST time=281498353127 team=57886 thread=57889 phase=request-finished operation=5 control=1
+AUDIO_HOST time=281498354876 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281498354994 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281498356443 team=57886 thread=57889 phase=request-start operation=10 control=1
+AUDIO_HOST time=281498356583 team=57886 thread=57889 phase=request-finished operation=10 control=1
+AUDIO_HOST time=281498634262 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281498634506 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281498636287 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281498636533 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281498637866 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281498660697 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281498661080 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281498683214 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281498683578 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281498710827 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281498711189 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281498740032 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281498740427 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281498766199 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281498778077 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281498778382 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281498780520 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281498780752 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281498782115 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281498782232 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281498782903 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281498783001 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281498797856 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281498798077 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281498801132 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281498801404 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281498825280 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281498834851 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281498835707 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281498859509 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281498859855 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281498885900 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281498886775 team=57886 thread=57889 phase=request-finished operation=7 control=1
+PASS original activation navigates ordinary page; automatic new document/focus and old lease retirement ['Aktywuj', 'web view', 'nagłówek', '', 'poziom 1', 'Second independent heading', 'Next field', 'pole edycji']
+AUDIO_HOST time=281498931588 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281498932028 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281498969977 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281498970338 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281498995498 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281498997048 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499021052 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499021375 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499050888 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281499079800 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499081322 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499082721 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499082910 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499084520 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281499084629 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281499085362 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281499085463 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281499108686 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281499109514 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281499111657 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499111925 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499140768 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281499182200 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499182573 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499208623 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499208984 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499235609 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499235990 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499278614 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499279575 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499302704 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499303105 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499326754 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499328557 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499349291 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281499351408 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499351774 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499362960 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281499363166 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281499374613 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281499375060 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281499380408 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281499380602 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281499388856 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499389653 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499390830 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281499411363 team=57934 thread=57934 phase=application-created operation=0 control=0
+AUDIO_HOST time=281499415321 team=57934 thread=57934 phase=request-start operation=1 control=0
+AUDIO_HOST time=281499417125 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499417423 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499439553 team=57934 thread=57934 phase=request-finished operation=1 control=0
+AUDIO_HOST time=281499443075 team=57934 thread=57937 phase=request-start operation=8 control=1
+AUDIO_HOST time=281499443403 team=57934 thread=57937 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281499444952 team=57934 thread=57937 phase=request-start operation=8 control=1
+AUDIO_HOST time=281499445072 team=57934 thread=57937 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281499446124 team=57934 thread=57937 phase=request-start operation=9 control=1
+AUDIO_HOST time=281499446237 team=57934 thread=57937 phase=request-finished operation=9 control=1
+AUDIO_HOST time=281499446394 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499446646 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499448950 team=57934 thread=57937 phase=request-start operation=10 control=1
+AUDIO_HOST time=281499449418 team=57934 thread=57937 phase=request-finished operation=10 control=1
+AUDIO_HOST time=281499456610 team=57934 thread=57937 phase=request-start operation=8 control=1
+AUDIO_HOST time=281499456816 team=57934 thread=57937 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281499495264 team=57934 thread=57937 phase=request-start operation=9 control=1
+AUDIO_HOST time=281499495506 team=57934 thread=57937 phase=request-finished operation=9 control=1
+AUDIO_HOST time=281499521289 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499521764 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499523255 team=57934 thread=57937 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499523739 team=57934 thread=57937 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499524791 team=57934 thread=57934 phase=request-start operation=15 control=0
+PASS switch to Deskbar automatically detaches original buffer and focus monitor; browser exits
+AUDIO_HOST time=281499551010 team=57934 thread=57934 phase=request-finished operation=15 control=0
+PASS Runtime automatic discovery, binding, focus and owned teardown
+OBSERVER_LIFECYCLE time=281499564537 thread=57895 kind=settings phase=stop-wait handle=0x7bc48f0000
+OBSERVER_LIFECYCLE time=281499564742 thread=57895 kind=settings phase=lock handle=0x7bc48f0000
+OBSERVER_LIFECYCLE time=281499564810 thread=57895 kind=settings phase=stop-messenger handle=0x7bc48f0000
+OBSERVER_LIFECYCLE time=281499564847 thread=57895 kind=settings phase=unregister handle=0x7bc48f0000
+OBSERVER_LIFECYCLE time=281499564907 thread=57895 kind=settings phase=quit handle=0x7bc48f0000
+OBSERVER_LIFECYCLE time=281499566218 thread=57897 kind=settings phase=destruct-messenger handle=0x7bc48f0000
+OBSERVER_LIFECYCLE time=281499566399 thread=57897 kind=settings phase=destruct-unregister handle=0x7bc48f0000
+OBSERVER_LIFECYCLE time=281499566460 thread=57897 kind=settings phase=destruct-base handle=0x7bc48f0000
+OBSERVER_LIFECYCLE time=281499567026 thread=57895 kind=settings phase=stopped handle=0x7bc48f0000
+OBSERVER_LIFECYCLE time=281499567514 thread=57895 kind=application phase=stop-wait handle=0x7bc48b6000
+OBSERVER_LIFECYCLE time=281499568947 thread=57895 kind=application phase=stop-messenger handle=0x7bc48b6000
+OBSERVER_LIFECYCLE time=281499569059 thread=57895 kind=application phase=unregister handle=0x7bc48b6000
+AUDIO_HOST time=281499569485 team=57934 thread=57937 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499569743 team=57934 thread=57937 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499572151 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499572429 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499585538 team=57934 thread=57937 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499585876 team=57934 thread=57937 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499590105 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281499590266 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281499592021 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281499592126 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281499593384 team=57934 thread=57937 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499593655 team=57934 thread=57937 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499594396 team=57934 thread=57934 phase=request-start operation=3 control=0
+OBSERVER_LIFECYCLE time=281499595589 thread=57895 kind=application phase=lock handle=0x7bc48b6000
+OBSERVER_LIFECYCLE time=281499595690 thread=57895 kind=application phase=quit handle=0x7bc48b6000
+OBSERVER_LIFECYCLE time=281499596898 thread=57895 kind=application phase=stopped handle=0x7bc48b6000
+OBSERVER_LIFECYCLE time=281499600145 thread=57819 kind=application phase=stop-wait handle=0x7bc3c3ca00
+OBSERVER_LIFECYCLE time=281499602319 thread=57819 kind=application phase=stop-messenger handle=0x7bc3c3ca00
+OBSERVER_LIFECYCLE time=281499602614 thread=57819 kind=application phase=unregister handle=0x7bc3c3ca00
+OBSERVER_LIFECYCLE time=281499608946 thread=57819 kind=application phase=lock handle=0x7bc3c3ca00
+OBSERVER_LIFECYCLE time=281499609101 thread=57819 kind=application phase=quit handle=0x7bc3c3ca00
+OBSERVER_LIFECYCLE time=281499610213 thread=57819 kind=application phase=stopped handle=0x7bc3c3ca00
+AUDIO_HOST time=281499615716 team=57934 thread=57937 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499616024 team=57934 thread=57937 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499617830 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499618085 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499642218 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499642641 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499646615 team=57934 thread=57937 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499646857 team=57934 thread=57937 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499653219 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281499654375 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499654612 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499659983 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281499660131 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281499666122 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281499667012 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281499672449 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281499672620 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281499675638 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499675893 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499676303 team=57934 thread=57937 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499676494 team=57934 thread=57937 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499677371 team=57886 thread=57886 phase=request-start operation=15 control=0
+AUDIO_HOST time=281499703712 team=57934 thread=57937 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499704048 team=57934 thread=57937 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499704989 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499705258 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499739874 team=57934 thread=57937 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499740700 team=57934 thread=57937 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499747403 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499747726 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499773354 team=57934 thread=57937 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499775468 team=57886 thread=57889 phase=request-finished operation=7 control=1
+0
+OBSERVER_LIFECYCLE time=281499775723 thread=57819 kind=settings phase=stop-messenger handle=0x7bc3413c00
+OBSERVER_LIFECYCLE time=281499777310 thread=57819 kind=settings phase=unregister handle=0x7bc3413c00
+OBSERVER_LIFECYCLE time=281499777431 thread=57819 kind=settings phase=quit handle=0x7bc3413c00
+OBSERVER_LIFECYCLE time=281499777737 thread=57899 kind=settings phase=destruct-messenger handle=0x7bc3413c00
+OBSERVER_LIFECYCLE time=281499777890 thread=57899 kind=settings phase=destruct-unregister handle=0x7bc3413c00
+OBSERVER_LIFECYCLE time=281499777933 thread=57899 kind=settings phase=destruct-base handle=0x7bc3413c00
+OBSERVER_LIFECYCLE time=281499778541 thread=57819 kind=settings phase=stopped handle=0x7bc3413c00
+OBSERVER_LIFECYCLE time=281499778927 thread=57819 kind=application phase=stop-wait handle=0x7bc3c3c900
+OBSERVER_LIFECYCLE time=281499780179 thread=57819 kind=application phase=stop-messenger handle=0x7bc3c3c900
+OBSERVER_LIFECYCLE time=281499780270 thread=57819 kind=application phase=unregister handle=0x7bc3c3c900
+OBSERVER_LIFECYCLE time=281499780917 thread=57819 kind=application phase=lock handle=0x7bc3c3c900
+OBSERVER_LIFECYCLE time=281499781007 thread=57819 kind=application phase=quit handle=0x7bc3c3c900
+OBSERVER_LIFECYCLE time=281499782055 thread=57819 kind=application phase=stopped handle=0x7bc3c3c900
+AUDIO_HOST time=281499792283 team=57886 thread=57889 phase=request-start operation=5 control=1
+AUDIO_HOST time=281499792532 team=57886 thread=57889 phase=request-finished operation=5 control=1
+AUDIO_HOST time=281499793804 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281499793919 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281499795970 team=57886 thread=57889 phase=request-start operation=10 control=1
+AUDIO_HOST time=281499796090 team=57886 thread=57889 phase=request-finished operation=10 control=1
+AUDIO_HOST time=281499796642 team=57886 thread=57886 phase=request-finished operation=15 control=0
+AUDIO_HOST time=281499798778 team=57934 thread=57937 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499799051 team=57934 thread=57937 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499800241 team=57886 thread=57889 phase=request-start operation=5 control=1
+AUDIO_HOST time=281499800376 team=57886 thread=57889 phase=request-finished operation=5 control=1
+AUDIO_HOST time=281499801186 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281499801289 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281499809175 team=57886 thread=57889 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499809515 team=57886 thread=57889 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499812131 team=57886 thread=57889 phase=request-start operation=10 control=1
+AUDIO_HOST time=281499812334 team=57886 thread=57889 phase=request-finished operation=10 control=1
+AUDIO_HOST time=281499815263 team=57879 thread=57882 phase=request-start operation=13 control=1
+AUDIO_HOST time=281499815431 team=57879 thread=57882 phase=request-finished operation=13 control=1
+AUDIO_HOST time=281499816165 team=57879 thread=57882 phase=request-start operation=12 control=1
+AUDIO_HOST time=281499816267 team=57879 thread=57882 phase=request-finished operation=12 control=1
+AUDIO_HOST time=281499818901 team=57886 thread=57889 phase=request-start operation=5 control=1
+AUDIO_HOST time=281499819124 team=57886 thread=57889 phase=request-finished operation=5 control=1
+AUDIO_HOST time=281499819893 team=57886 thread=57889 phase=request-start operation=8 control=1
+AUDIO_HOST time=281499820293 team=57886 thread=57889 phase=request-finished operation=8 control=1
+AUDIO_HOST time=281499821251 team=57934 thread=57937 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499821506 team=57934 thread=57937 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499823279 team=57886 thread=57889 phase=request-start operation=10 control=1
+AUDIO_HOST time=281499823393 team=57886 thread=57889 phase=request-finished operation=10 control=1
+AUDIO_HOST time=281499825197 team=57886 thread=57889 phase=channel-ended operation=0 control=1
+AUDIO_HOST time=281499825884 team=57886 thread=57886 phase=channel-ended operation=0 control=0
+AUDIO_HOST time=281499825965 team=57886 thread=57886 phase=cancel-on-disconnect operation=0 control=0
+AUDIO_HOST time=281499826032 team=57886 thread=57886 phase=join-control operation=0 control=0
+AUDIO_HOST time=281499826084 team=57886 thread=57886 phase=control-joined operation=0 control=0
+AUDIO_HOST time=281499826111 team=57886 thread=57886 phase=owner-close-stream operation=0 control=0
+AUDIO_HOST time=281499843570 team=57934 thread=57937 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499844294 team=57934 thread=57937 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499868082 team=57934 thread=57937 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499868440 team=57934 thread=57937 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499890828 team=57934 thread=57937 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499891195 team=57934 thread=57937 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499911602 team=57934 thread=57934 phase=request-finished operation=3 control=0
+AUDIO_HOST time=281499913598 team=57934 thread=57937 phase=request-start operation=7 control=1
+AUDIO_HOST time=281499914871 team=57934 thread=57937 phase=request-finished operation=7 control=1
+AUDIO_HOST time=281499917610 team=57934 thread=57934 phase=channel-ended operation=0 control=0
+AUDIO_HOST time=281499917739 team=57934 thread=57934 phase=cancel-on-disconnect operation=0 control=0
+AUDIO_HOST time=281499917853 team=57934 thread=57934 phase=join-control operation=0 control=0
+AUDIO_HOST time=281499917980 team=57934 thread=57937 phase=channel-ended operation=0 control=1
+AUDIO_HOST time=281499918400 team=57934 thread=57934 phase=control-joined operation=0 control=0
+AUDIO_HOST time=281499918464 team=57934 thread=57934 phase=owner-close-stream operation=0 control=0
+AUDIO_HOST time=281500113459 team=57934 thread=57934 phase=owner-close-silence operation=0 control=0
+AUDIO_HOST time=281500113670 team=57934 thread=57934 phase=owner-closed operation=0 control=0
+AUDIO_HOST time=281500113709 team=57934 thread=57934 phase=application-destruct operation=0 control=0
+AUDIO_HOST time=281500374382 team=57886 thread=57886 phase=owner-close-silence operation=0 control=0
+AUDIO_HOST time=281500374736 team=57886 thread=57886 phase=owner-closed operation=0 control=0
+AUDIO_HOST time=281500375415 team=57886 thread=57886 phase=application-destruct operation=0 control=0
+AUDIO_HOST time=281500414926 team=57873 thread=57873 phase=channel-ended operation=0 control=0
+AUDIO_HOST time=281500415159 team=57873 thread=57873 phase=cancel-on-disconnect operation=0 control=0
+AUDIO_HOST time=281500415314 team=57873 thread=57873 phase=join-control operation=0 control=0
+AUDIO_HOST time=281500415459 team=57873 thread=57876 phase=channel-ended operation=0 control=1
+AUDIO_HOST time=281500415902 team=57873 thread=57873 phase=control-joined operation=0 control=0
+AUDIO_HOST time=281500415974 team=57873 thread=57873 phase=owner-close-stream operation=0 control=0
+AUDIO_HOST time=281500425736 team=57873 thread=57873 phase=owner-close-silence operation=0 control=0
+AUDIO_HOST time=281500425938 team=57873 thread=57873 phase=owner-closed operation=0 control=0
+AUDIO_HOST time=281500426011 team=57873 thread=57873 phase=application-destruct operation=0 control=0
+AUDIO_HOST time=281500441395 team=57879 thread=57879 phase=channel-ended operation=0 control=0
+AUDIO_HOST time=281500441571 team=57879 thread=57879 phase=cancel-on-disconnect operation=0 control=0
+AUDIO_HOST time=281500441607 team=57879 thread=57879 phase=join-control operation=0 control=0
+AUDIO_HOST time=281500441702 team=57879 thread=57882 phase=channel-ended operation=0 control=1
+AUDIO_HOST time=281500444274 team=57879 thread=57879 phase=control-joined operation=0 control=0
+AUDIO_HOST time=281500444377 team=57879 thread=57879 phase=owner-close-stream operation=0 control=0
+AUDIO_HOST time=281500444409 team=57879 thread=57879 phase=owner-close-silence operation=0 control=0
+AUDIO_HOST time=281500736422 team=57879 thread=57879 phase=owner-closed operation=0 control=0
+AUDIO_HOST time=281500736607 team=57879 thread=57879 phase=application-destruct operation=0 control=0
+OBSERVER_LIFECYCLE time=281500784255 thread=57819 kind=settings phase=stop-wait handle=0x7bc3413480
+OBSERVER_LIFECYCLE time=281500784390 thread=57819 kind=settings phase=lock handle=0x7bc3413480
+OBSERVER_LIFECYCLE time=281500784445 thread=57819 kind=settings phase=stop-messenger handle=0x7bc3413480
+OBSERVER_LIFECYCLE time=281500784480 thread=57819 kind=settings phase=unregister handle=0x7bc3413480
+OBSERVER_LIFECYCLE time=281500784540 thread=57819 kind=settings phase=quit handle=0x7bc3413480
+OBSERVER_LIFECYCLE time=281500784823 thread=57871 kind=settings phase=destruct-messenger handle=0x7bc3413480
+OBSERVER_LIFECYCLE time=281500784907 thread=57871 kind=settings phase=destruct-unregister handle=0x7bc3413480
+OBSERVER_LIFECYCLE time=281500784937 thread=57871 kind=settings phase=destruct-base handle=0x7bc3413480
+OBSERVER_LIFECYCLE time=281500785497 thread=57819 kind=settings phase=stopped handle=0x7bc3413480
+OBSERVER_LIFECYCLE time=281500785755 thread=57819 kind=application phase=stop-wait handle=0x7bc3c3c800
+OBSERVER_LIFECYCLE time=281500786304 thread=57819 kind=application phase=stop-messenger handle=0x7bc3c3c800
+OBSERVER_LIFECYCLE time=281500786386 thread=57819 kind=application phase=unregister handle=0x7bc3c3c800
+OBSERVER_LIFECYCLE time=281500786711 thread=57819 kind=application phase=lock handle=0x7bc3c3c800
+OBSERVER_LIFECYCLE time=281500786787 thread=57819 kind=application phase=quit handle=0x7bc3c3c800
+OBSERVER_LIFECYCLE time=281500787464 thread=57819 kind=application phase=stopped handle=0x7bc3c3c800
+AX_PROBE_LOADED
+AX_OWNER_OBSERVED thread=57822 application=57822 symbols=1
+AX_NATIVE_IDENTIFIER_RETIRED object=6 remaining=3
+AX_NATIVE_IDENTIFIER_RETIRED object=7 remaining=2
+AX_NATIVE_IDENTIFIER_RETIRED object=8 remaining=1
+AX_NATIVE_IDENTIFIER_RETIRED object=9 remaining=0
+AX_SNAPSHOT_REFRESHED epoch=2 generation=0 nodes=7
+AX_FOCUS_HINT sequence=1 epoch=2 generation=1 native_id=22
+AX_NATIVE_NODE_LEASES_RELEASED nodes=7
+AX_PLATFORM_NOTIFICATION generation=1 kind=34
+AX_SNAPSHOT_REFRESHED epoch=2 generation=1 nodes=7
+AX_NATIVE_NODE_LEASES_RELEASED nodes=7
+AX_PLATFORM_NOTIFICATION generation=2 kind=16
+AX_PLATFORM_NOTIFICATION generation=3 kind=16
+AX_NATIVE_IDENTIFIER_RETIRED object=25 remaining=12
+AX_SNAPSHOT_REFRESHED epoch=2 generation=3 nodes=9
+AX_NATIVE_PRESS_INVOKED epoch=2 generation=3 id=8 performed=1
+AX_FOCUS_HINT sequence=2 epoch=2 generation=4 native_id=23
+AX_NATIVE_NODE_LEASES_RELEASED nodes=9
+AX_PLATFORM_NOTIFICATION generation=4 kind=34
+AX_SNAPSHOT_REFRESHED epoch=2 generation=4 nodes=9
+AX_NATIVE_IDENTIFIER_RETIRED object=17 remaining=13
+AX_NATIVE_IDENTIFIER_RETIRED object=16 remaining=12
+AX_NATIVE_IDENTIFIER_RETIRED object=26 remaining=11
+AX_NATIVE_IDENTIFIER_RETIRED object=19 remaining=10
+AX_NATIVE_IDENTIFIER_RETIRED object=18 remaining=9
+AX_NATIVE_IDENTIFIER_RETIRED object=29 remaining=10
+AX_NATIVE_IDENTIFIER_RETIRED object=24 remaining=9
+AX_NATIVE_IDENTIFIER_RETIRED object=30 remaining=8
+AX_NATIVE_IDENTIFIER_RETIRED object=27 remaining=7
+AX_NATIVE_IDENTIFIER_RETIRED object=28 remaining=6
+AX_NATIVE_IDENTIFIER_RETIRED object=20 remaining=5
+AX_NATIVE_IDENTIFIER_RETIRED object=21 remaining=4
+AX_NATIVE_IDENTIFIER_RETIRED object=22 remaining=3
+AX_NATIVE_IDENTIFIER_RETIRED object=23 remaining=2
+AX_NATIVE_NODE_LEASES_RELEASED nodes=9
+AX_SNAPSHOT_REFRESHED epoch=3 generation=4 nodes=5
+AX_FOCUS_HINT sequence=3 epoch=3 generation=5 native_id=43
+AX_NATIVE_NODE_LEASES_RELEASED nodes=5
+AX_PLATFORM_NOTIFICATION generation=5 kind=34
+AX_SNAPSHOT_REFRESHED epoch=3 generation=5 nodes=5
+
+RESTORED owned browser closed; stock binary unchanged

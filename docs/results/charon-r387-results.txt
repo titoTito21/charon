@@ -1,0 +1,49 @@
+Charon r387 — programy EFI z pliku, start z sieci, watchdog, NX_COMPAT
+
+Build: python3.15 tools/build-charon-windows.py ../../work/charon-win-r387c --trace
+(+ charon-win-r387c-drv --trace --driver). QEMU q35 + OVMF (TCG), dźwięk dsound.
+
+1. Uruchom program EFI z pliku (Narzędzia systemowe, wiersz 9; restart,
+   wyłączenie i ustawienia firmware przesunęły się o jeden wiersz w dół).
+   src/efi/CharonFileBrowser.h. Próba work/charon-r387-steps.py (charon-r387-t3):
+   - „Uruchom program EFI z pliku. Woluminy: 2. … CHARON, dysk, 128 MB, dysk
+     Charona, wolumin”, „GRUBTEST, dysk, 94 MB, wolumin”.
+   - Enter: „Folder główny woluminu. Foldery: 2, programy EFI: 0. boot,
+     folder” → „Folder EFI. Foldery: 3 …” → „Folder EFI / probe. Foldery: 0,
+     programy EFI: 2. GPROBE.EFI, program EFI, 9 KB”.
+   - Spacja: „GPROBE.EFI. Program EFI, 9 KB. Ścieżka: \EFI\probe\GPROBE.EFI.
+     Zmieniono: 2026-11-18 03:44. Architektura: x64, aplikacja UEFI.”
+   - Enter: „Uruchamiam: Dysk — GPROBE.EFI.”, czytnik: „Program: menu,
+     3 pozycje. Start normally, 1 z 3 …”, strzałka: „Start in safe mode, 2 z 3”.
+   - Strzałka w lewo wraca o poziom (fokus na folderze, z którego wyszliśmy),
+     z listy woluminów do Narzędzi. Program startuje z wpisu tylko w pamięci
+     (ścieżka woluminu + węzeł pliku); NVRAM i wolumin bez zmian; bez watchdoga
+     (jak z powłoki).
+2. Start z sieci. Harness: CHARON_TFTP=katalog (QEMU user net, tftp= +
+   bootfile=). Lista urządzeń: „Sieć — UEFI PXEv4 (MAC:525400123456), pozycja
+   3 z 6”, PXEv6, HTTPv4, HTTPv6 (wcześniej „Urządzenie UEFI — …”). Enter na
+   PXEv4: „Uruchamiam: Sieć — UEFI PXEv4 …”, „>>Start PXE over IPv4.”, „Station
+   IP address is 10.0.2.15. Server IP address is 10.0.2.2 NBP filename is
+   BOOTX64.EFI NBP filesize is 2684352 Bytes. Downloading NBP file...”,
+   „Menedżer rozruchu: GRUB.”, wiersz poleceń GRUB-a („grub>”) czytany.
+   Karta bez wpisu Boot#### (LoadFile + węzeł MAC) dostaje opis „Sieć, PXE IPv4,
+   MAC …, znalazł Charon” — test hosta; OVMF zawsze tworzy wpisy, więc w VM ta
+   gałąź nie występuje. HTTP boot: wpisy na liście, start nie sprawdzany
+   (brak serwera HTTP).
+3. Watchdog: SetWatchdogTimer(300) przed StartImage wpisu rozruchu, (0) po
+   powrocie (UEFI 2.11 §3.1.2; StartVerified i StartRequested). Regresja
+   poniżej: żaden menedżer nie zrestartował maszyny.
+4. Stan zdrowia sterownika (EFI_DRIVER_HEALTH_PROTOCOL) w szczegółach listy
+   sterowników. Sterowniki OVMF go nie publikują: sprawdzono tylko, że lista
+   i szczegóły działają jak w r371.
+5. Obraz: CHARON.EFI i CHARONVOICE.EFI — DllCharacteristics 0x100
+   (NX_COMPAT), .rodata 0x40000040 (tylko odczyt; .data.rel.ro i .got
+   przeniesione do .data), .text RX, brak sekcji W+X, suma kontrolna PE
+   przeliczona. OVMF w teście nie egzekwuje ochrony pamięci obrazów, więc
+   samo egzekwowanie nie jest sprawdzone.
+6. Testy hosta (clang++ 23, -I katalog z src/efi/haiku jako „efi”):
+   CharonFileBrowserTests (nowy), BootPreOSMenuTests (przeglądarka plików;
+   poprawiona nieaktualna od r385 liczba wierszy kolejności rozruchu 6→7),
+   CharonSystemToolsTests, CharonControlsTests — PASS.
+7. src/efi/FIRMWARE-COVERAGE.txt przepisany na stan r387 (poprzedni był
+   sprzed r355 i wymieniał jako brakujące rzeczy działające od r355–r386).

@@ -1,0 +1,33 @@
+Charon r364 — OpenCore, ekrany 2560x1600 (2026-11-17)
+
+1. OpenCore 1.0.8 (BSD-3-Clause)
+- Rozpoznawanie: OpenCore.efi i BOOTx64.efi (Bootstrap) = OpenCore; drugi obraz
+  z tą samą nazwą nie jest ogłaszany drugi raz; sterowniki OpenCore — brak nazwy
+  (tests/CharonBootManagersTests.cpp PASS).
+- Wbudowany picker (TextRenderer BuiltinGraphics z Sample.plist) rysuje tekst
+  czcionką z OpenCore.efi (14 wierszy, bit 0 = lewa kolumna), podwojoną, wprost
+  do bufora ramki 2560x1600. Czytnik znajduje czcionkę w obrazie („A” w stylu
+  Terminus, pusta spacja, niepuste B), normalizuje do 8x16, wzorce x1 i x2
+  (odstęp 8/9 i 16/18 px).
+- GOP odmawia odczytu Blt całego ekranu 2560x1600 (EFI_DEVICE_ERROR — tryb
+  większy niż zgłoszony bufor 15 MB): odczyt wierszy mieszczących się w buforze
+  bezpośrednio z pamięci; dźwięk podawany co 128 wierszy.
+- Migający kursor (małe Blt) nie wstrzymuje pełnego odczytu; przy ciągłym
+  rysowaniu pełny odczyt najpóźniej co 3 s.
+- Host: tests/ttf-opencore-menu (5 linii) PASS; tytuł „Recovery” w 2560x1600
+  (em 85 px, limit podniesiony do 160) — tests/ttf-bootmgr-recovery-2560
+  (9 linii) PASS; wcześniejsze 6 ekranów PASS.
+- VM: dysk GPT z OpenCore jako programem startowym: „Menedżer rozruchu:
+  OpenCore. OpenCore Boot Menu (REL-108-2026-09-27). * 1. CHARON. 2. Windows.
+  |Shutdown| |Restart|. Choose the Operating System:”; klawisz 2 → „Menedżer
+  rozruchu: Windows Boot Manager.” i ekran Recovery (2560x1600). Strzałki w
+  pickerze OpenCore w tej maszynie nie działają (także bez związku z Charonem:
+  ekran się nie zmienia), działa wybór cyfrą.
+- GRUB → OpenCore (łańcuchowo, wersja wydania): nazwa i menu „* 1. CHARON.
+  2. GRUBTEST …”; z melodią 0 przerw dźwięku w 44,8 s.
+- Pakiet r364 (EN): GRUB → „OpenCore (built-in picker, own font)”: „Boot
+  manager: OpenCore.” i menu (licznik w logu: 1).
+
+Uwaga o metodzie: wcześniejsze „brak mowy” w kilku przebiegach było błędem
+mojego filtra logu (tekst mowy w tym samym wierszu co inne wpisy) — liczenie
+„OpenCore Boot Menu (REL” w logu pokazało mowę we wszystkich przebiegach.

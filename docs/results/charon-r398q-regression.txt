@@ -1,0 +1,135 @@
+== grub
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 2 | Dysk — GRUBTEST (GRUB, znalazł Charon), 2 z 2
+   R: grub p : menu, 6 pozycji. e Charon test entry one p , 1 z 6
+   M: GNU grub version 2.12-9 plus deb13u4. Use the up arrow and down arrow keys to select which entry is highlighted. Press enter to boot the selected OS, e' to edit the commands before booting or c' for a command-line. Th
+   M: Booting Charon test entry one'. Entry one selected
+   M: Failed to boot both default and fallback entries. Press any key to continue...
+  == down
+     R: grub p : menu, 6 pozycji. e Charon test entry one p , 1 z 6
+     M: GNU grub version 2.12-9 plus deb13u4. Use the up arrow and down arrow keys to select which entry is highlighted. Press enter to boot the selected OS, e' to edit the commands before booting or c' for a command-line.
+  == down
+     R: Charon test entry two p , 2 z 6
+  == up
+     R: Charon test entry one p , 1 z 6
+  przerwane komunikaty: 2
+== sdboot
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 3 | Dysk — GRUBTEST (GRUB, znalazł Charon), 2 z 3 | Dysk lub partycja — GRUBTEST (systemd-boot, znalazł Charon), 3 z 3
+   R: systemd-boot p : menu, 3 pozycje. e Charon probe loader p , 1 z 3
+   M: Windows Setup. Reboot Into Firmware Interface. Boot in 30 s.
+  == down
+     R: Windows Setup p , 2 z 3
+  == up
+     R: Charon probe loader p , 1 z 3
+  przerwane komunikaty: 0
+== limine
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 3 | Dysk — GRUBTEST (GRUB, znalazł Charon), 2 z 3 | Dysk lub partycja — GRUBTEST (Limine, znalazł Charon), 3 z 3
+   R: Limine: menu, 2 pozycje. Charon probe loader, 1 z 2
+   M: Limine 11.4.1 (x86-64, U E F I). ARROWS Select. ENTER Boot. E Edit. S Firmware Setup. B Blank Entry. Booting automatically in 30, press any key to stop the countdown...
+  == down
+     R: Windows Boot Manager p , 2 z 2
+  == up
+     R: Charon probe loader p , 1 z 2
+  przerwane komunikaty: 0
+== opencore
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 3 | Dysk — GRUBTEST (GRUB, znalazł Charon), 2 z 3 | Dysk lub partycja — GRUBTEST (OpenCore, znalazł Charon), 3 z 3
+   R: OpenCore: menu, 3 pozycje. 1. CHARON, 1 z 3
+   M: OpenCore Boot Menu (REL-108-2026-09-27). Shutdown p , przycisk, e Restart p , przycisk. e Choose the Operating System:
+   M: Timeout
+   R: Witaj w Charon. Uruchamiam: Dysk — GRUBTEST (GRUB, znalazł Charon). Naciśnij spację, aby otworzyć menu opcji
+   M: Choose the Operating System: Timeout
+   R: grub p : menu, 8 pozycji. e Charon test entry one p , 1 z 8
+   M: GNU grub version 2.12-9 plus deb13u4
+   M: Booting Charon test entry one'. Entry one selected
+  == down
+  == down
+     R: grub p : menu, 8 pozycji. e Charon test entry one p , 1 z 8
+     M: GNU grub version 2.12-9 plus deb13u4
+     R: Charon test entry two p , 2 z 8
+  == up
+     R: Charon test entry one p , 1 z 8
+  przerwane komunikaty: 0
+== clover
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 3 | Dysk — GRUBTEST (GRUB, znalazł Charon), 2 z 3 | Dysk lub partycja — GRUBTEST (Clover, znalazł Charon), 3 z 3
+   M: Welcome to Clover 5176. ... scan entries ...
+   M: Boot Microsoft E F I Boot from GRUBTEST. F 1:Help
+  == right
+     R: Clover Boot Options, 1 z 5
+  == left
+     M: Boot Microsoft E F I Boot from GRUBTEST
+  przerwane komunikaty: 1
+== winbm
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 3 | Dysk — GRUBTEST (GRUB, znalazł Charon), 2 z 3 | Dysk lub partycja — GRUBTEST (Windows Boot Manager, znalazł Charon), 3 z 3
+   R: Wczytywanie, czekaj.
+   M: Recovery. Your PC slash Device needs to be repaired. A required device isn't connected or can't be accessed. Error code: 0xc000000f. device), contact your PC administrator or PC slash Device manufacturer. Press Enter 
+  == down
+  == up
+  przerwane komunikaty: 0
+== refind
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 2 | Dysk — GRUBTEST (rEFInd, znalazł Charon), 2 z 2
+   R: Boot E F I probe GPROBE dot E F I from GRUBTEST, 1 z 3
+   M: Automatic boot in 30 seconds. Use arrow keys to move cursor; Enter to boot;
+  == right
+     R: Boot E F I probe PROBE dot E F I from GRUBTEST, 2 z 3
+  == left
+     R: Boot E F I probe GPROBE dot E F I from GRUBTEST, 1 z 3
+  przerwane komunikaty: 0
+== memtest
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 3 | Dysk — GRUBTEST (GRUB, znalazł Charon), 2 z 3 | Dysk lub partycja — GRUBTEST (Memtest86+, znalazł Charon), 3 z 3
+   R: Uruchomiono: Memtest86 plus .
+   R: System przejmuje sterowanie.
+  przerwane komunikaty: 0
+== syslinux
+  lista:  | 
+  NIE ZNALEZIONO
+  przerwane komunikaty: 0
+== ipxe
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 3 | USB — GRUBTEST (iPXE, znalazł Charon), 2 z 3
+   M: eye pixie initialising devices... file:autoexec dot ipxe... Not found (https: slash slash ipxe dot org slash 7f4de18e). file: slash autoexec dot ipxe... Not found (https: slash slash ipxe dot org slash 7f4de18e). eye 
+   M: No more network devices. Press Ctrl-B for the eye pixie command line...
+   R: Program rozruchowy zwrócił sterowanie do Charon. Sprawdź jego komunikaty i podany kod stanu. UEFI: 0x8000000000000007 Enter lub Escape zamyka komunikat.
+   M: Porada: aby otworzyć listę klawiszy, naciśnij Insert F1 albo Alt F1.
+   M: Porada: w ustawieniach Charona, w ustawieniach czytnika ekranu, zmienisz interpunkcję, język tekstu ekranu, wielkie litery i echo klawiszy.
+   M: Porada: po uruchomieniu programu Alt ukośnik wsteczny wstrzymuje rozruch, a strzałki czytają ekran.
+   M: Porada: sam numpad przy wyłączonym NumLocku przegląda ekran, tak jak w NVDA.
+  przerwane komunikaty: 1
+== ventoy
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 3 | USB — VTOYEFI (shim, znalazł Charon), 2 z 3
+   R: Menu GRUB jest ukryte. Naciśnij dowolny klawisz w ciągu 2 sekund, aby je pokazać.
+   R: Ventoy p : menu, 3 pozycje. e debian-mini dot iso p , 1 z 3
+   M: L:Language F 1:Help F 2:Browse F3:TreeView F4:Localboot F5:Tools F6:ExMenu
+  == down
+     R: mini dot iso p , 2 z 3
+  == down
+     R: rescue-tools dot iso p , 3 z 3
+  == up
+     R: mini dot iso p , 2 z 3
+  przerwane komunikaty: 0
+== haiku
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 3 | CD/DVD — HAIKU ESP (znalazł Charon), 2 z 3
+   R: Haiku p : menu, 6 pozycji. e Select boot volume slash state (Current: Haiku (1.367 GiB)) p , 1 z 6
+   M: hrev59866 plus 79. Welcome to the. Haiku Boot Loader. Copyright 2004-2026 Haiku, Inc.
+  == down
+     R: Select safe mode options p , 2 z 6
+  == up
+     R: Select boot volume slash state (Current: Haiku (1.367 GiB)) p , 1 z 6
+  przerwane komunikaty: 0
+== freebsd
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 3 | CD/DVD — EFISYS (FreeBSD loader, znalazł Charon), 2 z 3
+   M: Okno: e Welcome to FreeBSD. 1. Boot Installer Enter . 2. Boot Single user. 3. Escape to loader prompt. 4. Reboot. 5. Cons: Dual (Video primary). Options: 6. Kernel: default slash kernel (1 of 1). 7. Boot Options
+  == down
+     M: Exiting menu! Type ? for a list of commands, help' for more detailed help. OK B
+  == up
+     R: A
+  przerwane komunikaty: 0
+== debian
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 3 | CD/DVD — Debian 13.7.0 amd64 n (shim, znalazł Charon), 2 z 3
+   M: Loading bootloader...
+   R: grub p : menu, 5 pozycji. e Graphical install p , 1 z 5
+   M: Debian GNU slash Linux 13.7.0. Debian GNU slash Linux U E F I Installer menu. Enter: Select. Edit Selection. grub Command line
+  == down
+     R: Install p , 2 z 5
+  == down
+     R: Advanced options ... p , 3 z 5
+  == up
+     R: Install p , 2 z 5
+  przerwane komunikaty: 0

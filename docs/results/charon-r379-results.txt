@@ -1,0 +1,21 @@
+Charon r379 — czytnik: czytaj dalej, cisza na zmianach, kolory, zegar, tempo (2026-11-17)
+
+1. Funkcja (src/efi/CharonResident.h, CharonKeyNotify.h)
+- Ctrl+Alt+A: czyta od wiersza kursora przeglądu do ostatniego wiersza
+  z tekstem (wiersze rozdzielone kropką), kursor zostaje na ostatnim.
+- Ctrl+Alt+Q: automatyczne czytanie zmian ekranu wyłącz / włącz (np. przy
+  przewijających się logach); klawisze przeglądu i dźwięki postępu działają.
+- Ctrl+Alt+N: kolory pod kursorem przeglądu z atrybutów tekstu EFI
+  („Tekst czarny na jasnoszarym, podświetlony.”); dla tekstu odczytanego
+  z obrazu: kolory nieznane.
+- Ctrl+Alt+C: zegar firmware (GetTime), jak w narzędziach systemowych.
+- Ctrl+Alt+= / -: tempo mowy 50–200% krokami po 10%, z granicami.
+- Pomoc Ctrl+Alt+H i wszystkie nowe komunikaty mają wersje dosadne (audyt:
+  1082 teksty, 0 łagodnych).
+
+2. VM (GRUB, PL): „Tekst czarny na jasnoszarym, podświetlony.”, „Zegar
+   firmware: wtorek, 17 listopada 2026, godzina 09:00:16. …”, „Tempo 110%”,
+   „Tempo 120%”, „Tempo 110%”, „Automatyczne czytanie wyłączone. Klawisze
+   przeglądu nadal działają.” — strzałka w GRUB-ie bez mowy, Ctrl+Alt+E
+   „UEFI firmware settings, 3 z 6” — „Automatyczne czytanie włączone.”,
+   Ctrl+Alt+T i Ctrl+Alt+A: cały ekran GRUB-a od góry.

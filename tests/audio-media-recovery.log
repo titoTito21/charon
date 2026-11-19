@@ -1,0 +1,11 @@
+1
+10 Stopping media server…
+20 Waiting for media_server to quit.
+40 Telling media_addon_server to quit.
+QueryPort: write_port failed, msgcode 0x101, port -222: Bad port ID
+QueryPort: retrying write_port failed, msgcode 0x101, port -222: Bad port ID
+50 Waiting for media_addon_server to quit.
+100 Done shutting down.
+shutdown=0
+launch=-2147475452
+QueryPort: write_port failed, msgcode 0x102, port -222: Bad port ID

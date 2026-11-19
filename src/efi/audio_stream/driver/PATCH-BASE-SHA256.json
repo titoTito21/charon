@@ -1,0 +1,6 @@
+{
+  "HdaController/HdaController.h": "d479356a75c6a05f0418049219caaf9333c425dbc2f0b14969d756dfdad09bfc",
+  "HdaController/HdaController.c": "ccf5a37bd5c9124338f517d4f70dfd90719caba8e7a01f4ca35cf1c26bee60ae",
+  "HdaController\\HdaControllerHdaIo.c": "271bb307a4fdb85a43af5f6cfecb126b1e38b40e81cb6a274e73886fd43d06db",
+  "AudioDxe.inf": "d4f67f5542d4e7aa28903735b4469068b3a8ba648bf8e394d58076eab349b184"
+}

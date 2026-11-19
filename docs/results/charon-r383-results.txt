@@ -1,0 +1,53 @@
+Charon r383 — szybsza mowa czytnika, listy rozwijane, kontrolki w formularzach firmware (2026-11-17)
+
+Prośby użytkownika: „screen reader ma mówić bez opóźnień np. sekundowych”,
+„teraz to się audio tnie w screenreaderze”, „wsparcie list rozwijanych po
+enterze też ma działać, strzałki, elementy listy”.
+
+1. Opóźnienie mowy (src/tts/runtime/CharonLiveVoice.*, CharonResident.h)
+- Przyczyna: frontend TVox przygotowywał całą wypowiedź (wiersz, pomoc,
+  reszta ekranu) przed pierwszą próbką; dłuższy tekst = dłuższe czekanie.
+- Teraz wypowiedź idzie fragmentami: pierwszy kończy się na pierwszym znaku
+  interpunkcyjnym (do 48 bajtów), kolejne do 72, potem 300 bajtów. Ramki
+  gotowego fragmentu są kopiowane (28 liczb na ramkę), DSP renderuje kopię,
+  a frontend w tym czasie przygotowuje następny fragment w swoim oknie 5 ms
+  (frontend przed DSP; bufor mowy mieści dużo więcej niż jedno okno). Fragment,
+  po którym jest dalszy tekst, zachowuje tylko naturalną pauzę (kropka 250 ms,
+  przecinek 100 ms).
+- Progi czytnika: próbkowanie bufora ramki po 200 ms ciszy (było 1 s),
+  wymuszony odczyt co 1 s (było 3 s), rozpoznawanie grafiki po 100 ms (było
+  150 ms). Próg 120 ms dla tekstu konsoli bez zmian (krótszy dzieliłby
+  wolne przerysowania na kawałki).
+- Pomiar (work/charon-latency.py: od klawisza do pierwszej próbki w nagraniu
+  QEMU): formularz firmware OVMF (sterownik CHARONVOICE) 1191–1665 ms przed,
+  ok. 530 ms po; menu GRUB tekstowe 795 → 600 ms (mediana z 10), GRUB gfxterm
+  ok. 800 → 620 ms.
+- Cięcie dźwięku (zgłoszone przy kompilacji pośredniej): pierwsza wersja
+  podziału przygotowywała następny fragment dopiero po wyrenderowaniu
+  poprzedniego, a potem DSP zabierało frontendowi okno czasu — na granicy
+  powstawała pauza 795 ms. Po poprawkach pauzy w czytaniu całego ekranu
+  (Ctrl+Alt+R w GRUB) są takie jak przed zmianą: 287, 382, 195, 385 ms… bez
+  dodatkowych przerw (work/charon-r382-trial.py).
+
+2. Listy rozwijane i okna (CharonResident.h, Flush)
+- Okno w ramce: tło wnętrza okna jest jego własnym tłem; zaznaczenie to
+  komórki o innym tle. Otwarta lista: „lista. 1280x800, 1 z 15”, strzałki:
+  „640x480, 2 z 15”, „800x480, 3 z 15”; Esc: „Change Preferred, lista
+  rozwijana, 1280x800”. Lista języka: „lista. Français, 4 z 4”, „English, 3 z
+  4”. Wiersze strony zasłonięte oknem nie są czytane; okno bez zaznaczenia
+  (komunikat) nie czyta zasłoniętego podświetlenia strony: „Okno. Error:
+  please configure iSCSI initiator name first!”.
+
+3. Kontrolki w prawdziwych formularzach OVMF (sterownik od startu)
+- „Select Language, lista rozwijana, Standard English”, „Change Preferred,
+  lista rozwijana, 1280x800”, „Auto Boot Time-out, pokrętło, 0”, „Configured,
+  pole wyboru, niezaznaczone” → Spacja → „Configured, pole wyboru,
+  zaznaczone”, „iSCSI Initiator Name, pole edycji, puste”.
+- Gdy podświetlona jest sama wartość (edk2), etykieta jest brana z lewej
+  kolumny tego samego wiersza. „<wartość>” bez etykiety = lista rozwijana,
+  „[ OK ]” = przycisk. Podpowiedzi „<Spacebar>”, „Shift+Tab” itd. zostają
+  tekstem. Każdy wiersz czytanego bloku przechodzi przez opis kontrolek.
+- Test hostowy tests/CharonControlsTests.cpp: PASS (z nowymi przypadkami).
+
+4. Nie sprawdzone: test hostowy LiveVoice (wymaga osobnego zestawu TVox +
+   ml64); ikony OpenCanopy (brak zasobów OcBinaryData w work/).

@@ -1,0 +1,5 @@
+Unmodified Haiku EFI interface headers.
+Commit 1371f07efddd8a1cc4947bcb869ad8f3b2a9cf0a
+https://github.com/haiku/haiku/tree/1371f07efddd8a1cc4947bcb869ad8f3b2a9cf0a/headers/private/kernel/platform/efi/
+See individual files for licenses.
+Fuchsia BSD-style LICENSE retrieved from https://fuchsia.googlesource.com/fuchsia/+/refs/heads/main/LICENSE (2026-11-15).

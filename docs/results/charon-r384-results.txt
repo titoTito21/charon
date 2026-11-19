@@ -1,0 +1,36 @@
+Charon r384 — odliczanie (timery), przyciski OpenCore, przegląd menedżerów (2026-11-17)
+
+Prośba użytkownika: „wsparcie timerów … w ustawieniach Charona, w podmenu
+czytnika ekranu, będzie mówił co 10 sekund, … dźwięk timera generowany przez
+oscylator co sekundę, a pod koniec timera długi dźwięk na 500 ms”.
+
+1. Ustawienia (CharSettings.h bajt 33, BootMenuModel.h, BootMenu.h)
+- Podmenu „Ustawienia czytnika ekranu” ma dwa nowe pola wyboru: „Odliczanie:
+  mowa co 10 sekund” i „Odliczanie: dźwięk co sekundę, długi na końcu”
+  (domyślnie wyłączone; Spacja/Enter). Przekazywane do czytnika w obrazie i
+  do sterownika CHARONVOICE (bity 3–4 bajtu polish w Resume).
+
+2. Czytnik (CharonResident.h)
+- Licznik = wiersz, który różni się od poprzedniego tylko cyframi (także gdy
+  wyśrodkowany tekst przesunie się o kolumnę przy 10→9). Czas = pierwsza
+  liczba, która zmalała (postęp „45%” rośnie, więc nie tyka).
+- Mowa: co pełne 10 s cały wiersz („Boot in 20 s.”, „Boot in 10 s.”).
+- Dźwięk: 1000 Hz, 40 ms przy każdej zmianie (co sekundę); na końcu 880 Hz,
+  500 ms — przy „0”, gdy wiersz licznika zniknie (program działa), albo
+  sekundę po „1”. Przez 500 ms sygnały postępu nie przerywają tego tonu.
+- Pomiar w QEMU (systemd-boot, nagranie): tyknięcia 40 ms ~1000 Hz co
+  0,92 s, ton końcowy ok. 470 ms ~900 Hz, potem dopiero sygnały postępu
+  programu. GRUB: tyknięcia między mową, ślad „reader countdown end”.
+- Test hostowy: ChangedNumber (systemd-boot, Limine, GRUB „0s”, postęp %).
+
+3. OpenCore: „|Shutdown| |Restart|” = „Shutdown, przycisk, Restart,
+   przycisk” (VM, wbudowany wybierak).
+
+4. Przegląd r383/r384 w QEMU (work/charon-r383-sweep.py):
+- Windows Boot Manager (ekran Recovery), systemd-boot (menu, licznik,
+  probe loader, przekazanie), Limine (menu, licznik), OpenCore (menu,
+  przyciski), Memtest86+ (nazwany, przekazanie) — czytane. Wcześniej w
+  partii: GRUB tekstowy i graficzny, rEFInd, Clover, formularze OVMF.
+- OpenCanopy (OpenCore + OcBinaryData GoldenGate, work/ocbin-dl): w tym
+  środowisku nie rysuje wybieraka także bez Charona (z Charonem OpenCore
+  resetuje maszynę, uruchomiony z Shella kończy QEMU). Nie sprawdzone.

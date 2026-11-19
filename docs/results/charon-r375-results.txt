@@ -1,0 +1,29 @@
+Charon r375 — tryb dosadny: przeglądarka ustawień UEFI, postęp, konsola (2026-11-17)
+
+1. Poprawki
+- Komunikat złożony tylko z porady (np. wiersz klawiszy przeglądarki
+  ustawień UEFI) po podmianie na dosadną wersję nie dostaje już drugiego
+  dopisku; pusty tekst (same spacje) nie dostaje nic.
+- Czytnik: procenty pasków postępu (gdy mowa postępu jest włączona) w
+  trybie dosadnym: „40 procent, ślimaczy się to w chuj”, „100 procent,
+  kurwa, wreszcie” itp. (6 wariantów PL/EN).
+- Konsola menu: „nie zapamiętano wyboru” i „program podmienił konsolę”
+  w wersjach dosadnych. Komunikaty diagnostyczne „HAK EFI: …” zostają bez
+  zmian (log techniczny, z którego korzysta harness testowy).
+
+2. Przegląd ścieżek mowy w trybie dosadnym
+- Menu: announce → FormatCharonMessage (wtrącenia, pociski, porady,
+  gotowe wersje), etykiety z labelFor (warianty albo dopisek), zaczepki.
+- Narracja startu programu: LaunchSay → FormatCharonMessage.
+- Przeglądarka ustawień UEFI: speak → FormatCharonMessage (dopiski do
+  tekstów formularzy, dosadny wiersz klawiszy, F5).
+- Czytnik ekranu: własne zwroty przez SayOwn/OwnPhrase; tekst ekranu
+  programów i powłoki UEFI (zawartość ekranu) świadomie bez zmian.
+
+3. VM (PL, tryb dosadny): przeglądarka ustawień UEFI — „Driver Health
+   Manager, bierz albo spierdalaj”, „File Explorer, w pizdu z tym”, pomoc
+   F1 „List all the Driver Health instances to manage, chuj wie po co”,
+   wiersz klawiszy „Strzałki łażą i kręcą, Enter albo Spacja otwiera, Esc
+   spierdala, F1 pomoc dla zielonych, F5 odświeża”, tytuł z dopiskiem.
+   Testy hosta — PASS (4 zestawy).
+   Nie sprawdzone w VM: mowa procentów postępu w trybie dosadnym.

@@ -1,0 +1,63 @@
+INFO - config.ConfigManager._loadConfig (11:20:01.565) - MainThread (1614368166336):
+Loading config: /boot/home/config/settings/nvda-haiku/profile/nvda.ini
+WARNING - tones.initialize (11:20:15.832) - MainThread (1614368166336):
+Failed to initialize audio for tones
+Traceback (most recent call last):
+  File "tones.py", line 25, in initialize
+    player = nvwave.WavePlayer(
+    	channels=2,
+    ...<4 lines>...
+    	purpose=nvwave.AudioPurpose.SOUNDS,
+    )
+  File "nvwave.py", line 273, in __init__
+    (haikuAudioPlatform.silenceInit if _isHaiku else wasapi.wasSilence_init)(outputDevice)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "haikuAudioPlatform.py", line 82, in silenceInit
+    _silenceCall('init')
+    ~~~~~~~~~~~~^^^^^^^^
+  File "haikuAudioPlatform.py", line 75, in _silenceCall
+    raise OSError(status, f'Haiku audio silence {name} failed: {os.strerror(status)} ({status})')
+OSError: [Errno -2147467158] Haiku audio silence init failed: Too many buffers (-2147467158)
+ERROR - synthDriverHandler.setSynth (11:20:16.632) - MainThread (1614368166336):
+setSynth failed for espeak
+Traceback (most recent call last):
+  File "synthDriverHandler.py", line 537, in setSynth
+    _curSynth = getSynthInstance(name, asDefault)
+  File "synthDriverHandler.py", line 491, in getSynthInstance
+    newSynth = _getSynthDriver(name)()
+  File "synthDrivers/espeak.py", line 79, in __init__
+    _espeak.initialize(self._onIndexReached)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "synthDrivers/_espeak.py", line 386, in initialize
+    player = nvwave.WavePlayer(
+    	channels=1,
+    ...<2 lines>...
+    	outputDevice=config.conf["audio"]["outputDevice"],
+    )
+  File "nvwave.py", line 273, in __init__
+    (haikuAudioPlatform.silenceInit if _isHaiku else wasapi.wasSilence_init)(outputDevice)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "haikuAudioPlatform.py", line 82, in silenceInit
+    _silenceCall('init')
+    ~~~~~~~~~~~~^^^^^^^^
+  File "haikuAudioPlatform.py", line 75, in _silenceCall
+    raise OSError(status, f'Haiku audio silence {name} failed: {os.strerror(status)} ({status})')
+OSError: [Errno -2147467158] Haiku audio silence init failed: Too many buffers (-2147467158)
+INFO - synthDriverHandler.setSynth (11:20:17.699) - MainThread (1614368166336):
+Searching for next synthDriver
+INFO - synthDriverHandler.findAndSetNextSynth (11:20:17.717) - MainThread (1614368166336):
+Falling back to next synthDriver silence
+INFO - synthDriverHandler.setSynth (11:20:18.060) - MainThread (1614368166336):
+Loaded synthDriver silence
+INFO - braille.input.initialize (11:20:19.898) - MainThread (1614368166336):
+Braille input initialized
+INFO - braille.initialize (11:20:20.623) - MainThread (1614368166336):
+Using liblouis version 3.39.0
+INFO - braille.initialize (11:20:20.729) - MainThread (1614368166336):
+Using pySerial version 3.5
+INFO - braille.brailleHandler.BrailleHandler._setDisplay (11:20:21.075) - MainThread (1614368166336):
+Loaded braille display driver 'noBraille', current display has 0 cells.
+INFO - haikuWatchdog.waitForFreezeRecovery (11:20:37.772) - NVDA watchdog (1101911883776):
+Starting freeze recovery after 10.456339000025764 seconds.
+INFO - haikuWatchdog.waitForFreezeRecovery (11:20:40.924) - NVDA watchdog (1101911883776):
+Recovered from freeze after 13.609878999995999 seconds.

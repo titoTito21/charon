@@ -1,0 +1,10 @@
+NVDA Haiku port — experimental development snapshot
+
+The NVDA speech subsystem and the new Haiku platform adapters are distributed
+under GNU GPL version 2 or later. See COPYING.txt for the complete authoritative
+NVDA license, including its exceptions and notices. Original NVDA copyright
+headers are preserved. This is an unofficial port, not a release by NV Access.
+
+Unchanged files inherited from HaikuSpeak retain their MIT notices in
+LICENSE-HaikuSpeak. The old MIT license does not replace the GPL license of
+NVDA code or the new port adapters. The combined port is distributed under GPL.

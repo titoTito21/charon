@@ -1,0 +1,131 @@
+Charon r390 — czytanie tekstu jak w NVDA, numpad, układ Alt i przegląd ze
+wstrzymanym rozruchem, lista klawiszy, monitor brajlowski, edytor UEFI Shell
+(2026-11-18)
+
+Prośby użytkownika: cztery partie naraz (1 czytanie tekstu jak NVDA, 2
+monitor brajlowski, 3 instalatory i narzędzia / lepsze czytanie każdego
+programu, 4 stabilność i wydanie); „sam numpad przegląda ekran, tak jak
+NVDA”; „Alt strzałki … Alt+\ włącza przegląd ekranu pauzując rozruch, żeby
+można było przeczytać konsolę/komunikaty”; lista klawiszy jak w Fenrirze /
+Speakupie (Insert+F1, Alt+F1), zatrzymująca rozruch, także w menu Charona;
+pozycje menu nie drugim głosem; więcej ustawień czytnika; porady głosem
+komunikatów w menu Charona (po dłuższej pauzie, raz); procenty tempa jak w
+NVDA (domyślnie 50%); „9 z 19” bez słowa „pozycja”; menu rozruchu firmware
+(F12/F8) z samym dodatkiem; pasek zakładek; echo w edytorze to nie timer.
+
+Build: tools/build-charon-windows.py ../../work/charon-win-r390o --trace
+(+ charon-win-r390o-drv --driver --trace). Testy w QEMU z dźwiękiem (dsound),
+sterownik audio AudioDxe-r389 (domyślny w charon-vm.py od r390: stary r355
+kończył się EFI_TIMEOUT i testy były ciche — błąd skryptu, nie Charona).
+
+1. Czytanie tekstu jak w NVDA (src/efi/CharonSpeechText.h, CharonSymbols.h)
+- Tabele: oryginalne symbols.dic i characterDescriptions.dic NVDA (pl, en,
+  z cofaniem się do en jak w NVDA), generowane przez
+  tools/gen-charon-symbols.py (escape'y o stałej długości; \x połykał litery
+  szesnastkowe). Algorytm SpeechSymbolProcessor: powtórzenia (4+), symbole
+  złożone (koniec zdania i frazy, wielokropek, kropka dziesiętna, apostrof w
+  słowie, liczba ujemna), proste najdłuższe najpierw; poziomy brak / część
+  (domyślnie) / większość / wszystko; preserve never/always/norep.
+- Własne słowa czytnika (role, „menu, N pozycji”, „1 z 6”, „karta”, „Okno”,
+  separatory) oznaczone znakami U+E001/U+E002: bez interpunkcji, w języku
+  menu. Tekst ekranu: język automatycznie (polskie litery, słowa typowe dla
+  ekranów rozruchu, pary liter), jak menu, angielski, polski.
+- Zmiana języka w jednej wypowiedzi: ESC p / ESC e w tekście; LiveVoice
+  kończy na nim fragment i przygotowuje następny w drugim języku (także
+  AppendText głosu komunikatów). Przykład z GRUB-a: „GRUB” (en) „: menu, 6
+  pozycji.” (pl) „Charon test entry one” (en) „, 1 z 6” (pl).
+- Paski klawiszy: „<Enter>=Select Entry”, „F10=Save”, „↑↓=Move Highlight”
+  → „Enter: Select Entry”, „up arrow down arrow: Move Highlight”. Znak
+  zachęty na końcu wiersza („Shell>”, „FS0:\>”, „grub>”, $, #) nie jest
+  nazywany. Strzałki ↑↓←→ i trójkąty nazywane w języku tekstu (wcześniej
+  zawsze po polsku: „Use the strzałka w górę”).
+- Znaki: nazwy z symbols.dic na poziomie „char”, dwa razy alfabet
+  fonetyczny, trzy razy kod; słowo/wiersz dwa razy literowanie (okno 600 ms;
+  w QEMU 0,4 s = 50 taktów, próg 50 był za ciasny); wielkie litery: słowo,
+  ton 2000 Hz / 50 ms, wyższy głos (osobno).
+- Test hosta tests/CharonSpeechTextTests.cpp: ALL PASSED (poziomy, URL,
+  powtórzenia, kropka dziesiętna, minus, nawiasy, dwukropek, paski
+  klawiszy, „a=b” bez zmian, znak zachęty, wykrywanie języka, składanie
+  wypowiedzi, nazwy znaków, fonetyka, kod, literowanie, ustawienia V9 i
+  odczyt V8, komórki brajla). CharonControlsTests PASS (znaczniki usuwane w
+  teście), CharonSystemToolsTests PASS.
+
+2. Klawisze
+- Sam numpad (USB, NumLock wyłączony, jak NVDA): src/efi/CharonUsbKeypad.h
+  opakowuje UsbAsyncInterruptTransfer interfejsów klawiatur rozruchowych
+  (UsbIo), łączy klawiaturę ponownie, widzi raport HID przed sterownikiem
+  firmware; klawisz, który sterownik zrobi z wciśnięcia, jest zjadany.
+  QEMU usb-kbd (CHARON_USBKBD=1): numpad 8 → bieżący wiersz, + → czytaj
+  dalej, 5/2 → słowo/znak. PS/2 (domyślna klawiatura OVMF, wiele laptopów):
+  firmware nie odróżnia numpadu od strzałek — tam Insert+cyfra i układ Alt.
+- Układ Alt (każda klawiatura): Alt+↑/↓ wiersze, Alt+←/→ znaki — QEMU:
+  „GNU GRUB version …”, „Charon test entry one”, „h”.
+- Alt+\ przegląd ze wstrzymanym rozruchem: program czeka w OutputString,
+  Stall i ExitBootServices (tylko przy TPL_APPLICATION), klawisze należą do
+  przeglądu (strzałki, Home/End, Enter, Escape wznawia). QEMU: GRUB menu,
+  Windows Recovery (dodatek), menu ustawień firmware.
+- Lista klawiszy Insert+F1 / Alt+F1 (src/efi/CharonKeyHelp.h, 27 pozycji,
+  wstrzymuje rozruch); w menu Charona F1 (strona keyList). Insert+0 /
+  Ctrl+Alt+X pomoc klawiszy (NVDA+1), Insert+P / Ctrl+Alt+D interpunkcja,
+  Insert+Z / Ctrl+Alt+Z język tekstu, Insert+. położenie (było Insert+P).
+- ReaderKeys: 400 uchwytów (było 200, a rejestrowano 284: nadmiarowe uchwyty
+  nie dawały się wyrejestrować).
+
+3. Ustawienia i menu Charona
+- Ustawienia V9 (48 bajtów, CRC na 44): bajty 36–39 interpunkcja, wielkie
+  litery, język tekstu ekranu, flagi czytnika (komunikaty drugim głosem,
+  wpisywane znaki, automatyczne czytanie, echo kursora, wpisywane słowa,
+  porady). Starsze wersje czytane. ReaderControl release 390 (Resume niesie
+  „reading”).
+- Podmenu „Ustawienia czytnika ekranu”: 19 pozycji (QEMU, wszystkie czytane z
+  wartościami, „9 z 19”). Kopie ustawienia↔model w jednej funkcji (były 4).
+- Porady: po 10 s bez klawisza, głos komunikatów, każda raz (QEMU: dwie
+  pierwsze porady usłyszane). Tempo/wysokość na skali NVDA (domyślnie 50%).
+
+4. Czytanie ekranów
+- Pozycje menu nie idą głosem komunikatów, panel pomocy po prawej (formularze
+  firmware) zostaje w całości.
+- Pozycje list: wiersze w kolorze sąsiedniej niezaznaczonej pozycji, do dwóch
+  pustych wierszy przerwy — edk2 Boot Manager: „UEFI QEMU HARDDISK, 1 z 2”,
+  „EFI Internal Shell, 2 z 2” (było „1 z 4” dla obu: nagłówek i pomoc liczone).
+- Jedna komórka w negatywie nie jest zaznaczeniem (wskaźnik myszy edytora
+  edk2); kursor rysowany używany, gdy kursor konsoli jest ukryty.
+- Ten sam tekst w tym samym wierszu po klawiszu w ciągu 5 s nie jest czytany
+  drugi raz (pasek stanu edytora). Liczba zmieniona klawiszem nie jest
+  odliczaniem (pozycja kursora edytora dawała tyknięcia).
+- „Gdzie jestem” mówi otwartą kartę paska zakładek.
+- UEFI Shell edit (QEMU): wpisywane znaki w każdym wierszu, „Modified”, góra
+  czyta wiersz, prawo/Home znak, End „pusty”, Backspace, Ctrl+S → „File to
+  Save: lista rozwijana, c.txt”, type c.txt czyta treść.
+
+5. Monitor brajlowski (src/efi/CharonBraille.h)
+- Baum przez USB (FTDI 0403:FE70–FE77, Baum 0904): własna obsługa UsbIo
+  (19200 8N1, bulk), identyfikacja, liczba komórek, wiersz kursora przeglądu
+  w 8-punktowym brajlu komputerowym (NABCC; polskie litery z punktem 8, bo
+  6-punktowe ł/ś/ą… są w NABCC znakami <, {, *), kursor punkty 7 i 8, klawisze
+  d1–d6 (przewijanie, wiersz, zaznaczenie, czytaj wiersz), routing.
+- QEMU usb-braille + work/charon-braille-sim.py (CHARON_BRAILLE=1):
+  identyfikacja „Baum Vario 40”, wiersze menu GRUB-a, przegląd Alt, klawisze
+  i routing („spacja”) działają. Niesprawdzone na prawdziwej linijce; HID
+  Braille, Bluetooth i inne protokoły nieobsługiwane.
+
+6. Menu firmware z samym dodatkiem (CHARONVOICE.EFI z Driver####)
+- Maszyna z SMBIOS „Dell Inc. Latitude 7440” (charon-addon-test.py
+  CHARON_SMBIOS/CHARON_SMBIOS0, CHARON_ADDON_FWUI): strona firmware,
+  Boot Manager (lista urządzeń), Reset → Windows Recovery czytane. F2 przy
+  starcie w tej wersji OVMF otwiera stronę ustawień, a menu urządzeń to jej
+  pozycja „Boot Manager”. Prawdziwego firmware Della/HP/Lenovo nie da się
+  uruchomić w QEMU: czy ich menu F12/F9 jest czytane, zależy od kolejności
+  Driver#### i czcionki — niesprawdzone.
+- Otwarte: „Select Language” (lista rozwijana w innym kolorze) nie liczy się
+  do pozycji strony głównej OVMF („Device Manager, 1 z 5”, „Continue, 5 z
+  6”). Pasek zakładek (AMI, Insyde) tylko z r388 na zrzutach; w OVMF go nie
+  ma.
+
+7. Regresja (work/r386-regression.sh)
+- r390g: 14 przebiegów (OpenCore, systemd-boot, Limine, Clover, Windows Boot
+  Manager, rEFInd, Syslinux, iPXE, Ventoy, Haiku, FreeBSD, Memtest86+,
+  Debian netinst, nośniki) jak w r387/r389; różnice tylko z interpunkcji NVDA
+  („Memtest86 plus”, „mini dot iso”); FreeBSD/iPXE głosem komunikatów (od
+  r389). Wynik: work/r390-regression-rg390.txt.
+- r390o (zmiana liczenia pozycji): work/r390-regression-rg390o.txt.

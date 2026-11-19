@@ -1,0 +1,24 @@
+Charon r377 — tryb dosadny: audyt wszystkich tekstów (2026-11-17)
+
+1. Audyt (tools/audit-charon-explicit.py)
+- Zbiera ze źródeł KAŻDY tekst trybu dosadnego: warianty etykiet opcji
+  (CharonMenuLabels.h), gotowe komunikaty i porady, wtrącenia, pociski,
+  dopiski etykiet, zaczepki (CharonMessageMode.h), zwroty czytnika
+  (CharonResident.h), wpisy konsoli (HAKBootEFI.cpp, BootMenu.h) i dosadne
+  komunikaty błędów rozruchu (BootMessages.h) — razem 1022 teksty.
+- Każdy musi zawierać wulgaryzm lub wyzwisko (słownik PL/EN) i nie może mieć
+  dopisku w drugim języku (dwa celowe żarty o języku na liście wyjątków).
+- Przed poprawką: 423 teksty łagodne (np. „Ten złom to:”, „Ubić to pudło?”,
+  „Babcia by to ogarnęła szybciej.”). Po poprawce: 0 łagodnych, 0 pomyłek
+  języka. Dopiski etykiet rozrzucone z puli 15 (PL) / 11 (EN), sąsiednie
+  bez powtórzeń.
+- Zwykłe komunikaty bez gotowej wersji przechodzą przez FormatCharonMessage,
+  które w trybie dosadnym dokleja wtrącenie lub dopisek z tych samych,
+  audytowanych pul (testy CharonMessageModeTests).
+
+2. Testy hosta — PASS (4 zestawy). Audyt — PASS (kod wyjścia 0).
+
+3. VM (PL, tryb dosadny), strona ustawień: „Mam gadać od samego włączenia
+   tego pudła, …, wyłączona”, „Jak głośno mam się drzeć? Głośność mowy,
+   suwak, …, 100%”, „Jedynka z playlisty, …”, „Grzebanie w UEFI na własną
+   odpowiedzialność, podmenu, …” — każda opcja z bluzgiem.

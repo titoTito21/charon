@@ -1,0 +1,10 @@
+{
+  "pl": {
+    "firmware_ready": "Firmware załadowany.",
+    "starting": "Uruchamianie menedżera rozruchu."
+  },
+  "en": {
+    "firmware_ready": "Firmware initialized.",
+    "starting": "Starting boot manager."
+  }
+}

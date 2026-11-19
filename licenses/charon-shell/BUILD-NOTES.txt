@@ -1,0 +1,96 @@
+Owned Charon EFI Shell bridge (x64)
+
+This is a separate build of AUDK Shell, not a patch to firmware's built-in
+Shell and not a change to Haiku. Upstream pin:
+acidanthera/audk dfd5516702b4911f1fc1919a429d637b456df913.
+prepare_owned_shell.py verifies the modified input files and Shell DSC by
+SHA256, then creates Application/CharonShell and Library/CharonShellLib.
+Original Shell and UefiShellLib remain untouched. Existing owned outputs are
+refused, to prevent silently stacking patches. Each output gets provenance.
+Upstream BSD-2-Clause-Patent notices remain in copied sources. New bridge and
+model sources are GPL-2.0-or-later; distribute complete corresponding sources
+and upstream licenses with the resulting combined binary.
+
+Build using the real AUDK BaseTools already built for AudioDxe:
+  python3.15 prepare_owned_shell.py WORKSPACE
+  build_owned_shell.cmd WORKSPACE PATH_TO_NASM_2_16_03
+The command uses Visual Studio 18/MSVC 14.51 with the existing VS2022 EDK
+toolchain definition. The generated DSC maps the real IntrinsicLib and only
+the owned Shell module. UTF-8 execution literals are explicitly enabled.
+Output: WORKSPACE/Build/CharonShell/RELEASE_VS2022/X64/CharonShell.efi
+
+Implemented source paths
+- ConsoleLoggerOutputStringSplit observes successful logical output before
+  page-break waits. Historical redraws use OldConOut directly and are not
+  captured again. Cursor/clear hooks reflect successful console operations.
+- FileHandleWrappers observes actual command editor state, including history
+  replacement, deletion and cursor movement. It suppresses duplicate console
+  redraw echo while editing. Upstream F7 command history remains unchanged.
+- F9 reviews an older retained output line; F10 reviews a newer line; F11
+  speaks the current command line; F12 stops speech. These keys are consumed
+  only by the owned command editor, not by external applications.
+- The real editor wait, output-pause wait and all six UefiShellLib prompt
+  waits use ShellSpeechWaitKey. A non-notifying periodic EFI timer plus the
+  v2 preparation query drives bounded Pump(480) calls at TPL_APPLICATION.
+  Each immediate frontend slice polls input. A consumed key signal is returned
+  directly, never followed by a second WaitForEvent that loses the key.
+- Before external StartImage, Stop must succeed. Otherwise the child is
+  unloaded without execution. Capture is suspended throughout child execution.
+  Shell teardown closes its timer only after Stop succeeds; a Stop failure is
+  returned to its owning launcher, which must retain/quiesce the provider.
+
+Limits and required integration
+The bridge is a real consumer of MenuVoice GUID
+99e5faac-6c86-45db-b09d-3cba804d0e51. C layout is 32 bytes for v1 and 40 bytes
+for v2 on x64; callback ABI matches the actual C++ provider. No synthesizer,
+PCM recording or stand-in speech callback is embedded in Shell.
+
+Host-source integration now publishes the actual provider through
+MenuVoicePublication.h before the menu and owned Shell are entered.
+OwnedShellLauncher.h reads only EFI/HAK/CharonShell.efi from the selected own
+ESP, limits its size to 16 MiB, requires an x64 EFI application, preserves the
+device/file path and passes the original bytes to firmware LoadImage for
+authentication. It does not bypass Secure Boot verification. Stop runs before
+StartImage and again after return. Firmware normally unloads applications
+inside StartImage; the launcher verifies that handle's retirement rather than
+trying indefinitely to unload a dead handle. Any still-live image is explicitly
+unloaded, including nonnull handles returned by a failed LoadImage.
+
+The boot application retains provider, audio device, assets and pool throughout
+the whole child call. On exit it first cleans retained child resources, then
+successfully stops/uninstalls the published service, then shuts down the
+provider. Failed Stop, UnloadImage or Uninstall retains its owner and blocks
+handoff; no destructor silently releases live callbacks. One owner serializes
+access. A consumer must close its own events, Stop, and cease using the service
+before returning from StartImage. It cannot retain callbacks after its owning
+boot application returns or after ExitBootServices. No exit-boot-services
+memory-free callback was introduced. Audible QEMU validation of this new
+publication/launcher path remains separate from host and build validation.
+
+Language currently follows firmware PlatformLang: Polish for pl, otherwise
+English. The protocol does not expose Charon's saved language preference;
+passing that preference needs an explicit owner/consumer interface.
+
+The review model retains 32 completed lines, at most 255 UTF-16 units each.
+Overflow is bounded and recorded by the model's truncated flag; older lines
+are evicted. UTF-8 conversion preserves complete scalars and replaces malformed
+surrogates. Automatic output speaks the latest completed line plus the current
+prompt when the next owned wait begins. It is not a promise to narrate every
+line of a fast multi-line command; previous lines are available with F9/F10.
+Long command execution that never enters an owned wait has no speech pump.
+MenuVoice v2 means preparing, not playback complete, so it cannot correctly
+sequence a full output FIFO without an additional producer completion API.
+
+No arbitrary graphical/GOP child accessibility, firmware setup accessibility,
+password-field detection or resident background Shell service is claimed.
+Input echo is limited to the existing visibly echoed Shell command editor.
+External child output is deliberately excluded rather than misclassified.
+
+Validation
+ShellSpeechModelTests.cpp exercises CR/cursor overwrite, bounded history,
+review, redraw suppression, real editor changes and Unicode/truncation.
+ShellSpeechBridgeTests.c executes the actual C bridge with deterministic EFI
+services: exact v1/v2 ABI, no timer callbacks, bounded work, key priority,
+language/text delivery, child Stop barrier and teardown failures.
+The owned Shell has also been compiled through real EDK tools. A successful
+build does not prove audible output. Root owns the later QEMU audio test.

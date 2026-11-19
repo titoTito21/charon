@@ -1,0 +1,452 @@
+[
+  {
+    "file": "audio-driver/AudioIo-ABI-original-notice.h",
+    "sha256": "290a6fa92e7fd755523ffff2298f06537a24093b930c368aa93e7f9fb3790696",
+    "bytes": 1976
+  },
+  {
+    "file": "audio-driver/AUDK-License-History.txt",
+    "sha256": "ffa82412001a194d32486a7c4bcb4f438555b95f438e8c6dc0a25f0710f3f65a",
+    "bytes": 28651
+  },
+  {
+    "file": "audio-driver/AUDK-License.txt",
+    "sha256": "50ce20c9cfdb0e19ee34fe0a51fc0afe961f743697b068359ab2f862b494df80",
+    "bytes": 2732
+  },
+  {
+    "file": "audio-driver/BUILD-NOTES.md",
+    "sha256": "2fea6768ee1ac4e14e7e0ba07337004ce0ecc595784549fd662400e0bdbfc091",
+    "bytes": 5833
+  },
+  {
+    "file": "audio-driver/dependency-notices/brotli/brotli-e230f474b87134e8c6c85b630084c612057f253e/LICENSE",
+    "sha256": "3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94",
+    "bytes": 1084
+  },
+  {
+    "file": "audio-driver/source-downloads.json",
+    "sha256": "32444022cf56bb45e4a489a8e15902ab3da7fdc016c2f55d6dc74dfab3f0c72c",
+    "bytes": 1437
+  },
+  {
+    "file": "COMPONENTS-AND-SOURCES.txt",
+    "sha256": "8d1f580e65ff7a85fcd07a9fdba9f1fc9a133d21ec75ba4187250bb39a0c8e38",
+    "bytes": 5325
+  },
+  {
+    "file": "firmware-as-shipped/BINARY-PROVENANCE.json",
+    "sha256": "cff8e24c7472c3c801c9945c56542da572a21228b07683c30cfa39e6bbb6d93b",
+    "bytes": 564
+  },
+  {
+    "file": "firmware-as-shipped/edk2-licenses.txt",
+    "sha256": "1ddeaed2e7d2e9ecb960bdfc1b8ee45387aff70d056d985d145949af3951657c",
+    "bytes": 42903
+  },
+  {
+    "file": "haiku-efi/LICENSE",
+    "sha256": "83c1763356e822adde0a2cae748d938a73fdc263849ccff6b27776dff213bd32",
+    "bytes": 1275
+  },
+  {
+    "file": "haiku-efi/SOURCE.txt",
+    "sha256": "b31c33e90f22d845811953a497920ca58edc6ebe3cbd30b04509a5506d85bc31",
+    "bytes": 364
+  },
+  {
+    "file": "hak-and-nvda/COPYING.txt",
+    "sha256": "1ff7ab1df2693e43c0dc052867765df9d76853653fd34c7efd7865fa39252290",
+    "bytes": 53409
+  },
+  {
+    "file": "hak-and-nvda/LICENSE",
+    "sha256": "974d68b11ad3881c80ec00e46ca299fff35b7b0169e40da2450ee8eb9ef00644",
+    "bytes": 597
+  },
+  {
+    "file": "musl/COPYRIGHT",
+    "sha256": "f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af",
+    "bytes": 6204
+  },
+  {
+    "file": "musl/fenv-adaptation.json",
+    "sha256": "c3dc291ac66d97a3da0b5d7184f0f8f39f6b4512cc7d5801f3171b2285d6de18",
+    "bytes": 375
+  },
+  {
+    "file": "musl/provenance.json",
+    "sha256": "a82f522c7cda7f03c024fa3ce012b935ba9739a28409a1d61fa3bbb5c96a473b",
+    "bytes": 5413
+  },
+  {
+    "file": "musl/README.txt",
+    "sha256": "ebcdc09b6e3431bfbbeae7bdf16f0cd0f9f15be0b1a521f49c17aca1dbc67c00",
+    "bytes": 3131
+  },
+  {
+    "file": "musl/source-notices/arch/generic/fp_arch.h",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  {
+    "file": "musl/source-notices/arch/x86_64/bits/alltypes.h.in",
+    "sha256": "3178d6112df2fac8d2ad0331ea956a9161ca38780f1e01569a97a4d76a40071e",
+    "bytes": 421
+  },
+  {
+    "file": "musl/source-notices/arch/x86_64/bits/fenv.h",
+    "sha256": "406af96f4d9e50a1191873aa00f3d4c4918065cc791492fad93bdc45640dde79",
+    "bytes": 777
+  },
+  {
+    "file": "musl/source-notices/arch/x86_64/bits/float.h",
+    "sha256": "de4738aaf93195145476108f536039c28dc572aa34ccf3ce099142266f9007df",
+    "bytes": 499
+  },
+  {
+    "file": "musl/source-notices/arch/x86_64/bits/stdint.h",
+    "sha256": "a901e488e09ba0e5d796d2db619ef834e120e6e3c38de8fb8e763eb148780728",
+    "bytes": 540
+  },
+  {
+    "file": "musl/source-notices/include/alltypes.h.in",
+    "sha256": "0258a616386b1c33c1a539317bdfd0de381dd43d7e5bebb205c4b4e1e71eef56",
+    "bytes": 3498
+  },
+  {
+    "file": "musl/source-notices/include/endian.h",
+    "sha256": "4414084736937798abcc075d1f8053e116d873c81dda0908013bfca3331771b9",
+    "bytes": 1958
+  },
+  {
+    "file": "musl/source-notices/include/features.h",
+    "sha256": "6d228e77b88b69f70f9157548b6ec673ffc6b998ce6035fbbee0caddb8442903",
+    "bytes": 865
+  },
+  {
+    "file": "musl/source-notices/include/fenv.h",
+    "sha256": "9b6d535409cac95bb00e3305f7724af42b7003909a833b7622d6d18d7e650e2c",
+    "bytes": 449
+  },
+  {
+    "file": "musl/source-notices/include/float.h",
+    "sha256": "d513aa2c48b2d60672ab10dbab0ab80347db9f1b353db4ea3fae2018907964c1",
+    "bytes": 1060
+  },
+  {
+    "file": "musl/source-notices/include/math.h",
+    "sha256": "5559892c51d9625616fde0c4d25609f1e68e0aa3aee090d1842c6f894e63352a",
+    "bytes": 11491
+  },
+  {
+    "file": "musl/source-notices/include/stdint.h",
+    "sha256": "b6e77f1611e56cf499233172cab8bc09c0f7d937f3daa5ad552e1712fc6663e5",
+    "bytes": 2578
+  },
+  {
+    "file": "musl/source-notices/include/stdlib.h",
+    "sha256": "9dade04aa761839017a0de3023d9e5500cb1e431682fc89d84f9a956e4a7c9d6",
+    "bytes": 4875
+  },
+  {
+    "file": "musl/source-notices/src/fenv/x86_64/fenv.s",
+    "sha256": "9a1a2872f39987016e922e8a88e80c737a2f8a5a5e68503aff0edce17db7b283",
+    "bytes": 1444
+  },
+  {
+    "file": "musl/source-notices/src/include/features.h",
+    "sha256": "9b199f92f5949f23a224995e0e1578b2f1be0e95879fbc1c4abfa2784658490c",
+    "bytes": 280
+  },
+  {
+    "file": "musl/source-notices/src/internal/libm.h",
+    "sha256": "d5a11757541471030d8f4bf7a39a29de35732ecbb291b2f45bf03296be4f25a2",
+    "bytes": 7454
+  },
+  {
+    "file": "musl/source-notices/src/math/__cos.c",
+    "sha256": "3f0f774aab60a18d7ef935ffdf121bcda17cbadabff14096c614da22e31a42c1",
+    "bytes": 2884
+  },
+  {
+    "file": "musl/source-notices/src/math/__math_divzero.c",
+    "sha256": "84aa910bdc5e7ccfed42098c37c44e278aa942d46e5a51d5ee8273336c79e719",
+    "bytes": 105
+  },
+  {
+    "file": "musl/source-notices/src/math/__math_invalid.c",
+    "sha256": "b56440ed59fa1e1aaaf6bf8b672c8bb71eaf844457906f7773da1d67d7ef013b",
+    "bytes": 82
+  },
+  {
+    "file": "musl/source-notices/src/math/__math_oflow.c",
+    "sha256": "74669de53bc4b250183cfa262a8a03ee8106f33a83e3aca6b217bafc7363b83c",
+    "bytes": 95
+  },
+  {
+    "file": "musl/source-notices/src/math/__math_uflow.c",
+    "sha256": "9a841197bbe9ade9bbd684f8bc65424a97c481d37dabb9fa1790bafe7959034a",
+    "bytes": 96
+  },
+  {
+    "file": "musl/source-notices/src/math/__math_xflow.c",
+    "sha256": "5feafe10347636884a071a5096f912d5ca4a0939844804ca09b88241405648ad",
+    "bytes": 123
+  },
+  {
+    "file": "musl/source-notices/src/math/__rem_pio2.c",
+    "sha256": "938329e0939cd83ee2185a52154b41242f618d4a6df1b08395f344da33d4f1e6",
+    "bytes": 4722
+  },
+  {
+    "file": "musl/source-notices/src/math/__rem_pio2_large.c",
+    "sha256": "b97f19fb5951c83a0c10506fab35646caefde13bd03100ad2af55ef00af0b9fb",
+    "bytes": 16408
+  },
+  {
+    "file": "musl/source-notices/src/math/__sin.c",
+    "sha256": "f3a37ef9bcfb8a2f9c809d8c7f1aa2c17c8c3319ad7fb2fe7c0a6284ea8859d2",
+    "bytes": 2364
+  },
+  {
+    "file": "musl/source-notices/src/math/copysign.c",
+    "sha256": "7a5ae1fbedc6da808c69b1769f21624c20709c93eaa846fdf89546ab6bccecae",
+    "bytes": 164
+  },
+  {
+    "file": "musl/source-notices/src/math/cos.c",
+    "sha256": "3a74e054057d636fa494bdd76a53a40db5cee618264f6ab31cb0538ba63c6bda",
+    "bytes": 2111
+  },
+  {
+    "file": "musl/source-notices/src/math/exp.c",
+    "sha256": "7db56f21ca9b8915d36dd5099b707aafeb6a736eae798e19b76b074764e75f34",
+    "bytes": 4485
+  },
+  {
+    "file": "musl/source-notices/src/math/exp_data.c",
+    "sha256": "c55dff64e369fe816cd8ce367064989bb119f85783599680d1a329031c660689",
+    "bytes": 6347
+  },
+  {
+    "file": "musl/source-notices/src/math/exp_data.h",
+    "sha256": "df77fca837edd02b260dd09a2914202775909ae67a059218ae38cfab104e6d16",
+    "bytes": 540
+  },
+  {
+    "file": "musl/source-notices/src/math/expm1.c",
+    "sha256": "c4764166cea03420f2dfc1840a6a7615934192d851b96d5d2dcc321cc1e39460",
+    "bytes": 6964
+  },
+  {
+    "file": "musl/source-notices/src/math/fabs.c",
+    "sha256": "99880a7802d67077fa54a2bbb5d3388cf42b00c96d3e2b1c16d63f2918157754",
+    "bytes": 135
+  },
+  {
+    "file": "musl/source-notices/src/math/floor.c",
+    "sha256": "b9ccb9363719a84be218d60c56717f4fb0234e170c305e36ce21c30e1f42f8e1",
+    "bytes": 653
+  },
+  {
+    "file": "musl/source-notices/src/math/fmax.c",
+    "sha256": "70d8ee2a5c78bf10a45a5e39ab346a9527867cfc16246d162e07c39d29e77c1f",
+    "bytes": 242
+  },
+  {
+    "file": "musl/source-notices/src/math/fmin.c",
+    "sha256": "8f174565b041802c3ee1b141caf2c7240b4ed5f45e920caec11c1585682199a4",
+    "bytes": 242
+  },
+  {
+    "file": "musl/source-notices/src/math/fmod.c",
+    "sha256": "33fb61093e04783081b9e8f8a8a303456b2f919c215cd0c378c1ed0acf41934c",
+    "bytes": 1270
+  },
+  {
+    "file": "musl/source-notices/src/math/hypot.c",
+    "sha256": "a5532b3328310bb3ac9f7cd9074fd26c5fe7288c719c907c5c03a615442f9e7e",
+    "bytes": 1326
+  },
+  {
+    "file": "musl/source-notices/src/math/ldexp.c",
+    "sha256": "702b608d3a5cf9c5d26c26ef2c528a3003555ee48ececec3b817c817d297bfe8",
+    "bytes": 75
+  },
+  {
+    "file": "musl/source-notices/src/math/log.c",
+    "sha256": "a0694d8587a0d145d0f8ae87cbffba014d7988bc2ebcbfad94cea73b394c9ecc",
+    "bytes": 3030
+  },
+  {
+    "file": "musl/source-notices/src/math/log_data.c",
+    "sha256": "e96bcd99d88fc57e0f3686299014f4b949a6212603ce237f39e16cedc155617a",
+    "bytes": 13927
+  },
+  {
+    "file": "musl/source-notices/src/math/log_data.h",
+    "sha256": "a8dced6f0821f30cad040ba326b03e419fbe0a750ed8f3b0d7145992bee4bccc",
+    "bytes": 552
+  },
+  {
+    "file": "musl/source-notices/src/math/nearbyint.c",
+    "sha256": "0d0e0f810ad45a94feda189045f73ecc9097c20a56165ab56d3e40459c13f8ef",
+    "bytes": 332
+  },
+  {
+    "file": "musl/source-notices/src/math/pow.c",
+    "sha256": "b06f0a08d74fcff8cced7afa2c0e47e301e3e8a19c0de5becdec28cd7b014027",
+    "bytes": 10817
+  },
+  {
+    "file": "musl/source-notices/src/math/pow_data.c",
+    "sha256": "2052ec913f9b4a2170a98a6fcbcd7694f5dec220036b00c36106a2b4b65a4c55",
+    "bytes": 10455
+  },
+  {
+    "file": "musl/source-notices/src/math/pow_data.h",
+    "sha256": "5014345a7958adcf6ff835b5e96afa99dd5a98c40dfe968442288e002b8e01a3",
+    "bytes": 519
+  },
+  {
+    "file": "musl/source-notices/src/math/rint.c",
+    "sha256": "6f393f377e693f6887c0f6495eba476abc45d2f4127fc93366fc02f1f49e2fef",
+    "bytes": 489
+  },
+  {
+    "file": "musl/source-notices/src/math/scalbn.c",
+    "sha256": "a2e766283ed30c2b30c71e01dbdabef58faf92cc9aa84a01c1ce1069b6625696",
+    "bytes": 576
+  },
+  {
+    "file": "musl/source-notices/src/math/sin.c",
+    "sha256": "24e53a9d85f196f66919cc19247be5480bb607ef38844b1a24bc47c4fe4974ef",
+    "bytes": 2192
+  },
+  {
+    "file": "musl/source-notices/src/math/sqrt.c",
+    "sha256": "688908f94c3edf7a439cb64094034a596a1fbff08445b9158a22874cb52ead4f",
+    "bytes": 4558
+  },
+  {
+    "file": "musl/source-notices/src/math/sqrt_data.c",
+    "sha256": "590aaadff964dcfc36ef9e5302423a779cda4f1608e15dbeee8e43e6e5f1c6fe",
+    "bytes": 974
+  },
+  {
+    "file": "musl/source-notices/src/math/sqrt_data.h",
+    "sha256": "5fa47a8b8c1afbee4dcd10f71d2f6c433a24f9aa5ce7a90924cd1db236cbc03c",
+    "bytes": 352
+  },
+  {
+    "file": "musl/source-notices/src/math/tanh.c",
+    "sha256": "7e290e86729cba6ccc8eb1f7db2452736daf1a2a8ce01b210db5787fee5cb762",
+    "bytes": 996
+  },
+  {
+    "file": "musl/source-notices/src/stdlib/labs.c",
+    "sha256": "78a5995f16e631532914bb5bc967462b5b6a9780f4be68a00b2414503df8adb7",
+    "bytes": 65
+  },
+  {
+    "file": "musl/source-notices/tools/mkalltypes.sed",
+    "sha256": "8ccea9ec27a8450a52973cab8cdea0af8b4bd93d246b1f206b37ccc6fa0b8b7b",
+    "bytes": 451
+  },
+  {
+    "file": "musl/sources.txt",
+    "sha256": "7e96fb8a93bb0d6da225f4673327310249a1d697c256005d629805c5b545fa36",
+    "bytes": 786
+  },
+  {
+    "file": "qemu-as-shipped/COPYING",
+    "sha256": "dd3ce02338c3a48abb6ba59b48809f7108a8bd242cb0cc8be90daafa30707c28",
+    "bytes": 17880
+  },
+  {
+    "file": "qemu-as-shipped/COPYING.LIB",
+    "sha256": "31c90ce76b6f5aab90a205851e71d5c27e31c0aa3d7017a4383b98a6fe3f1faa",
+    "bytes": 26415
+  },
+  {
+    "file": "qemu-as-shipped/README.rst",
+    "sha256": "d9e0384f45d047137f74f38b32dec1f31488fdbe2557820c8934e1fbc8fc2efd",
+    "bytes": 5579
+  },
+  {
+    "file": "qemu-as-shipped/VERSION",
+    "sha256": "cd1c6f8954599978e16a05c72be16dc4c2056e5f2bce9ecda206ab66f3d1e0eb",
+    "bytes": 7
+  },
+  {
+    "file": "tvox/CMUDICT_LICENSE.txt",
+    "sha256": "bd4ce8e44170a5f9f481310ca85c51de3c4f851a65e679b40e603b143bd3542a",
+    "bytes": 1754
+  },
+  {
+    "file": "tvox/COPYING",
+    "sha256": "6d31a5d23079d6a76725a10b09ee19d2af7ace4c0bad0799cd49df13228eedf8",
+    "bytes": 1547
+  },
+  {
+    "file": "tvox/provenance/ACOUSTIC-PROVENANCE.json",
+    "sha256": "d70a227dd7b6548e89ca11202d49ecc8d55446a78d434ee81452a6886eabc6ef",
+    "bytes": 442
+  },
+  {
+    "file": "tvox/provenance/DSP-ADAPTER-PROVENANCE.json",
+    "sha256": "724f31049c3171c6cb1fd0620f7742651d1363c546f52095b2591bf9b11a5d2f",
+    "bytes": 441
+  },
+  {
+    "file": "tvox/provenance/DSP-STREAM-PROVENANCE.json",
+    "sha256": "b2f9be5816c66c3673be81e63bb856f035d4e729d5d3400ddd1ffab15dce480f",
+    "bytes": 186
+  },
+  {
+    "file": "tvox/provenance/EN-ACOUSTIC-PROVENANCE.json",
+    "sha256": "2d888a8c36752a2d652c5a0d4ba2743a11004fff16e72e90900a7451eab78319",
+    "bytes": 444
+  },
+  {
+    "file": "tvox/provenance/EN-DSP-PROVENANCE.json",
+    "sha256": "945e9abd58b854e4c79690cb93d2aec2a7f42dac6d9f09e8032d7a9f614df011",
+    "bytes": 441
+  },
+  {
+    "file": "tvox/provenance/EN-PROVENANCE.json",
+    "sha256": "ae0e69ecdceb416797bca7a0c322d0a4fb5edb018f3101c9c80a28a82330a486",
+    "bytes": 282
+  },
+  {
+    "file": "tvox/provenance/PL-PROVENANCE.json",
+    "sha256": "7d34d1cab359b46a0bdc35a7a6aa1cca259b242c3e45fd8a00fe2b83cf07afc6",
+    "bytes": 327
+  },
+  {
+    "file": "tvox/provenance/PROVENANCE.json",
+    "sha256": "ad012fac40dca1425933408f7e24f1dce19ba19e6cc1e2c4ed1d46c173308f06",
+    "bytes": 492
+  },
+  {
+    "file": "tvox/provenance/TEXTPROC-PROVENANCE.json",
+    "sha256": "a61cee0e84a27b794716b269fdf22a2b032c6240e92f972e49875062772e4e2c",
+    "bytes": 127
+  },
+  {
+    "file": "tvox/UPSTREAM-NATIVE-COPYING",
+    "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+    "bytes": 35147
+  },
+  {
+    "file": "tvox/UPSTREAM-README.md",
+    "sha256": "1eeaca4c8fbe5db20ca7ee18174efdda4340fa1e787b28af1ae67174d07fbd46",
+    "bytes": 43520
+  },
+  {
+    "file": "tvox/WIKIPRON-NOTICE.txt",
+    "sha256": "a1ea76e0b2a97be37ea0be588a6109d25fe7eebe3bebcc16ec685c42ce6efed8",
+    "bytes": 326
+  }
+]

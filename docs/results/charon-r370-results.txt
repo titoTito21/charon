@@ -1,0 +1,49 @@
+Charon r370 — narzędzia systemowe (2026-11-17)
+
+1. Funkcja (src/efi/CharonSystemTools.h, BootMenu.h, BootMenuModel.h)
+- Nowy wiersz menu głównego „Narzędzia systemowe, podmenu” (przed
+  „Kontynuuj”, który zostaje ostatni). Strona ma 5 pozycji:
+  Informacje o komputerze — producent i model (SMBIOS typ 1, w razie braku
+  płyta typ 2), procesor (typ 4: nazwa, rdzenie, wątki, gniazda; tylko
+  obsadzone), pamięć z mapy pamięci UEFI (typy RAM, bez MMIO i zarezerwowanej),
+  firmware (dostawca, wersja, BIOS i data z typu 0, wersja UEFI), Secure Boot.
+  Przy komunikatach „szczegółowych” także dostawca BIOS, płyta, wersja SMBIOS
+  i wolne miejsce na zmienne firmware (QueryVariableInfo). Zastępcze napisy
+  producentów („To Be Filled By O.E.M.”, „Default string” itd.) są pomijane.
+  Data i godzina — zegar firmware (GetTime) z dniem tygodnia; strefa czasowa
+  i czas letni tylko wtedy, gdy firmware je podaje.
+  Uruchom ponownie komputer / Wyłącz komputer — potwierdzenie (domyślnie
+  Anuluj), pożegnanie jest wypowiadane do końca (do 8 s), dźwięk zatrzymany,
+  potem ResetSystem (zimny restart lub wyłączenie).
+  Uruchom ponownie do ustawień firmware — tylko gdy OsIndicationsSupported
+  ma BOOT_TO_FW_UI; ustawia ten bit w OsIndications (inne bity zostają),
+  sprawdza odczytem i restartuje. Bez obsługi: etykieta „firmware tego nie
+  obsługuje” i komunikat bez zmian w firmware.
+- Polska odmiana liczebników (1 rdzeń, 2–4 rdzenie, 5+ rdzeni; tak samo
+  wątki i gniazda); tryb dosadnych komunikatów ma własne etykiety strony.
+
+2. Testy hosta
+- tests/CharonSystemToolsTests.cpp: SMBIOS 3 (typy 0, 1, 4, 127), pomijanie
+  „Default string”, pamięć z mapy (MMIO nie liczone), brak SMBIOS, zegar
+  PL/EN ze strefą i czasem letnim, odrzucenie złej daty i błędu GetTime,
+  OsIndications tylko przy obsłudze i z zachowaniem innych bitów — PASS.
+- tests/BootPreOSMenuTests.cpp rozszerzony o stronę narzędzi — PASS.
+
+3. Testy VM (QEMU q35, OVMF edk2-stable202408, PL, dźwięk na głośnikach hosta)
+- Informacje: „Komputer: QEMU Standard PC (Q35 + ICH9, 2009). Procesor:
+  pc-q35-11.1, 2 rdzenie. Pamięć: około 511 MB. Firmware: EDK II, wersja 1.0,
+  BIOS edk2-stable202408-prebuilt.qemu.org z 08/13/2024, UEFI 2.7. Secure
+  Boot: stan nieznany.” (OVMF bez zmiennej SecureBoot).
+- Zegar: „Zegar firmware: wtorek, 17 listopada 2026, godzina 06:50:10.
+  Strefa czasowa nieokreślona przez firmware.” (zegar QEMU w UTC).
+- Restart: potwierdzenie, „Uruchamiam ponownie.” wypowiedziane całe (w
+  nagraniu mowa kończy się ok. 0,5 s przed resetem), Charon startuje ponownie.
+- Restart do ustawień firmware: po potwierdzeniu otwiera się menu OVMF
+  (zrzut work/charon-r370-t2/fw.png); Continue w firmware wraca do Charona.
+- Wyłączenie: po „Wyłączam komputer.” proces QEMU kończy się po ok. 3 s.
+
+Nie testowane: fizyczny sprzęt (prawdziwe SMBIOS producentów, RTC w czasie
+lokalnym), firmware bez OsIndications.
+Graficzne menu Windows 8+ (rysuje je winload): nadal nie sprawdzone. Próba
+zbudowania testowego boot.wim z winload.efi hosta została zablokowana przez
+uprawnienia sesji; czeka na decyzję użytkownika.

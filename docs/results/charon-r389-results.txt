@@ -1,0 +1,135 @@
+Charon r389 — szybsza mowa, terminale i pola edycji, drugi głos komunikatów,
+timery, BCD, okna błędów, więcej kart dźwiękowych (2026-11-18)
+
+Prośby użytkownika: „jak jest nowy komunikat niech czyta tylko to, co się
+pojawia”, timery (krótki ton co sekundę, dłuższy na końcu), zakładki,
+terminale/konsole bootloaderów (UEFI Shell, powłoka GRUB-a), BCD i Windows
+Boot Manager, okna dialogowe, pola edycji, okna błędów; „większa
+responsywność … bez opóźnień”; komunikaty startowe (np. „GNU GRUB version”)
+osobnym, szybszym głosem, nieprzerywane przez czytnik, mówiące równocześnie;
+dźwięk na większości komputerów (Realtek/Intel/inne karty).
+
+Build: tools/build-charon-windows.py ../../work/charon-win-r389n --trace
+(+ charon-win-r389n-drv --driver --trace; pomiary i regresja na r389k, różnica
+r389n: klasyfikacja okien); AudioDxe: build-host-baseline.cmd
+→ work/charon-audio-driver-r389/AudioDxe-r389.efi. Harness: CHARON_AUDIODXE,
+CHARON_SOUNDCARD=ac97|hda-micro (nowe), work/charon-r389-latency.py,
+charon-r389-steps.py (R: czytnik, M: głos komunikatów), charon-r389-timer.py.
+
+1. Opóźnienie
+- Przyczyny: (a) AudioDxe uzupełniał blok DMA dopiero po jego odegraniu,
+  więc nowe próbki grały ~3 bloki (43–64 ms) później, a przy przerwaniu w
+  kolejce i DMA zostawało do ~150 ms starej mowy; (b) czytnik czekał 6
+  zdarzeń zegara (60 ms, w QEMU ok. 94 ms) ciszy; (c) pierwszy fragment bez
+  interpunkcji obejmował cały tekst do 96 bajtów, frontend miał 5 ms na
+  wywołanie.
+- Zmiany: strumień HAK rewizja 2 (src/efi/audio_stream/driver): Discard
+  (odrzuca kolejkę i bloki DMA dalej niż pół bloku od kursora), wczesne
+  wypełnianie cichych bloków ogona, pierścień 8 × 512 ramek; Charon odrzuca
+  stary dźwięk przy przerwaniu (rewizja 1 nadal działa, bez Discard).
+  Czytnik: 20 ms ciszy po klawiszu (60 ms poza tym), grafika 30 ms po
+  klawiszu. Pierwszy fragment kończy się na słowie po 20 bajtach; podczas
+  jego przygotowania frontend dostaje 25 ms na wywołanie.
+- Test pierścienia (HakAudioRingTests.c): PASS, 171 397 zapisów, 2700
+  kontroli startu z ciszy, 9,1 mln ramek odegranych w kolejności, Discard i
+  rozliczenie bez błędów.
+- Pomiar (od klawisza do pierwszej próbki w nagraniu QEMU, mediana z 8):
+  menu Charona 164 → 68 ms, lista urządzeń 142 → 70 ms, menu GRUB (czytnik)
+  551 → 167 ms. Wypowiedzi po szybszym odczycie nie są dzielone.
+
+2. Terminale, konsole, pola edycji (CharonResident.h: NoteKey, EditEcho,
+   CursorEcho)
+- GRUB „c”: „l”, „s” przy wpisywaniu; strzałki: znak pod kursorem;
+  Backspace/Delete: skasowany znak; Home: znak; End: „pusty”; Enter: wynik
+  („error: can't find command `s'. grub>”) bez powtarzania linii polecenia.
+- GRUB „e” (edytor wpisu): strzałki w górę/dół czytają wiersz („Pusty
+  wiersz”, „echo "Entry two selected"”), w prawo/lewo znak, End „pusty”
+  (prawa krawędź ramki edytora pomijana).
+- UEFI Shell (EFI Internal Shell): „spacja”, litery, Backspace „c”, Delete
+  „b”, wynik „a Shell>”, strzałka w górę = historia („echo a”, „ver”).
+- Kursor czytany dopiero, gdy się ustali (GRUB przerysowuje, potem stawia
+  kursor). Z widocznym kursorem (konsola) czytane są tylko zmienione
+  wiersze; menu i formularze (kursor ukryty) jak dotąd całym akapitem.
+  Edytory rysowane grafiką: jeden zmieniony wiersz po klawiszu.
+
+3. Drugi głos — komunikaty startowe (AudioEngine 2 kanały, LiveVoice:
+   wspólny frontend po fragmencie, AppendText; CharonVoiceProvider.h;
+   AudioEffects.SpeakMessage/SetMessageVoice/MessageIdle; ReaderControl
+   release 389)
+- Tekst ekranu poza zaznaczeniem (banery, pomoc, logi, wynik poleceń, okna
+  komunikatów) idzie głosem komunikatów: domyślnie tempo 140%, wysokość
+  100%; mówi równocześnie z czytnikiem (miks dwóch kanałów z ograniczeniem),
+  czytnik go nie przerywa, nowy komunikat dołącza po poprzednim. Czytnik ma
+  pierwszeństwo do frontendu (przygotowywany fragment komunikatu jest
+  przerywany i robiony ponownie).
+- Ustawienia V8 (bajty 34/35), podmenu Czytnik ekranu: „Tempo komunikatów
+  startowych, suwak”, „Wysokość głosu komunikatów startowych, suwak”.
+- Przykłady (regresja): M: „Limine 11.4.1 (x86-64, UEFI). ARROWS Select…”
+  równolegle z R: „Limine: menu, 2 pozycje. Charon probe loader, 1 z 2”;
+  M: „OpenCore Boot Menu (REL-108…)”, M: „Welcome to Clover 5176…”.
+- Ograniczenie: przy przerwaniu czytnika w czasie komunikatu stary dźwięk w
+  sterowniku nie jest odrzucany (byłby ucięty komunikat).
+
+4. Timery
+- Domyślnie włączone: ton 1000 Hz / 40 ms co sekundę, 880 Hz / 500 ms na
+  końcu (ustawienia V7 z wyłączonymi tonami czytane jako włączone).
+- GRUB (charon-r389-timer.py): tyknięcia 7,6,5,4,3,2,1 i koniec; w nagraniu
+  tony 1000 Hz i 880 Hz / 500 ms. Windows Boot Manager (30 s): 20 tyknięć do
+  naciśnięcia klawisza. Własne odliczanie Charona: ton 1000 Hz co ok. 1 s
+  (1,0; 2,0; 2,9; 4,0; …; 8,8 s), na końcu 880 Hz (zmiksowany z dźwiękiem
+  startu).
+
+5. Zakładki ustawień firmware (TABPROBE.EFI, styl Aptio)
+- „Main, karta 1 z 6 … System Language, lista rozwijana, English, 1 z 4”,
+  w prawo: „Advanced, karta 2 z 6. CPU Configuration, podmenu, 1 z 4”,
+  „Chipset, karta 3 z 6”, w dół: „Flash Update, pasek postępu, 50%”,
+  „Security, karta 4 z 6. Administrator Password, pole hasła, hasło
+  ustawione, 1 z 2”, „Boot, karta 5 z 6 … pokrętło …”.
+- Uwaga: aplikacja testowa ma w danych napis „Windows Boot Manager”, więc
+  rozpoznanie programu nazwało ją menedżerem Windows (artefakt próby).
+
+6. BCD i Windows Boot Manager (src/efi/CharonBcd.h, tylko odczyt)
+- Lista urządzeń: „Dysk — UEFI QEMU HARDDISK QM00007 (Windows Boot Manager:
+  Windows Setup (domyślny), Windows Memory Diagnostic; 30 s), pozycja 3 z 3”.
+- tests/CharonBcdTests.cpp na work/bcd-menu/BCD: PASS (także pod ASan dla
+  uciętych i uszkodzonych plików).
+- Menu bootmgr: „Menedżer rozruchu Windows: menu, 2 pozycje. Windows Setup,
+  1 z 2”, strzałki; F8 na wpisie instalatora: ekran „Windows failed to
+  start…” czytany głosem komunikatów.
+
+7. Okna błędów i dialogi
+- Okno w ramce bez zaznaczenia: „Okno błędu: …”, gdy treść/tytuł zgłasza
+  błąd, „Okno dialogowe: …”, gdy ma przyciski ([ OK ], < Yes >), inaczej
+  „Okno”; podpowiedź klawisza („[Enter]”) nie jest przyciskiem; tytuł nie
+  jest powtarzany. Próba tests/CharonDialogProbe.cpp (DLGPROBE.EFI z
+  przeglądarki plików): „Okno błędu: Error. Error: the boot device could not
+  be found. OK, przycisk”, „Okno dialogowe: Save & Exit. Save configuration
+  changes and exit now? Yes, przycisk. No, przycisk”, „Okno: Information.
+  The settings were saved.”; FreeBSD: „Okno: Welcome to FreeBSD. 1. Boot
+  Installer [Enter] …”.
+
+8. Dźwięk na większej liczbie komputerów
+- HDA: wszystkie wyjścia analogowe naraz (liniowe, głośniki, słuchawki;
+  wcześniej tylko liniowe), kodek z wyjściami analogowymi przed kodekiem
+  HDMI; bez analogowych — HDMI/S/PDIF. QEMU hda-micro: r389 mówi (menu
+  69 ms, GRUB 168 ms), ale r388 też (130 ms) — AudioDxe zgłasza ten kodek
+  QEMU jako wyjście liniowe, więc ta próba NIE dowodzi poprawki dla głośników
+  laptopa; to wymaga prawdziwego sprzętu.
+- AC'97 (src/efi/CharonAc97.h; Intel ICH, nForce, AMD, SiS 7012; VirtualBox,
+  QEMU AC97): własne wyjście Charona, gdy brak HDA. QEMU AC97: 36 wypowiedzi,
+  menu 38 ms, lista 34 ms, GRUB 125 ms.
+- Niemożliwe/niesprawdzone tutaj: virtio-sound (brak w QEMU 11.1 z
+  repozytorium), DSP Intel SST/SOF, USB audio, mowa przez głośnik PC.
+
+9. Regresja (r389k, work/r386-regression.sh, AudioDxe-r389) i dodatek UEFI
+- OpenCore, systemd-boot, Limine, Clover, Windows Boot Manager (Recovery;
+  lista: „(Windows Boot Manager: Windows Setup)”), rEFInd (ikony), Syslinux,
+  iPXE, Ventoy, Haiku, FreeBSD, Memtest86+, Debian netinst, nośniki
+  (FreeDOS tylko BIOS, shim z USB): wypowiedzi czytnika jak w r388; teksty
+  ekranu (iPXE, FreeBSD, nagłówki) idą głosem komunikatów.
+- Dodatek (CHARONVOICE r389k-drv przez Driver####, tylko dysk Windows):
+  R: „Charon: mowa włączona od startu komputera.”, M: komunikaty BdsDxe,
+  M: „Recovery. Your PC/Device needs to be repaired … 0xc000000f …”.
+- Testy hostowe: BootPreOSMenuTests (V8, suwaki głosu komunikatów, migracja
+  V7), CharonConsoleSettingsTests, CharonMelodySettingsTests,
+  CharonMessageModeTests, CharonBcdTests, HakAudioRingTests: PASS.

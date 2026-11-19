@@ -1,0 +1,77 @@
+Charon r382 — powitanie, głos czytnika, szczegółowość, kontrolki i ikony w menedżerach rozruchu (2026-11-17)
+
+Prośby użytkownika (2026-11-17): w ustawieniach „Powitanie”, lista z trzema
+polami wyboru (porada o menu opcji, dźwięk, mowa); podmenu „Ustawienia
+czytnika ekranu” z tempem, wysokością i głośnością osobno dla czytnika
+rezydentnego (np. menu wolniej, czytnik po starcie szybciej i niżej);
+podmenu „Szczegółowość” (np. samo „GRUB” zamiast „UEFI Hard Disk … GRUB”);
+bez czekania na koniec „Uruchamiam: …”; obsługa kontrolek menedżerów
+rozruchu (przyciski, pokrętła, ikony, pola wyboru itd.).
+
+1. Ustawienia (src/efi/CharSettings.h, BootMenuModel.h, BootMenu.h)
+- Zapis V7 ma 40 bajtów (V1–V6: 32, nadal czytane): bajt 26 bity 1–3
+  powitanie, 28 wysokość głosu menu, 29/30/31 tempo, wysokość, głośność
+  czytnika, 32 szczegółowość, CRC na 36. Starsze zapisy: powitanie i
+  szczegółowość wszystko włączone, głos czytnika = głos menu, wysokość 100%.
+- Ustawienia: nowy suwak „Wysokość głosu” (po tempie), na końcu „Powitanie,
+  lista”, „Ustawienia czytnika ekranu, podmenu”, „Szczegółowość, podmenu”.
+  Pola wyboru: Spacja/Enter przełącza, lista zostaje otwarta; na ekranie
+  „[X]”/„[ ]” przed etykietą, w mowie „pole wyboru, zaznaczone”. Pozycja
+  „N z M” tylko w mowie (ekran ma licznik).
+- Powitanie: mowa „Witaj w Charon”, porada „Naciśnij spację…”, dźwięk
+  welcome — każde osobno. Wiersz konsoli zostaje pełny.
+- Szczegółowość: nazwa dysku (bez niej wpis z rozpoznanym menedżerem to
+  samo „GRUB”/„rEFInd”/„Windows Boot Manager”; bez rozpoznania zostaje nazwa
+  firmware), nazwa menedżera, pozycja na liście (menu Charona i „2 z 5” w
+  menu programów czytanych przez czytnik).
+- Przy okazji: usunięte przekleństwa z trybu zwykłego („Zmienne firmware,
+  lista, damn it”, „Sterowniki UEFI, lista, fuck it”, „Język, okno wyboru,
+  kurwa”).
+
+2. Głos (CharonCues.h AudioEffects.SetPitch, CharonVoiceProvider.h,
+   CharonReaderControl.h release 382, HAKBootEFI.cpp, CharonResident.h)
+- TVox dostaje wysokość (QueueText pitch). ApplyVoiceProfile ustawia tempo,
+  wysokość i głośność: menu swoim głosem, czytnik swoim (Install/Resume
+  czytnika, sterownik CHARONVOICE od włączenia, Resume przy przekazaniu).
+  Na stronie czytnika podgląd mówi głosem czytnika. Resume przenosi głos;
+  wersja protokołu 382 odrzuca starszy sterownik (inna sygnatura).
+- VM (sterownik + Driver####): tekst Shella przy tempie czytnika 100%:
+  1516 ramek syntezy, po ustawieniu 150%: 1030 ramek (x1,47).
+
+3. Start bez czekania (BootMenu.h LaunchActivateReader)
+- „Uruchamiam: …” nie blokuje; przy krótkich komunikatach czytnik przejmuje
+  dźwięk od razu, a ekran programu przerywa zapowiedź; przy szczegółowych
+  komunikat po załadowaniu zastępuje zapowiedź.
+
+4. Kontrolki w tekście (CharonResident.h DescribeControls)
+- „[X] Nazwa”/„Nazwa [ ]” pole wyboru, „(*)”/„( )” przycisk opcji, „[ OK ]”,
+  „< Anuluj >”, „[ Tak ] [ Nie ]” przyciski, „[5]” pokrętło (liczby HII),
+  „[12:30:05]” pole edycji, „<UEFI>” i „Tryb [AHCI]” lista rozwijana, „[+]”
+  /„[-]” folder Limine, symbole ☐☑☒ ○◉. Kolejność NVDA: etykieta, rola,
+  stan/wartość. Wartość w innej kolumnie niż zaznaczona etykieta (formularze
+  HII) też jest dołączana. Podpowiedzi klawiszy („[F9]”, „<Enter>=…”,
+  „Esc=…”) i wpisy GRUB w nawiasach zostają tekstem.
+- Wskaźnik zajętości (| / - \ w jednej komórce): „zajęty” raz.
+- Test hostowy tests/CharonControlsTests.cpp: PASS (24 przypadki).
+
+5. Ikony (CharonResident.h ObserveIcon/UpdateIcons)
+- Kwadratowe kafelki 32–320 px rysowane Blt; zaznaczony ma własne tło
+  (obraz zaznaczenia) tam, gdzie niezaznaczony pokazuje ekran. Mowa
+  dopisuje „ikona N z M” (pozycja w rzędzie).
+- VM rEFInd 0.14.2: „Boot …GPROBE.EFI…, ikona 1 z 3”, w prawo „…PROBE.EFI…,
+  ikona 2 z 3”, w dół „Manage Hidden Tags Menu, ikona 3 z 6”, dalej „Shut
+  Down Computer, ikona 4 z 6”, „Reboot Computer, ikona 5 z 6”. Zaznaczenie
+  małych kafelków jest blade (0xb8 na 0xd0): próg koloru 10.
+- VM Clover 5176 (GPT): „Clover Boot Options, ikona 1 z 5”, w prawo
+  „Options, ikona 2 z 5”, w lewo z powrotem „ikona 1 z 5”.
+
+6. Testy hostowe: BootPreOSMenuTests (nowe: powitanie, czytnik, szczegółowość,
+   V7 i migracja V6), CharonConsoleSettingsTests, CharonMelodySettingsTests,
+   CharonMessageModeTests (zaktualizowane do 40 bajtów), CharonControlsTests —
+   PASS. VM: menu (nowe wiersze i mowa), lista urządzeń „rEFInd, pozycja 2 z
+   2” bez nazwy dysku, powitanie bez mowy („Naciśnij spację…” tylko), ścieżka
+   sterownika CHARONVOICE z Driver####.
+
+Nie sprawdzone w VM: kontrolki tekstowe w prawdziwym formularzu firmware
+(OVMF nie pokazuje takich pól w tej konfiguracji) — tylko test hostowy;
+ikony OpenCanopy (ta sama zasada kafelków, bez próby).

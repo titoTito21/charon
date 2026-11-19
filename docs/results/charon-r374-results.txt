@@ -1,0 +1,45 @@
+Charon r374 — tryb dosadny: wszystko dosadne (2026-11-17)
+
+Na prośbę użytkownika (cel: „wszelkie komunikaty w trybie dosadnym mają być
+naprawdę dosadne”, bez monotonii, z pociskami także w użytkownika, który sam
+ten tryb włącza).
+
+1. Co jest dosadne (src/efi/CharonMessageMode.h, CharonMenuLabels.h,
+   BootMenu.h, CharonResident.h)
+- Etykiety stron z gotowymi wersjami: po 3 warianty, zmiana z każdym
+  klawiszem; strony bez gotowych wersji (urządzenia, kolejność rozruchu,
+  okna wyboru, zegar, budzenie, listy zmiennych i sterowników) dostają
+  wulgarny dopisek z puli kilkunastu (nazwa urządzenia nienaruszona).
+- Komunikaty: 78 nowych dosadnych początków (potwierdzenia restartu,
+  wyłączenia, zegara, budzenia, kluczy, kolejności; „Uruchamiam:”,
+  „Chwycono:”, „Komputer:”, „Zegar firmware:”, granice suwaków, ESRT,
+  odrzucenia…), dalsza część (nazwa, data, kod) zostaje.
+- Porady w dowolnym miejscu komunikatu (26 tekstów PL/EN): spacja do menu,
+  Enter/strzałki przy przenoszeniu, Zapisz kolejność, Lewo/Prawo przy
+  zegarze i budzeniu, PageUp/PageDown, „Domyślnie wybrano Anuluj”, skróty
+  czytnika, F5 i wiersz klawiszy w ustawieniach UEFI, wiersze klawiszy menu.
+- Wtrącenia zależne od tonu przy każdej informacji, błędzie i sukcesie;
+  pociski na końcu: w sprzęt, w umiejętności użytkownika i w to, że w ogóle
+  siedzi w boot managerze; „Enter lub Escape zamyka komunikat” w 3 wersjach.
+- Powitanie dosadne; zaczepki co 20 s bezczynności w menu (7 tekstów PL/EN,
+  pierwszy według użytkownika: „O, stoi pojeb. … nie znasz się na tym
+  ustrojstwie. Najlepiej rozjeb je w pizdu.”), kolejno, bez powtórzeń z rzędu.
+- Czytnik ekranu: własne zwroty dosadne (również sterownik głosu od
+  włączenia komputera); tekst czytany z ekranu programów bez zmian.
+
+2. Testy hosta — PASS: CharonMessageModeTests (podmiana porad w środku
+   tekstu, brak zmian bez trybu, warianty), BootPreOSMenuTests,
+   CharonSystemToolsTests, CharonFirmwareBrowserTests.
+
+3. VM (PL): kolejność rozruchu: „Kolejność rozruchu, ten twój bajzel.
+   Charon na czele, reszta to twoje grzebanie. Enter, strzałki, Enter,
+   kurwa, trzy kroki, nie pomyl ich. 1. UiApp…, do kurwy nędzy”; „Masz w
+   łapie: …”; potwierdzenie „Wpierdolić tę nową kolejność do firmware? …
+   Anuluj jest domyślne, żebyś czegoś nie rozpierdolił.”; urządzenia z
+   dopiskami; „Odpalam to gówno: Dysk …”; GRUB: „No i mamy kolejnego
+   menedżera rozruchu: GRUB.”, „GRUB: znowu jakieś menu, 6 pozycji”;
+   Ctrl+Alt+H: „Uwaga, ciołku. Skróty dla opornych: …”; po 20 i 40 s
+   bezczynności dwie różne zaczepki.
+
+Uwaga techniczna: skrypt edycji podwoił końce wierszy w BootMenu.h (zapis
+tekstowy Pythona na Windowsie); przywrócone bezstratnie przed budowaniem.

@@ -1,0 +1,73 @@
+Charon r385 — czytnik ekranu jako dodatek UEFI (bez menu Charona), OpenCanopy
+==========================================================================
+
+Nowe:
+- Dodatek UEFI: sam CHARONVOICE.EFI z wpisu Driver####; domyślny system
+  (Windows Boot Manager, GRUB…) zostaje domyślny, BootOrder bez zmian.
+  tools/charon-addon/: Install-CharonAddon.ps1 (+ Zainstaluj/Odinstaluj .bat;
+  -DryRun, -Status, -Uninstall, -SuspendBitLocker, -Sign), CharonEfiSign.ps1
+  (Authenticode dla obrazów PE32+ przez .NET SignedCms; Set-AuthenticodeSignature
+  odrzuca podsystem EFI), zainstaluj-dodatek-uefi.sh (Linux, efibootmgr),
+  CZYTAJ-DODATEK.txt.
+- Sterownik: bip 900 Hz / 200 ms (fala prostokątna, jak głośniczek PC po POST)
+  na powitanie, odtwarzany, gdy firmware podłączy HDA (AudioEffects::Beep,
+  odroczone dźwięki: pendingCue_/pendingBeep*). Melodie start-*/background-*
+  są opcjonalne (CharonAudioAssets.h): wcześniej ich brak wyłączał WSZYSTKIE
+  dźwięki sterownika.
+- Kolejność rozruchu: pole „Menu Charona przy starcie”. Odznaczone + Zapisz:
+  Charon na koniec BootOrder, firmware startuje pierwszy aktywny wpis kategorii
+  boot (UiApp i inne aplikacje firmware pomijane jak w BDS). Odmowa bez
+  sterownika głosu; usunięcie sterownika zablokowane, gdy Charon nie jest
+  pierwszy.
+- OpenCanopy: podpisy ikon czytane dokładnie czcionką BMFont z dysku OpenCore
+  (CharonBmFont.h, CharonBmOcr.h, tests/CharonBmOcrTests.cpp), bez podwójnego
+  podpisu przy ikonie.
+
+- Licencja TVox (decyzja autora, 2026-11-17): src/tts/tvox_native MIT-0
+  (COPYING). Barwa „clear” z eSpeak NG (pk_shape2, PeaksToHarmspect, bas,
+  tone_adjust na harmonicznych; GPL-3.0-or-later) wycinana przez
+  generate_dsp_stream.py: tvox_dsp_mit.c i rdzeń strumienia bez niej;
+  build-charon-windows.py buduje tvox_dsp_mit.c zamiast upstream/tvox_dsp.c
+  (ten zostaje na GPLv3 tylko w źródłach). PCM DSP (PL+EN, 8 zestawów ramek,
+  99000 próbek): hash a17b5b96b9170095 przed i po — dźwięk bez zmian.
+  Próba dodatku z r385f (addon385f): mowa, bip i dźwięki jak wyżej — PASS.
+
+Próby (QEMU 10.2 TCG, OVMF edk2-x86_64-code.fd, czyste zmienne firmware,
+work/charon-addon-test.py; mowa liczona z COM1 „CHARON speak”, dźwięki
+„CHARON cue/beep”):
+- Install-CharonAddon.ps1 -DryRun dla partycji GPT 1 (LBA 2048, 131072 sektory):
+  Driver0000 = 03000000 6400 "Charon voice" HD(1,GPT,…)\EFI\HAK\CHARONVOICE.EFI
+  End; zapisany powłoką UEFI (setvar), dysk tylko z Menedżerem rozruchu
+  Windows hosta (BCD menu): „Charon: mowa włączona od startu komputera.”,
+  bip (odroczony, zagrany po podłączeniu HDA), dźwięk boot_manager_loaded
+  (36780 ramek), „Menedżer rozruchu: Windows Boot Manager.”, „Menedżer
+  rozruchu Windows: menu, 2 pozycje. Windows Setup, 1 z 2…”, ekran
+  „Windows failed to start…” — PASS (addon385d).
+- Memtest86+ jako jedyny program: „Uruchomiono: Memtest86+.”,
+  system_will_launch (130403 ramek), „System przejmuje sterowanie.” — PASS
+  (addon385dm).
+- Charon r385e: strona kolejności „Charon pierwszy”, pole zaznaczone; po
+  odznaczeniu bez sterownika: „Bez menu Charona komputer startowałby bez
+  mowy…” (nic nie zapisano); po włączeniu mowy od startu: potwierdzenie
+  „Firmware uruchomi od razu: … EFI Internal Shell”, zapis; restart: od razu
+  powłoka UEFI czytana przez sterownik, menu Charona pominięte — PASS
+  (r385-order2/3). Wcześniejszy build r385d brał BootOrder[0] (UiApp) i
+  błędnie mówił „Charon nie jest pierwszy” — poprawione (FirstNormal).
+- OpenCanopy (CHARON_OC_CANOPY=1): „CHARON, ikona 1 z 3” raz,
+  „GRUBTEST. Windows. REL-108-2026-09-27” — PASS (canopy385).
+- Podpis CharonEfiSign.ps1 (certyfikat tymczasowy, usunięty po próbie):
+  work/check-authenticode.py — skrót Authenticode, messageDigest i podpis RSA
+  zgodne dla CHARONVOICE.EFI i AudioDxe.efi — PASS. Nie sprawdzony w firmware
+  z włączonym Secure Boot.
+
+Nie sprawdzono / ograniczenia:
+- Instalator na prawdziwym Windows (zapisuje zmienne firmware hosta; nie
+  uruchamiany na komputerze testowym), skrypt dla Linuksa, fizyczny sprzęt.
+- Secure Boot włączony: firmware ładuje sterownik dopiero po dopisaniu
+  certyfikatu charon-db.cer do db w ustawieniach firmware (krok właściciela;
+  z systemu niemożliwy bez KEK). Podpis Microsoft UEFI CA: TVox już MIT-0 (r385), obraz bez flagi NX_COMPAT, .rodata
+  zapisywalna; wymaga też certyfikatu EV organizacji.
+- OpenCore w QEMU TCG: strzałki nie zmieniają wyboru, gdy czytnik działa
+  (także r381); pełny odczyt ekranu 2560×1600 trwa ok. 1,6·10⁹ cykli.
+- Tekst diagnostyczny OVMF („BdsDxe: loading Boot0001…”) jest czytany, bo
+  firmware pisze go na konsolę.

@@ -1,0 +1,13 @@
+Windows Memory Diagnostics Tool
+Windows is checking for memory problems...
+This might take several minutes.
+Running test pass  1 of  2: 36% complete
+Overall test status: 18% complete
+Status:
+No problems have been detected yet.
+Although the test may appear inactive at times, it is still running. Please
+wait until testing is complete...
+Windows will restart the computer automatically. Test results will be
+displayed again after you log on.
+F1=Options
+ESC=Exit

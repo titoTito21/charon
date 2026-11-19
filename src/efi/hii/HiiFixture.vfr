@@ -1,0 +1,35 @@
+// Real VfrCompile fixture, independent of the parser's byte-writing helpers.
+typedef struct {
+  UINT8 Enabled;
+  UINT8 Choice;
+  UINT32 Number;
+  CHAR16 Name[13];
+  CHAR16 Secret[9];
+} HAK_TEST_CONFIG;
+formset
+  guid = {0x32bc217a,0x30f2,0x43f8,{0x91,0x87,0x8c,0x4d,0x77,0x1a,0x10,0x01}},
+  title = STRING_TOKEN(1),
+  help = STRING_TOKEN(2),
+  varstore HAK_TEST_CONFIG,
+    varid = 1,
+    name = Config,
+    guid = {0x32bc217a,0x30f2,0x43f8,{0x91,0x87,0x8c,0x4d,0x77,0x1a,0x10,0x01}};
+  form formid = 1, title = STRING_TOKEN(1);
+    checkbox varid = Config.Enabled, prompt = STRING_TOKEN(2), help = STRING_TOKEN(2),
+      flags = CHECKBOX_DEFAULT,
+    endcheckbox;
+    oneof varid = Config.Choice, prompt = STRING_TOKEN(3), help = STRING_TOKEN(2),
+      option text = STRING_TOKEN(3), value = 0, flags = DEFAULT;
+      option text = STRING_TOKEN(4), value = 1, flags = 0;
+    endoneof;
+    numeric varid = Config.Number, prompt = STRING_TOKEN(2), help = STRING_TOKEN(2),
+      minimum = 0, maximum = 100, step = 5,
+    endnumeric;
+    string varid = Config.Name, prompt = STRING_TOKEN(2), help = STRING_TOKEN(2),
+      minsize = 1, maxsize = 12,
+    endstring;
+    password varid = Config.Secret, prompt = STRING_TOKEN(2), help = STRING_TOKEN(2),
+      minsize = 0, maxsize = 8,
+    endpassword;
+  endform;
+endformset;

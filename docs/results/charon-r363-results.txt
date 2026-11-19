@@ -1,0 +1,45 @@
+Charon r363 — systemd-boot i Limine (2026-11-17)
+
+1. Rozpoznawanie (src/efi/CharonBootManagers.h)
+- systemd-boot po „LoaderInfo: systemd-boot” (sam napis „systemd-boot” jest też
+  w systemd-stub jąder UKI; systemd-boot zawiera „Windows Boot Manager” — stoi
+  przed Windowsem w kolejności), Limine po nazwie.
+- tests/CharonBootManagersTests.cpp: systemd-bootx64.efi=systemd-boot,
+  linuxx64.efi.stub=brak, Limine BOOTX64.EFI=Limine, GRUB, rEFInd, bootmgfw,
+  memtest=brak, CHARON.EFI/CHARONVOICE.EFI=brak — PASS.
+- GRUB Debiana uruchamia programy łańcuchowo własnym loaderem PE (bez
+  StartImage i bez nowego LoadedImage — ślad VM): czytnik co 0,5 s i przed
+  każdym odczytem sprawdza ImageBase bieżącego obrazu; nowy obraz jest
+  rozpoznawany i nazwany przed odczytem jego ekranu. Dodatkowo powiadomienie o
+  nowych LoadedImage (obrazy ogłaszane raz).
+- Nazwa rozpoznana przy starcie ma pierwszeństwo przed zgadywaniem z ekranu
+  (menu Limine z pozycją „Windows Boot Manager” było nazwane Windowsem); po
+  powrocie z obrazu wraca nazwa programu nadrzędnego.
+
+2. Odczyt
+- systemd-boot (konsola tekstowa, pozycje wyśrodkowane): blok menu także z
+  wyśrodkowanych pozycji w kolejnych wierszach (linia/odstęp kończy menu).
+- Limine (terminal graficzny, wbudowana czcionka 8x16, odstęp 9 px): czcionka
+  znajdowana w obrazie Limine („A” rodziny VGA, pusta spacja), kopiowana,
+  wzorce 8 i 9 px; tekst na wąskim pasku podświetlenia dostaje kolory paska
+  (zaznaczenie). tests/ttf-limine-menu (host): 9 linii, PASS, 7,8 ms.
+- Regresja host: 5 ekranów Windows/Memory Diagnostic PASS.
+
+3. VM
+- Dysk GPT z systemd-boot jako programem startowym: „Menedżer rozruchu:
+  systemd-boot. systemd-boot: menu, 3 pozycje. Charon probe loader, 1 z 3.
+  Windows Setup. Reboot Into Firmware Interface. Boot in 30 s.”, strzałki
+  „Windows Setup, 2 z 3”, „Reboot Into Firmware Interface, 3 z 3”; Enter na
+  Windows Setup: „Menedżer rozruchu: Windows Boot Manager.” i ekran Recovery.
+- Dysk GPT z Limine: „Menedżer rozruchu: Limine. Limine: menu, 2 pozycje.
+  Charon probe loader, 1 z 2 …”, strzałki „Windows Boot Manager, 2 z 2”.
+- GRUB → systemd-boot / Limine (łańcuchowo): nazwa przed menu, menu i strzałki.
+- Pakiet r363 (EN): GRUB → „systemd-boot (Linux boot manager)”: „Boot manager:
+  systemd-boot. systemd-boot: menu, 4 items. Charon probe loader, 1 of 4 …”,
+  strzałka „Charon graphical probe, 2 of 4”; GRUB → „Limine (graphical
+  terminal, own font)”: „Boot manager: Limine. Limine: menu, 2 items …”,
+  strzałka „Charon graphical probe, 2 of 2”.
+
+Licencje w pakiecie: licenses/systemd-boot (LGPL-2.1-or-later, źródła Debiana
+orig+debian+dsc i pakiet binarny), licenses/limine (BSD-2-Clause, tarball
+źródeł 11.4.1).

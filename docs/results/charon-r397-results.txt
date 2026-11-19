@@ -1,0 +1,128 @@
+Charon r397 - wyniki (2026-11-19; buildy charon-win-r397z(-drv), charon-win-r398a)
+=================================================================================
+
+Formatowanie tekstu jak w Emacspeak (zgłoszone: barwa, czcionki, style, kolory,
+dla każdego syntezatora, TVox i dodatków)
+- Osobowości ACSS (Emacspeak voice-setup: voice-bolden, voice-animate,
+  voice-monotone, voice-lighten, voice-smoothen, voice-brighten, ostrzegawcza,
+  tytuł, drobny druk): średnia wysokość, zakres intonacji, akcent, bogactwo
+  (napięty .. z oddechem), wygładzenie, tempo, głośność.
+  TVox: Charon zmienia przygotowane klatki akustyczne przed DSP (F0 wokół
+  średniej, kontrast AV, Rd i aspiracja, skala formantów rodziny).
+  Pomiar na hoście (prawdziwy TVox, ten sam tekst, scratch acss397.cpp):
+    neutralny          F0 95,6 Hz, rozrzut 10-90% 24,8 Hz
+    voice-animate      rozrzut 34,7 Hz;   voice-monotone rozrzut 11,5 Hz
+    akcent +6          RMS +18%;          z oddechem: RMS -25%, widmo jaśniejsze
+    rodzina "tytuł"    F0 81,8 Hz;        rodzina "drobny druk" F0 115,1 Hz
+    zaznaczenie        F0 120,3 Hz, rozrzut 46,2 Hz, RMS +35%
+  Dodatki: nowe ABI 3 (CharonSynthModule.h SetPersona, ABI 2 nadal ładowane).
+  eSpeak NG (ABI 3): zakres = espeakRANGE, rodzina = wariant głosu (m3, f3,
+  m6, m7, f4, klatt, f1; pakowane w espeak-ng-data.chsp). RHVoice (ABI 2):
+  wysokość i tempo przez parametry, bogactwo/wygładzenie przybliża Charon
+  barwą, głośność osobowości (także ponad 100%) wzmacnia Charon po syntezie.
+  QEMU GRUB z TVox, eSpeak i RHVoice: każda wypowiedź z dźwiękiem (speak
+  status 0, first PCM), znacznik zaznaczenia "mon1acqon2" (wyżej, echo,
+  zakres +4, akcent +2, rodzina zaznaczenia).
+- Rodziny głosów (pole wyboru): inny "głos" dla pogrubienia, zaznaczenia,
+  ciepłych kolorów, tytułu, drobnego druku, innej czcionki, wyszarzenia.
+- Ciemnoszary (kolor 8) był liczony jako jasny/pogrubiony - poprawione: to
+  wyszarzenie (voice-lighten, rodzina z oddechem).
+- Położenie w stereo (lista: wyłączone / ikony / mowa i ikony): miejsce
+  wiersza na ekranie (środek jego tekstu), jedno na wiersz. Mowa najwyżej
+  ok. 70/30, ikony 80/20. Mikser rozkłada oba głosy (czytnik i komunikaty).
+  Nagranie QEMU (wavcapture): pozycje menu GRUB (lewa strona) +8..+14 dB w
+  lewym kanale przed zawężeniem; host po zawężeniu: +-10,7 dB.
+- Ikony zdarzeń (pole wyboru), dźwięki oscylatora jak auditory icons
+  Emacspeak: otwarcie/zamknięcie okna, ruch zaznaczenia, duży skok
+  (Home/End/PgUp/PgDn), zawinięcie listy, przewinięcie, ostrzeżenie (okno
+  błędu), pytanie (T/N), usunięcie znaku, przycisk, karta, wejście do
+  podmenu i powrót, pole wyboru przełączone, zmiana wartości, pozycja
+  wyszarzona, edytor/wiersz poleceń, pomoc, hasło, nowy program, koniec
+  postępu. Przy braku mowy czytnika zdarzenie idzie z komunikatem.
+  QEMU GRUB: strzałka "select" (d), End/Home "large-movement" (e), Esc
+  "close-submenu" (n), "e" w GRUB "editor" (r).
+- Insert N (i Ctrl+Alt+N): pełne formatowanie w miejscu kursora przeglądu -
+  kolory, jasny, wyszarzony, podświetlony, czcionka w pikselach, pogrubienie
+  (także dla tekstu z obrazu/OCR).
+- Ustawienia V12 (CHARS00C): bajt 40 bit 6 ikony zdarzeń, bit 7 rodziny;
+  bajt 41 bity 5-6 stereo. ReaderControl release 397: bity 25-28.
+  Podmenu: Ustawienia czytnika ekranu -> Formatowanie tekstu.
+
+Znaczniki zaznaczenia (zgłoszone: więcej rozpoznawań)
+- Przed pozycją: "->", "=>", ">>", "»", "→", "⇒", "➜", "➤" (obok "*", ">",
+  "►" i kolorów); za pozycją: "<", "◄", "«", "←" (znacznik nie jest czytany).
+  Tylko jeden wiersz menu może go mieć; "(*)"/"[*]" to przyciski opcji i
+  pola wyboru, nie zaznaczenie. Host: tests/CharonMarksTests.cpp 8/8.
+
+Speakup (inspiracja z dokumentacji Speakup)
+- Okno: Insert Page Up (lewy górny, potem prawy dolny róg; trzeci raz usuwa),
+  Insert Page Down czyta okno, Insert Delete wycisza je (zmiany w oknie nie
+  są czytane - np. zegar).
+- Kopiuj i wklej: Insert F9 początek, Insert F10 kopiuj do kursora
+  przeglądu, Insert F11 wkleja do programu jako klawisze (wiersz poleceń
+  GRUB, Shell, edytory).
+- Insert Home: wiersz z wcięciem (say_line_indent).
+
+QEMU (build r398c/r398d, wydanie charon-r397-release(-drv)):
+- Kopiuj/wklej: w wierszu poleceń GRUB Insert F9 / F10 skopiowało "GNU grub v",
+  Insert F11 wpisało to do GRUB (GRUB: "error: can't find command GNU").
+  Insert Home: "Wcięcie 34, GNU grub version ...". Okno: rogi, "Okno
+  ustawione: wiersze 2 do 6", Insert Page Down czyta okno.
+- UEFI Shell ze zdarzeniami: help = przewinięcie, map = polecenie zakończone.
+- Seria wszystkich menedżerów (r397-sweep3.txt) jak r397-sweep2: GRUB, sd-boot,
+  rEFInd, Clover, Windows Boot Manager, Memory Diagnostic (bez powtórzeń),
+  Shell, Syslinux, iPXE, FreeBSD (bez śmieci ASCII), Haiku, OpenBSD.
+- Regresja znaleziona i usunięta: Esc w edytorze Limine nie docierał (także
+  przy domyślnych ustawieniach). Przyczyna: AudioEngine::Pump kopiuje silnik
+  na stos uruchomionego programu, a tablice położenia stereo dodały 4 KB;
+  Limine ma mały stos. Teraz 6 znaczników zmiany położenia; Limine jak r397u.
+- Dodatek UEFI (CHARONVOICE r397 przez Driver####): jak r396f.
+Zamknięte potem (build r398g/h):
+- Syslinux po Tab: OCR czytał piksele tekstu, który program rysuje sam w innym
+  miejscu, złą siatką ("An omn ic hoo in 54 oocondo"). Ogólna reguła dla
+  każdego programu: wiersz OCR, który z dowolnym przesunięciem pokrywa się w
+  większości z tekstem konsoli lub swoim poprzednim tekstem, ale z szumem, to
+  "duch" - nie jest czytany (ślad "reader ocr ghost" 3x). QEMU: po Tab tylko
+  "vmlinuz1 Press Tab to edit options".
+- Limine panika: "<panic+0x143>", "<0x1bfaf4c3>" to tekst, nie lista
+  rozwijana ani przycisk ("<1280x800>" i "[0xA041]" zostają listami).
+- CharonConsoleSettingsTests: test przepisany na 48-bajtowe rekordy V9+
+  (CRC na 44; 40-bajtowe V7/V8 nadal czytane) - PASS.
+
+
+Ekrany ustawień dostawców (uniwersalność firmware; build r398q)
+- Prawdziwych menu Lenovo/Insyde/Phoenix/HP/Dell nie da się uruchomić w QEMU.
+  Program testowy tests/CharonVendorProbe.cpp (VENDPROBE.EFI, start z wiersza
+  poleceń GRUB, work/r397-vendor.sh) odtwarza ich tekstowe układy: ThinkPad
+  Setup, InsydeH2O, PhoenixBIOS (karty, kolumna wartości [..], pozycje
+  wyszarzone, podmenu z ►, panel pomocy, dwa paski klawiszy, okno Yes/No,
+  okno hasła). Znalezione i poprawione w czytniku (dotyczy każdego firmware):
+  * tło strony po ClearScreen liczy się do tła przeważającego (wcześniej
+    paski pełne tekstu wygrywały i role były odwrócone: zaznaczenie brzmiało
+    jak tekst, tekst jak zaznaczenie);
+  * prawa krawędź = najdalej narysowana kolumna (strona 80 kolumn w trybie
+    100x31): paski tytułu/klawiszy nie są zaznaczeniem; to samo dla
+    zaznaczenia kolorem tekstu (FullWidthBar);
+  * pozycja wyszarzona nie przerywa bloku menu ("Intel AMT ... niedostępne,
+    4 z 5");
+  * przyciski [Yes] [No] w ramce okna: fokus po tle ("Yes, przycisk, 1 z 2",
+    po Tab/strzałce "No, przycisk, 2 z 2");
+  * puste pole "[            ]" = pole edycji, puste; znaki ramki nie są
+    czytane (samotne "│", boki okna).
+  QEMU: ThinkPad "Config, karta 2 z 5 ... Network, 1 z 5", "Wake On LAN, lista
+  rozwijana, Enabled, 3 z 5"; Insyde "Virtualization Technology, lista
+  rozwijana, Enabled" -> "+" -> "Disabled"; Phoenix "Legacy Diskette A ...
+  niedostępne, 3 z 4", Quick Boot Enabled -> Disabled; okna hasła z echem
+  gwiazdek.
+- Stare testy hosta poprawione do bieżących formatów (48-bajtowe ustawienia,
+  13 narzędzi, strona czytnika, rewizja strumienia audio 1, etykiety explicit
+  dla wierszy syntezatora): ConsoleSettings, MelodySettings, MessageMode,
+  BootPreOSMenu, AudioDevice - PASS; razem z Formatting, Controls, Marks,
+  AudioEngine, Mixer, SpeechText, AaOcr, Ocr, Png, BootManagers,
+  FirmwareBrowser, SystemTools, BootAutoContinue, BootMenuVoice, BootMessages.
+
+Testy hosta: CharonFormattingTests (z r397: ACSS, rodziny, zdarzenia, stereo,
+V12, słowo ReaderControl) ALL PASSED; CharonAudioEngine, Mixer, SpeechText,
+Controls, Marks PASS; build-charon-synths --test PASS (eSpeak, RHVoice).
+CharonConsoleSettingsTests: stary błąd zapisu 40-bajtowego (koder wymaga 48
+bajtów od r390), niezwiązany z r397.

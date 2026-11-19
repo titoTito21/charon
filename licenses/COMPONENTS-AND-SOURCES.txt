@@ -1,0 +1,78 @@
+Charon portable VM — component notices and source provenance
+Prepared from local files on 2026-11-16. This is a work staging directory,
+not a released package or a statement that audio/firmware tests have passed.
+
+WHAT IS INCLUDED IN THIS NOTICE SET
+- HAK/Charon: repository LICENSE and authoritative COPYING.txt retained verbatim.
+  The repository states new platform adapters GPL-2.0-or-later. COPYING.txt is
+  the NVDA project license with its exceptions; it is not substituted for TVox's
+  license. The Charon EFI program is not the NVDA Python screen reader.
+  No original NVDA engine/Qt/Haiku installation is included by the VM packager.
+  Retained NVDA notices document the project's origin, not bundled NVDA behavior.
+- TVox: native COPYING is MIT-0 since r385 (relicensed by the TVox author).
+  Charon builds tvox_dsp_mit.c, generated without the eSpeak NG-derived 'clear'
+  timbre; UPSTREAM-NATIVE-COPYING (GPL version 3) covers only upstream
+  tvox_dsp.c in the corresponding source, which is not built into Charon.
+  Upstream README and generated native provenance hashes are retained. Preserve the corresponding source
+  and build instructions for the binary actually distributed.
+- English pronunciation: exact CMUDICT_LICENSE.txt, Carnegie Mellon University
+  notice, plus EN provenance hashes. These notices cover the dictionary-derived
+  data; they do not confer a license on unrelated speech engines or recordings.
+- Polish exceptions: exact WIKIPRON-NOTICE.txt retained. It attributes WikiPron
+  and Wiktionary and says CC BY-SA, but does not specify a version or full terms.
+  This local audit cannot fill in that missing upstream metadata by guessing.
+- musl: exact musl 1.2.5 COPYRIGHT, provenance and fenv adaptation records.
+  source-notices contains the small vendored source closure verbatim, preserving
+  all individual file notices as well as the aggregate copyright document.
+- Haiku/Fuchsia EFI ABI headers: exact LICENSE and SOURCE.txt, pinned Haiku
+  commit 1371f07efddd8a1cc4947bcb869ad8f3b2a9cf0a. These headers do not imply
+  installation or modification of Haiku itself.
+- AudioDxe: exact OpenCorePkg BSD notice, AUDK license/history and available
+  dependency notices. AudioIo ABI source notice is retained verbatim. The added
+  streaming code and modified upstream files require their corresponding source
+  and the documented patch/build procedure, not an unmodified upstream binary.
+- QEMU/firmware: notices copied from the exact intended QEMU 11.1.0 distribution.
+  firmware-as-shipped/edk2-licenses.txt is the shipped firmware notice collection.
+  BINARY-PROVENANCE.json pins the unmodified edk2-x86_64-code.fd and
+  edk2-i386-vars.fd. No source revision is invented; the driver's AUDK revision
+  is NOT used as provenance for these different firmware binaries.
+  package-charon-vm.py copies the full QEMU directory, preserving other bundled
+  licenses/notices, DLLs and share data. This notice subset does not replace it.
+
+REPRODUCTION / EXISTING PRIMARY SOURCE LOCATIONS
+HAK source layout: outputs/nvda-haiku/src/efi and src/tts/runtime,
+                  src/tts/tvox_native, dependencies/tvox.
+Native TVox provenance JSON records exact hashes of original source inputs.
+The locally supplied TVox tree has no verified repository revision recorded here;
+do not invent an upstream download URL for it.
+musl: https://musl.libc.org/releases/musl-1.2.5.tar.gz
+      Build/test: src/tts/runtime/math/build.sh and test.sh; see musl/README.txt.
+CMUDict: https://github.com/cmusphinx/cmudict (input hash is in EN-PROVENANCE.json).
+WikiPron: https://github.com/CUNY-CL/wikipron (as attributed by supplied notice).
+Haiku ABI: see haiku-efi/SOURCE.txt for exact commit and header source URL.
+AudioDxe/OpenCorePkg:
+https://github.com/acidanthera/OpenCorePkg/tree/6fe4d15cb66596d99d8fc6dad71886
+AUDK driver build:
+https://github.com/acidanthera/audk/tree/dfd5516702b4911f1fc1919a429d637b456df913
+See audio-driver/source-downloads.json and BUILD-NOTES.md for archive hashes,
+MSVC/NASM versions, build copy, guarded extension application and actual commands.
+QEMU: https://www.qemu.org/ ; shipped VERSION=11.1.0. Exact distribution notices
+are preserved, without claiming an independently reconstructed package revision.
+
+RELEASE AUDIT ITEMS STILL TO COMPLETE
+1. Attach or provide matching complete corresponding Charon/TVox/AudioDxe source
+   and reproducible final build commands with the release; license text alone
+   is not a source package. The root build coordinator owns final binary hashes.
+2. Resolve the missing precise WikiPron/Wiktionary license version/attribution
+   metadata from its actual supplied source provenance before public release.
+3. User-supplied WAV cues have no explicit redistribution license file identified
+   in src/sfx/boot_manager by this audit. Retain their hashes and user provenance;
+   do not label them public-domain or assign a new license without evidence.
+4. Review the shipped QEMU distribution's dependency notices/source availability
+   for redistribution as a whole. Copying its GPL COPYING does not relicense its
+   many third-party DLLs. No unrelated DLL/license has been removed here.
+5. A later switch to secure firmware or a different AudioDxe/CHARON binary must
+   update the binary provenance/validation record, not reuse earlier hashes.
+
+No private signing keys, PFX files, firmware enrollment changes or user data were
+copied into this directory. No release packager or virtual machine was launched.

@@ -1,0 +1,308 @@
+guest test exit1; collection exit0
+SINGLE_PAGE_PID 57510
+PASS ordinary title, native focus and IDs, original VBuf XML {'version': 1, 'epoch': 2, 'generation': 1, 'process_start': 280985259897, 'units': 67}
+OBSERVER_LIFECYCLE time=280990707999 thread=57508 kind=application phase=start-wait handle=(nil)
+OBSERVER_LIFECYCLE time=280990708209 thread=57508 kind=application phase=construct handle=(nil)
+OBSERVER_LIFECYCLE time=280990708399 thread=57508 kind=application phase=run handle=0x6dcdf96900
+OBSERVER_LIFECYCLE time=280990709319 thread=57508 kind=application phase=register handle=0x6dcdf96900
+OBSERVER_LIFECYCLE time=280990709703 thread=57508 kind=application phase=started handle=0x6dcdf96900
+OBSERVER_LIFECYCLE time=280990710293 thread=57508 kind=settings phase=start-wait handle=(nil)
+OBSERVER_LIFECYCLE time=280990710344 thread=57508 kind=settings phase=construct handle=(nil)
+OBSERVER_LIFECYCLE time=280990710472 thread=57508 kind=settings phase=initialize handle=0x6dcd74d480
+OBSERVER_LIFECYCLE time=280990710764 thread=57508 kind=settings phase=run handle=0x6dcd74d480
+OBSERVER_LIFECYCLE time=280990710934 thread=57508 kind=settings phase=started handle=0x6dcd74d480
+OBSERVER_LIFECYCLE time=280995083040 thread=57586 kind=application phase=start-wait handle=(nil)
+OBSERVER_LIFECYCLE time=280995083290 thread=57586 kind=application phase=construct handle=(nil)
+OBSERVER_LIFECYCLE time=280995083567 thread=57586 kind=application phase=run handle=0x6dcebd0000
+OBSERVER_LIFECYCLE time=280995085375 thread=57586 kind=application phase=register handle=0x6dcebd0000
+OBSERVER_LIFECYCLE time=280995085908 thread=57586 kind=application phase=started handle=0x6dcebd0000
+OBSERVER_LIFECYCLE time=280995086644 thread=57586 kind=settings phase=start-wait handle=(nil)
+OBSERVER_LIFECYCLE time=280995086715 thread=57586 kind=settings phase=construct handle=(nil)
+OBSERVER_LIFECYCLE time=280995086858 thread=57586 kind=settings phase=initialize handle=0x6dcec0a000
+OBSERVER_LIFECYCLE time=280995087186 thread=57586 kind=settings phase=run handle=0x6dcec0a000
+OBSERVER_LIFECYCLE time=280995087440 thread=57586 kind=settings phase=started handle=0x6dcec0a000
+OBSERVER_LIFECYCLE time=280995092886 thread=57508 kind=application phase=start-wait handle=(nil)
+OBSERVER_LIFECYCLE time=280995093043 thread=57508 kind=application phase=construct handle=(nil)
+OBSERVER_LIFECYCLE time=280995093231 thread=57508 kind=application phase=run handle=0x6dcdf96a00
+OBSERVER_LIFECYCLE time=280995094118 thread=57508 kind=application phase=register handle=0x6dcdf96a00
+OBSERVER_LIFECYCLE time=280995094529 thread=57508 kind=application phase=started handle=0x6dcdf96a00
+OBSERVER_LIFECYCLE time=280995094873 thread=57508 kind=settings phase=start-wait handle=(nil)
+OBSERVER_LIFECYCLE time=280995094918 thread=57508 kind=settings phase=construct handle=(nil)
+OBSERVER_LIFECYCLE time=280995095045 thread=57508 kind=settings phase=initialize handle=0x6dcd74dc00
+OBSERVER_LIFECYCLE time=280995095422 thread=57508 kind=settings phase=run handle=0x6dcd74dc00
+OBSERVER_LIFECYCLE time=280995095645 thread=57508 kind=settings phase=started handle=0x6dcd74dc00
+OBSERVER_LIFECYCLE time=280995158786 thread=57508 kind=application phase=start-wait handle=(nil)
+OBSERVER_LIFECYCLE time=280995158998 thread=57508 kind=application phase=construct handle=(nil)
+OBSERVER_LIFECYCLE time=280995159177 thread=57508 kind=application phase=run handle=0x6dcdf96b00
+OBSERVER_LIFECYCLE time=280995159863 thread=57508 kind=application phase=register handle=0x6dcdf96b00
+OBSERVER_LIFECYCLE time=280995160380 thread=57508 kind=application phase=started handle=0x6dcdf96b00
+PASS native page/view focus anchor; parent and stale generation rejected
+PASS ordinary page original NVDA buffer, heading navigation, focus and speech ['Local reading page - WebPositive', 'okno', 'web view', 'web view', 'nagłówek', '', 'poziom 1', 'Independent document heading', 'Ordinary page content.', 'Reading field', 'pole edycji']
+PASS stale snapshot and removed objects rejected; cross-document, process and backward generation advances rejected
+PASS surviving native AXIDs retain field IDs across preceding insertion; new IDs do not reuse retired IDs {'16': 1, '20': 2, '24': 3, '21': 4, '25': 5, '22': 6, '23': 7, '27': 8} {'16': 1, '28': 9, '29': 10, '20': 2, '24': 3, '21': 4, '30': 11, '22': 6, '23': 7, '27': 8}
+PASS content-only update retains original interceptor/handle/focus, corrects caret and emits no repeated speech
+Timeout (0:00:45)!
+Thread 0x0000006dcdc44000 [Thread-1] (most recent call first):
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/threading.py", line 369 in wait
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/threading.py", line 670 in wait
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuWatchdog.py", line 126 in run
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/threading.py", line 1082 in _bootstrap_inner
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/threading.py", line 1044 in _bootstrap
+
+Thread 0x0000006dcdc18000 [NVDA Haiku input] (most recent call first):
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuKeyReceiver.py", line 52 in receive
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuInputWorker.py", line 116 in _run
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/threading.py", line 1024 in run
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/threading.py", line 1082 in _bootstrap_inner
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/threading.py", line 1044 in _bootstrap
+
+Thread 0x0000006dce4f2000 [NVDA braille I/O] (most recent call first):
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/threading.py", line 369 in wait
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuBrailleIo.py", line 75 in _run
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/threading.py", line 1024 in run
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/threading.py", line 1082 in _bootstrap_inner
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/threading.py", line 1044 in _bootstrap
+
+Thread 0x0000006dcdc47000 [NVDA watchdog] (most recent call first):
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuWatchdog.py", line 172 in _waitUntilNormalCoreAliveTimeout
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuWatchdog.py", line 66 in _watcher
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/threading.py", line 1024 in run
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/threading.py", line 1082 in _bootstrap_inner
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/threading.py", line 1044 in _bootstrap
+
+Thread 0x0000006dcd72a000 [synthDrivers._espeak.BgThread] (most recent call first):
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/threading.py", line 369 in wait
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/queue.py", line 199 in get
+  File "/boot/home/nvda-original-runtime-logging/engine/synthDrivers/_espeak.py", line 209 in run
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/threading.py", line 1082 in _bootstrap_inner
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/threading.py", line 1044 in _bootstrap
+
+Thread 0x000001d5bf4de1c0 [python3] (most recent call first):
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioTransport.py", line 56 in _transfer
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioTransport.py", line 96 in request
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioHostBackend.py", line 44 in _request
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioHostBackend.py", line 60 in nvda_audio_create
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioPlatform.py", line 123 in _check
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioPlatform.py", line 118 in __init__
+  File "__init__", line ??? in __init__
+  <invalid frame>
+PASS original activation navigates ordinary page; automatic new document/focus and old lease retirement ['Aktywuj', 'web view', 'nagłówek', '', 'poziom 1', 'Second independent heading', 'Next field', 'pole edycji']
+Exception ignored while calling deallocator <function WavePlayer.__del__ at 0xe35b550930>:
+Traceback (most recent call last):
+  File "/boot/home/nvda-original-runtime-logging/engine/nvwave.py", line 301, in __del__
+    self._player.destroy()
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioPlatform.py", line 234, in destroy
+    self._check('close', handle)
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioPlatform.py", line 123, in _check
+    status = getattr(self.library, 'nvda_audio_' + name)(*args)
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioHostBackend.py", line 128, in nvda_audio_close
+    self._close()
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioHostBackend.py", line 53, in _close
+    if host is not None: host.close()
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioTransport.py", line 132, in close
+    self.process.wait(timeout=5)
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/subprocess.py", line 1279, in wait
+    return self._wait(timeout=timeout)
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/subprocess.py", line 2078, in _wait
+    raise TimeoutExpired(self.args, timeout)
+subprocess.TimeoutExpired: Command '['/boot/home/nvda-original-runtime-logging/bin/NVDAAudioHost', '21', '24']' timed out after 5 seconds
+OBSERVER_LIFECYCLE time=281051518608 thread=57586 kind=settings phase=stop-wait handle=0x6dcec0a000
+OBSERVER_LIFECYCLE time=281051518865 thread=57586 kind=settings phase=lock handle=0x6dcec0a000
+OBSERVER_LIFECYCLE time=281051518977 thread=57586 kind=settings phase=stop-messenger handle=0x6dcec0a000
+OBSERVER_LIFECYCLE time=281051519026 thread=57586 kind=settings phase=unregister handle=0x6dcec0a000
+OBSERVER_LIFECYCLE time=281051520429 thread=57586 kind=settings phase=quit handle=0x6dcec0a000
+OBSERVER_LIFECYCLE time=281051522636 thread=57588 kind=settings phase=destruct-messenger handle=0x6dcec0a000
+OBSERVER_LIFECYCLE time=281051522811 thread=57588 kind=settings phase=destruct-unregister handle=0x6dcec0a000
+OBSERVER_LIFECYCLE time=281051522861 thread=57588 kind=settings phase=destruct-base handle=0x6dcec0a000
+OBSERVER_LIFECYCLE time=281051523352 thread=57586 kind=settings phase=stopped handle=0x6dcec0a000
+OBSERVER_LIFECYCLE time=281051524403 thread=57586 kind=application phase=stop-wait handle=0x6dcebd0000
+OBSERVER_LIFECYCLE time=281051525067 thread=57586 kind=application phase=stop-messenger handle=0x6dcebd0000
+OBSERVER_LIFECYCLE time=281051525149 thread=57586 kind=application phase=unregister handle=0x6dcebd0000
+OBSERVER_LIFECYCLE time=281051528339 thread=57586 kind=application phase=lock handle=0x6dcebd0000
+OBSERVER_LIFECYCLE time=281051528455 thread=57586 kind=application phase=quit handle=0x6dcebd0000
+OBSERVER_LIFECYCLE time=281051530087 thread=57586 kind=application phase=stopped handle=0x6dcebd0000
+OBSERVER_LIFECYCLE time=281051533723 thread=57508 kind=application phase=stop-wait handle=0x6dcdf96b00
+OBSERVER_LIFECYCLE time=281051536203 thread=57508 kind=application phase=stop-messenger handle=0x6dcdf96b00
+OBSERVER_LIFECYCLE time=281051536331 thread=57508 kind=application phase=unregister handle=0x6dcdf96b00
+OBSERVER_LIFECYCLE time=281051537423 thread=57508 kind=application phase=lock handle=0x6dcdf96b00
+OBSERVER_LIFECYCLE time=281051537524 thread=57508 kind=application phase=quit handle=0x6dcdf96b00
+OBSERVER_LIFECYCLE time=281051538181 thread=57508 kind=application phase=stopped handle=0x6dcdf96b00
+OBSERVER_LIFECYCLE time=281051590340 thread=57508 kind=settings phase=stop-wait handle=0x6dcd74dc00
+OBSERVER_LIFECYCLE time=281051590583 thread=57508 kind=settings phase=lock handle=0x6dcd74dc00
+OBSERVER_LIFECYCLE time=281051590641 thread=57508 kind=settings phase=stop-messenger handle=0x6dcd74dc00
+OBSERVER_LIFECYCLE time=281051590674 thread=57508 kind=settings phase=unregister handle=0x6dcd74dc00
+OBSERVER_LIFECYCLE time=281051590730 thread=57508 kind=settings phase=quit handle=0x6dcd74dc00
+OBSERVER_LIFECYCLE time=281051590946 thread=57590 kind=settings phase=destruct-messenger handle=0x6dcd74dc00
+OBSERVER_LIFECYCLE time=281051591073 thread=57590 kind=settings phase=destruct-unregister handle=0x6dcd74dc00
+OBSERVER_LIFECYCLE time=281051591137 thread=57590 kind=settings phase=destruct-base handle=0x6dcd74dc00
+OBSERVER_LIFECYCLE time=281051592196 thread=57508 kind=settings phase=stopped handle=0x6dcd74dc00
+OBSERVER_LIFECYCLE time=281051592602 thread=57508 kind=application phase=stop-wait handle=0x6dcdf96a00
+OBSERVER_LIFECYCLE time=281051593583 thread=57508 kind=application phase=stop-messenger handle=0x6dcdf96a00
+OBSERVER_LIFECYCLE time=281051594682 thread=57508 kind=application phase=unregister handle=0x6dcdf96a00
+OBSERVER_LIFECYCLE time=281051595277 thread=57508 kind=application phase=lock handle=0x6dcdf96a00
+OBSERVER_LIFECYCLE time=281051595434 thread=57508 kind=application phase=quit handle=0x6dcdf96a00
+OBSERVER_LIFECYCLE time=281051596196 thread=57508 kind=application phase=stopped handle=0x6dcdf96a00
+Exception ignored while calling deallocator <function WavePlayer.__del__ at 0xe35b550930>:
+Traceback (most recent call last):
+  File "/boot/home/nvda-original-runtime-logging/engine/nvwave.py", line 301, in __del__
+    self._player.destroy()
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioPlatform.py", line 234, in destroy
+    self._check('close', handle)
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioPlatform.py", line 123, in _check
+    status = getattr(self.library, 'nvda_audio_' + name)(*args)
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioHostBackend.py", line 128, in nvda_audio_close
+    self._close()
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioHostBackend.py", line 53, in _close
+    if host is not None: host.close()
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioTransport.py", line 132, in close
+    self.process.wait(timeout=5)
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/subprocess.py", line 1279, in wait
+    return self._wait(timeout=timeout)
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/subprocess.py", line 2078, in _wait
+    raise TimeoutExpired(self.args, timeout)
+subprocess.TimeoutExpired: Command '['/boot/home/nvda-original-runtime-logging/bin/NVDAAudioHost', '6', '17']' timed out after 5 seconds
+Exception ignored while calling deallocator <function WavePlayer.__del__ at 0xe35b550930>:
+Traceback (most recent call last):
+  File "/boot/home/nvda-original-runtime-logging/engine/nvwave.py", line 301, in __del__
+    self._player.destroy()
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioPlatform.py", line 234, in destroy
+    self._check('close', handle)
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioPlatform.py", line 123, in _check
+    status = getattr(self.library, 'nvda_audio_' + name)(*args)
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioHostBackend.py", line 128, in nvda_audio_close
+    self._close()
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioHostBackend.py", line 53, in _close
+    if host is not None: host.close()
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioTransport.py", line 132, in close
+    self.process.wait(timeout=5)
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/subprocess.py", line 1279, in wait
+    return self._wait(timeout=timeout)
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/subprocess.py", line 2078, in _wait
+    raise TimeoutExpired(self.args, timeout)
+subprocess.TimeoutExpired: Command '['/boot/home/nvda-original-runtime-logging/bin/NVDAAudioHost', '22', '25']' timed out after 5 seconds
+Exception ignored while calling deallocator <function WavePlayer.__del__ at 0xe35b550930>:
+Traceback (most recent call last):
+  File "/boot/home/nvda-original-runtime-logging/engine/nvwave.py", line 301, in __del__
+    self._player.destroy()
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioPlatform.py", line 234, in destroy
+    self._check('close', handle)
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioPlatform.py", line 123, in _check
+    status = getattr(self.library, 'nvda_audio_' + name)(*args)
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioHostBackend.py", line 128, in nvda_audio_close
+    self._close()
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioHostBackend.py", line 53, in _close
+    if host is not None: host.close()
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioTransport.py", line 132, in close
+    self.process.wait(timeout=5)
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/subprocess.py", line 1279, in wait
+    return self._wait(timeout=timeout)
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/subprocess.py", line 2078, in _wait
+    raise TimeoutExpired(self.args, timeout)
+subprocess.TimeoutExpired: Command '['/boot/home/nvda-original-runtime-logging/bin/NVDAAudioHost', '6', '9']' timed out after 5 seconds
+OBSERVER_LIFECYCLE time=281066745404 thread=57508 kind=settings phase=stop-wait handle=0x6dcd74d480
+OBSERVER_LIFECYCLE time=281066745548 thread=57508 kind=settings phase=lock handle=0x6dcd74d480
+OBSERVER_LIFECYCLE time=281066745608 thread=57508 kind=settings phase=stop-messenger handle=0x6dcd74d480
+OBSERVER_LIFECYCLE time=281066745647 thread=57508 kind=settings phase=unregister handle=0x6dcd74d480
+OBSERVER_LIFECYCLE time=281066745777 thread=57508 kind=settings phase=quit handle=0x6dcd74d480
+OBSERVER_LIFECYCLE time=281066746266 thread=57562 kind=settings phase=destruct-messenger handle=0x6dcd74d480
+OBSERVER_LIFECYCLE time=281066746439 thread=57562 kind=settings phase=destruct-unregister handle=0x6dcd74d480
+OBSERVER_LIFECYCLE time=281066746494 thread=57562 kind=settings phase=destruct-base handle=0x6dcd74d480
+OBSERVER_LIFECYCLE time=281066747473 thread=57508 kind=settings phase=stopped handle=0x6dcd74d480
+OBSERVER_LIFECYCLE time=281066747831 thread=57508 kind=application phase=stop-wait handle=0x6dcdf96900
+OBSERVER_LIFECYCLE time=281066748548 thread=57508 kind=application phase=stop-messenger handle=0x6dcdf96900
+OBSERVER_LIFECYCLE time=281066748666 thread=57508 kind=application phase=unregister handle=0x6dcdf96900
+OBSERVER_LIFECYCLE time=281066749293 thread=57508 kind=application phase=lock handle=0x6dcdf96900
+OBSERVER_LIFECYCLE time=281066749432 thread=57508 kind=application phase=quit handle=0x6dcdf96900
+OBSERVER_LIFECYCLE time=281066750339 thread=57508 kind=application phase=stopped handle=0x6dcdf96900
+AX_PROBE_LOADED
+AX_OWNER_OBSERVED thread=57510 application=57510 symbols=1
+AX_NATIVE_IDENTIFIER_RETIRED object=6 remaining=3
+AX_NATIVE_IDENTIFIER_RETIRED object=7 remaining=2
+AX_NATIVE_IDENTIFIER_RETIRED object=8 remaining=1
+AX_NATIVE_IDENTIFIER_RETIRED object=9 remaining=0
+AX_SNAPSHOT_REFRESHED epoch=2 generation=0 nodes=7
+AX_FOCUS_HINT sequence=1 epoch=2 generation=1 native_id=22
+AX_NATIVE_NODE_LEASES_RELEASED nodes=7
+AX_PLATFORM_NOTIFICATION generation=1 kind=34
+AX_SNAPSHOT_REFRESHED epoch=2 generation=1 nodes=7
+AX_NATIVE_NODE_LEASES_RELEASED nodes=7
+AX_PLATFORM_NOTIFICATION generation=2 kind=16
+AX_PLATFORM_NOTIFICATION generation=3 kind=16
+AX_NATIVE_IDENTIFIER_RETIRED object=25 remaining=12
+AX_SNAPSHOT_REFRESHED epoch=2 generation=3 nodes=9
+AX_NATIVE_PRESS_INVOKED epoch=2 generation=3 id=8 performed=1
+AX_FOCUS_HINT sequence=2 epoch=2 generation=4 native_id=23
+AX_NATIVE_NODE_LEASES_RELEASED nodes=9
+AX_PLATFORM_NOTIFICATION generation=4 kind=34
+AX_SNAPSHOT_REFRESHED epoch=2 generation=4 nodes=9
+AX_NATIVE_IDENTIFIER_RETIRED object=17 remaining=13
+AX_NATIVE_IDENTIFIER_RETIRED object=16 remaining=12
+AX_NATIVE_IDENTIFIER_RETIRED object=26 remaining=11
+AX_NATIVE_IDENTIFIER_RETIRED object=19 remaining=10
+AX_NATIVE_IDENTIFIER_RETIRED object=18 remaining=9
+AX_NATIVE_IDENTIFIER_RETIRED object=29 remaining=10
+AX_NATIVE_IDENTIFIER_RETIRED object=24 remaining=9
+AX_NATIVE_IDENTIFIER_RETIRED object=30 remaining=8
+AX_NATIVE_IDENTIFIER_RETIRED object=27 remaining=7
+AX_NATIVE_IDENTIFIER_RETIRED object=28 remaining=6
+AX_NATIVE_IDENTIFIER_RETIRED object=20 remaining=5
+AX_NATIVE_IDENTIFIER_RETIRED object=21 remaining=4
+AX_NATIVE_IDENTIFIER_RETIRED object=22 remaining=3
+AX_NATIVE_IDENTIFIER_RETIRED object=23 remaining=2
+AX_NATIVE_NODE_LEASES_RELEASED nodes=9
+AX_SNAPSHOT_REFRESHED epoch=3 generation=4 nodes=5
+AX_FOCUS_HINT sequence=3 epoch=3 generation=5 native_id=43
+AX_NATIVE_NODE_LEASES_RELEASED nodes=5
+AX_PLATFORM_NOTIFICATION generation=5 kind=34
+AX_SNAPSHOT_REFRESHED epoch=3 generation=5 nodes=5
+
+RESTORED owned browser closed; stock binary unchanged
+Traceback (most recent call last):
+  File "/boot/home/nvda-text-dev/tests/webkit-single-page-native.py", line 62, in <module>
+    with Runtime(profile,sender=input_server_team(),stickyFlags=0,port='nvda-single-page-test',
+         ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                 webKitHelper=project/'bin/WebKitVBufRead' if automatic else None) as runtime:
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuRuntime.py", line 200, in __exit__
+    self.close()
+    ~~~~~~~~~~^^
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuRuntime.py", line 194, in close
+    cleanup.close()
+    ~~~~~~~~~~~~~^^
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/contextlib.py", line 627, in close
+    self.__exit__(None, None, None)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/contextlib.py", line 619, in __exit__
+    raise exc
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/contextlib.py", line 604, in __exit__
+    if cb(*exc_details):
+       ~~^^^^^^^^^^^^^^
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/contextlib.py", line 482, in _exit_wrapper
+    callback(*args, **kwds)
+    ~~~~~~~~^^^^^^^^^^^^^^^
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuSpeechLifecycle.py", line 18, in terminateSpeech
+    nvwave.terminate()
+    ~~~~~~~~~~~~~~~~^^
+  File "/boot/home/nvda-original-runtime-logging/engine/nvwave.py", line 614, in terminate
+    (haikuAudioPlatform.silenceTerminate if _isHaiku else wasapi.wasSilence_terminate)()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioPlatform.py", line 96, in silenceTerminate
+    _silenceCall('terminate')
+    ~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioPlatform.py", line 73, in _silenceCall
+    status = getattr(_silenceLibrary, 'nvda_audio_silence_' + name)(*args)
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioHostBackend.py", line 134, in nvda_audio_silence_terminate
+    self._close()
+    ~~~~~~~~~~~^^
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioHostBackend.py", line 53, in _close
+    if host is not None: host.close()
+                         ~~~~~~~~~~^^
+  File "/boot/home/nvda-original-runtime-logging/engine/haikuAudioTransport.py", line 132, in close
+    self.process.wait(timeout=5)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/subprocess.py", line 1279, in wait
+    return self._wait(timeout=timeout)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/packages/python3.14-3.14.7-1/.self/lib/python3.14/subprocess.py", line 2078, in _wait
+    raise TimeoutExpired(self.args, timeout)
+subprocess.TimeoutExpired: Command '['/boot/home/nvda-original-runtime-logging/bin/NVDAAudioHost', '6', '13']' timed out after 5 seconds

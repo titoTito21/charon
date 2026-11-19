@@ -1,0 +1,121 @@
+Charon r393 — profesjonalne czytanie: formatowanie tekstu w mowie (wzór
+Emacspeak), regiony ekranu, historia mowy, „co się zmieniło”, słownik wymowy
+firmware, atrybuty na brajlu, profile menedżerów rozruchu (2026-11-18)
+
+Prośby użytkownika: „profesjonalnie to czyta, po kolorach, po czcionkach, na
+wzór emacspeaka, ustawienie opcjonalne nazwane”, „formatowanie w trakcie mowy
+w programach UEFI”, „także komunikatów”; podmenu „Formatowanie tekstu” w
+ustawieniach czytnika z polami wyboru; ikony dźwiękowe z oscylatora, grane
+razem z mową; regiony Ctrl+strzałki (w przeglądzie Shift+strzałki); po
+„Kontynuuj” rozruch jak zwykle; pisk zamiast dźwięku powitania; zainstalowany
+Linux (grub.cfg na partycji systemu).
+
+Build: charon-win-r393l (+ charon-win-r393l-drv), śledzenie czytnika:
+charon-win-r393m. Pliki: src/efi/CharonFormatting.h, CharonDictionary.h,
+CharonManagerProfiles.h, CharonSynthModule.h (ABI dodatków syntezy, osobna
+partia), zmiany w CharonResident.h, CharonSpeechText.h, CharonLiveVoice.*,
+CharSettings.h (V10), BootMenuModel.h, BootMenu.h, CharonBcd.h,
+CharonManagerProbe.h, CharonKeyNotify.h, CharonKeyHelp.h, CharonBraille.h,
+CharonTtfOcr.h, CharonVoiceProvider.h, HAKBootEFI.cpp, CharonReaderControl.h
+(release 393).
+
+1. Formatowanie tekstu w mowie (ustawienia czytnika -> „Formatowanie
+   tekstu, podmenu”; pola wyboru: Formatowanie głosem, Ikony dźwiękowe,
+   Kolory tekstu i tła, Jasny i pogrubiony tekst, Czcionka i rozmiar,
+   Odwrócenie i podświetlenie, Atrybuty na brajlu, Słownik wymowy firmware)
+- Gotowa wypowiedź jest dopasowywana słowo po słowie do wierszy ekranu (ta sama
+  postać tekstu co przy czytaniu, z kolumną każdej komórki); słowo bierze styl
+  pierwszej komórki. Logika czytania menu nie zmieniła się (regresja niżej).
+- Głos (voice-lock): wysokość wg barwy (czerwony/żółty wyżej, niebieski
+  niżej), jasny/pogrubiony wyżej i głośniej, przygaszony ciszej, inne tło =
+  głos wygładzony (filtr dolnoprzepustowy), podświetlenie/odwrócenie = pogłos
+  (echo 60 i 100 ms), duża czcionka wolniej i niżej, drobna szybciej, inny
+  krój = rozjaśniona barwa. Tekst w kolorach ekranu i własne słowa czytnika:
+  zwykły głos.
+- Ikony dźwiękowe (oscylator, bez plików): ton koloru (16 wysokości), dwa
+  kliknięcia = pogrubienie, rosnący świergot = podświetlenie, wysoki tyk =
+  zmiana czcionki, opadający dźwięk = powrót do zwykłego tekstu; grane w
+  kanale dźwięków razem z mową fragmentu, który oznaczają.
+- Kanał: znacznik ESC 'f' + 6 bajtów w tekście (jak przełączniki języka);
+  LiveVoice zaczyna tam fragment i stosuje tempo/wysokość/głośność/barwę.
+  Dotyczy czytnika i drugiego głosu komunikatów.
+- Insert G: wyłączone / głosem / ikony / głosem i ikony (w locie).
+- QEMU (GRUB, wszystkie opcje): „grub: menu, 6 pozycji. [ESC f m l n 1 a c]
+  Charon test entry one [ESC f m m m 0 - a], 1 z 6” — podświetlona pozycja
+  (czarny na szarym) niżej, głośniej, z pogłosem, ikona koloru + świergot;
+  pozycja kończy się powrotem do zwykłego głosu przed „1 z 6”.
+- Test hosta tests/CharonFormattingTests.cpp: ALL PASSED (dopasowanie,
+  Compose, słownik, konfiguracje, ustawienia V10).
+
+2. Słownik wymowy firmware (wbudowany, ~110 skrótów, PL i EN): TPM „te pe
+   em”, XHCI „iks ha ce i”, VT-d, NVMe, PXE „piksi”, BIOS „bajos”, F1-F12 …;
+   tylko tekst ekranu, całe słowa, z rozróżnianiem wielkości liter.
+   QEMU: „U E F I firmware settings”.
+
+3. Regiony ekranu: Ctrl+strzałka w lewo/prawo (w przeglądzie ze wstrzymanym
+   rozruchem także Shift+strzałki): bloki wierszy od tej samej kolumny na tym
+   samym tle — tytuł, menu (z podświetloną pozycją), panel pomocy, pasek
+   klawiszy, okno, tekst; „tekst, 4 z 4: Use the up arrow …”.
+
+4. Historia mowy (Insert H): ostatnie 64 wypowiedzi, rozruch wstrzymany,
+   strzałka w górę starsze, w dół nowsze, Escape zamyka; „…; wypowiedź 2 z 6”.
+5. Co się zmieniło (Insert D): wiersze różne od ekranu sprzed ostatniego
+   klawisza: „Zmieniło się 2 wiersze: Charon test entry one. Charon test entry two”.
+6. Brajl: komórki podświetlone z punktami 7 i 8 (pole „Atrybuty na brajlu”).
+   Nie sprawdzone na symulatorze w tej partii.
+
+7. Profile menedżerów rozruchu (CharonManagerProfiles.h)
+- Insert F1 przy działającym menedżerze: najpierw jego klawisze (GRUB,
+  systemd-boot, rEFInd, Windows, OpenCore, Clover, Limine, Syslinux, Ventoy,
+  iPXE, FreeBSD, Haiku), potem klawisze czytnika: „GRUB: e edytuje …, 2 z 35”.
+- Konfiguracja z dysku, tylko odczyt, w liście urządzeń: grub.cfg (tylko
+  poziom główny, submenu jako pozycja), loader.conf + loader/entries,
+  refind.conf, limine.conf / limine.cfg, syslinux.cfg, OpenCore i Clover
+  config.plist (+ BCD Windows jak w r389). QEMU: „Dysk — UEFI QEMU HARDDISK
+  QM00003 (GRUB: Charon test entry one (domyślny), Charon test entry two, …;
+  menu ukryte; 3 s)”.
+- Ukryte menu (ustawienia czytnika: wyłączone / ogłoś i czekaj 2 sekundy
+  (domyślnie) / zawsze odsłaniaj): przy starcie z listy urządzeń „Menu GRUB
+  jest ukryte. Naciśnij dowolny klawisz w ciągu 2 sekund, aby je pokazać.” ->
+  spacja -> „Pokazuję menu.” -> Charon podaje GRUB-owi Escape (zdarzenia
+  WaitForKey zasygnalizowane) -> menu GRUB przeczytane. Bez klawisza GRUB
+  startuje jak zwykle.
+- Zainstalowany Linux (prośba użytkownika): na partycji EFI tylko plik
+  wczytujący grub.cfg z partycji systemu (ext4, Charon jej nie czyta):
+  „GRUB wczytuje konfigurację z partycji systemu; jego menu może być ukryte.
+  Naciśnij dowolny klawisz …” -> menu pokazane (harness CHARON_GRUB_STUB=1).
+- Zatrzymanie odliczania (pole wyboru, domyślnie wyłączone): F11 do
+  menedżera; „Charon zatrzymuje odliczanie.”, GRUB nie uruchomił wpisu.
+- Kontynuuj (wybrane, automatyczne, kolejność firmware, dodatek UEFI z
+  Driver####): bez komunikatów i bez klawiszy; bufor klawiatury opróżniany
+  przed startem. QEMU: GRUB z ukrytym menu od razu „Entry one selected”
+  (menu pokazuje się dopiero po „Failed to boot” wpisu testowego).
+- Błąd znaleziony i poprawiony w tej partii: komunikat o ukrytym menu był
+  mówiony przy TPL_APPLICATION, zegar czytnika przerywał przygotowanie mowy
+  -> #GP w TVox (pamięć 0xAF). Teraz pod Guard (TPL_CALLBACK).
+
+8. Pisk powitania (prośba użytkownika): „Pisk powitania, jak przy starcie
+   dodatku” — kwadrat 900 Hz / 200 ms zamiast welcome.wav
+   (serial: „CHARON welcome beep=384”).
+
+9. Ustawienia V10 („CHARS00A”, 48 bajtów): bajt 40 formatowanie (domyślnie
+   60 = atrybuty włączone, głos i ikony wyłączone), bajt 41: bity 0-1 ukryte
+   menu, bit 2 odliczanie, bit 3 brajl, bit 4 słownik (domyślnie 25). V9 i
+   starsze czytane z tymi wartościami. ReaderControl release 393 (słowo
+   czytania: bity 14-19 formatowanie, 20-24 dodatki).
+
+10. Harness: charon-vm.py CHARON_SETTINGS_V10=fmt,extra, CHARON_GRUB_HIDDEN=1,
+    CHARON_GRUB_STUB=1. Klawisze: insert g, ctrl+right.
+
+Nie sprawdzone w tej partii: odsłanianie dla systemd-boot (spacja) i rEFInd
+(strzałka) — tylko GRUB w QEMU; brajl z punktami 7-8; tryb dodatku
+(CHARONVOICE z Driver####) uruchomiony tylko w kompilacji.
+
+11. Regresja (work/r386-regression.sh, charon-win-r393l): wynik niżej.
+- work/r393-regression-rg393.txt: 14 przebiegów (OpenCore, systemd-boot,
+  Limine, Clover, Windows, rEFInd, Syslinux, iPXE, Ventoy, Haiku, FreeBSD,
+  Memtest86+, Debian netinst, nośniki) identyczne z r392h poza oczekiwanym:
+  lista urządzeń podaje konfiguracje („OpenCore: CustomOS i pozycje wykryte
+  automatycznie”, „systemd-boot: Charon probe loader i pozycje wykryte
+  automatycznie”, „Limine: Charon probe loader (domyślny), Windows Boot
+  Manager; 30 s”, wpisy GRUB), a słownik wymowy zapisuje „GRUB” jako „grub”.

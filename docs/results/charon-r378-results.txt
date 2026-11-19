@@ -1,0 +1,27 @@
+Charon r378 — kursor przeglądu czytnika (2026-11-17)
+
+1. Funkcja (src/efi/CharonResident.h Review, CharonKeyNotify.h)
+- W innych programach UEFI (GRUB, menedżery rozruchu, ustawienia firmware,
+  narzędzia) czytnik ma kursor przeglądu jak NVDA (układ laptopowy), zawsze
+  Ctrl+Alt i litera (cyfry, F i G zostawione dla okna QEMU):
+  U / I / O — poprzedni / bieżący / następny wiersz,
+  J / K / L — poprzednie / bieżące / następne słowo (przez granice wierszy),
+  M / przecinek / kropka — poprzedni / bieżący / następny znak (nazwy znaków
+  interpunkcyjnych, „duże” przed wielką literą, „ramka” dla ramek),
+  T / B — góra / dół ekranu, E — zaznaczona pozycja menu z położeniem,
+  P — „Wiersz N z M, kolumna C”, R / S / H jak dotąd (pomoc rozszerzona).
+- Kursor startuje na zaznaczonej pozycji (albo pierwszym wierszu z tekstem)
+  i idzie za zaznaczeniem, gdy program je przesuwa. Czyta model ekranu:
+  tekst konsoli i tekst rozpoznany z grafiki. Klawisze nadal trafiają do
+  programu (nic nie jest przechwytywane).
+- Granice: „Góra ekranu” / „Dół ekranu”, pusty wiersz: „Pusty wiersz”.
+  Tryb dosadny: wszystkie nowe komunikaty i pomoc mają wersje dosadne
+  (audyt: 1052 teksty, 0 łagodnych).
+
+2. VM (GRUB, PL): po strzałkach do pozycji 3: Ctrl+Alt+E „UEFI firmware
+   settings, 3 z 6”, T „GNU GRUB version 2.12-9+deb13u4”, O „Charon test
+   entry one”, K „Charon”, L, L „test”, „entry”, J „test”, kropka „e”,
+   przecinek „e”, M „t”, P „Wiersz 6 z 31, kolumna 11.”, B ostatni wiersz
+   pomocy GRUB-a, U poprzedni wiersz, O na dole „Dół ekranu”, H nowa pomoc.
+   Błąd znaleziony i poprawiony w trakcie: Ctrl+Alt+E nie widział
+   zaznaczenia, bo Flush() zeruje highlight_ (teraz lastHighlightRow_).

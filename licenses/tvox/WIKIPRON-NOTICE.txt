@@ -1,0 +1,4 @@
+# Polish pronunciation exceptions for Titan Voice.
+# Derived from WikiPron (https://github.com/CUNY-CL/wikipron), data from Wiktionary,
+# licensed CC BY-SA. Only words where the letter-to-sound rules disagree are listed.
+# pronunciation fixes (2026-10-31): ł is dropped in jabłk-, double letters of loanwords are single

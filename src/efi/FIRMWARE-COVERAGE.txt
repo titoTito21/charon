@@ -1,0 +1,100 @@
+CHARON / HAK FIRMWARE CAPABILITY INVENTORY
+Revised: 2026-11-18 for r387; r393 lines added (replaces the 2026-11-16 audit, which predated r355-r386).
+This is a capability inventory, NOT a hardware certification or a completion
+percentage. Evidence is QEMU q35 + OVMF (TCG) unless stated; physical machines,
+other firmware vendors and other architectures are untested. Each line names the
+results file under tests/ that records the test.
+
+Status vocabulary
+  DONE: implemented and exercised end to end in the VM with speech.
+  PARTIAL: implemented; a named part of the workflow is missing or untested.
+  NOT PORTED: deliberately not implemented; reason given.
+  OUT OF REACH: cannot be done by a UEFI program in this setup; reason given.
+
+1. Boot manager (CHARON.EFI, menu)
+Boot entries and start           DONE. Device list = BootOrder (Charon excluded), firmware
+  names + disk kind + recognised boot manager on that disk; verified start (snapshot
+  compared before LoadImage), short-form/removable fallback, Continue target, remember
+  last, one-time start (once.bin), auto-continue with countdown. r387: 5-minute
+  watchdog around boot options (UEFI 2.11 3.1.2), disarmed when they return.
+  [charon-r355..r386-results]
+Removable / BIOS-only media      DONE (r386). Media without Boot#### (fallback loader),
+  hot-plug announce, BIOS-only disks and CDs listed as "tylko BIOS" (not startable).
+Network boot                     DONE (r387). Firmware PXE/HTTP entries labelled "Sieć";
+  LoadFile adapters without an entry listed as "found by Charon". PXEv4 start tested
+  against QEMU's TFTP server: firmware download messages and network GRUB read.
+  HTTP boot: entries listed, not started (no HTTP server in the test). [charon-r387]
+Programs from files              DONE (r387). System tools -> start an EFI program from
+  a file: volumes, folders, *.efi with size, date, PE architecture/subsystem;
+  started through an in-memory load option, resident reader active, no NVRAM write.
+Boot order and timeout           DONE (r355, r385). Grab/move/drop editor, Save with
+  snapshot check and read-back, firmware Timeout slider, "Charon menu at start".
+Boot entry creation/deletion     NOT PORTED. Charon edits order only; a new Boot####
+  would be a permanent firmware write the user has not asked for. Programs and media
+  without entries start from the device list or the file browser instead.
+
+2. Firmware settings and system
+HII forms (firmware setup)       DONE for OVMF/edk2 forms (r355+, HiiMenu.cpp): Charon's
+  own speaking browser and the resident reader of the firmware's own browser
+  (lists, check boxes, popups, numbers, strings). Vendor forms outside exported HII
+  (many Lenovo/HP/Dell setups) are untested; no claim for them.
+Secure Boot                      PARTIAL. State read and spoken; key enrollment
+  NOT PORTED by decision (owner enrolls charon-db.cer in firmware setup; no PK/KEK
+  tooling - see r385 results).
+Variables                        DONE read-only (r371): every variable, attributes,
+  decoded known values. Variable editor NOT PORTED (arbitrary firmware writes; needs
+  an explicit user decision).
+Drivers                          DONE read-only (r371) + connect all (r373) + health
+  status from EFI_DRIVER_HEALTH_PROTOCOL in the detail (r387; OVMF drivers publish
+  none, so only the code path is verified). Disconnect/repair NOT PORTED.
+Firmware updates                 PARTIAL. ESRT read (r371). Capsule delivery NOT PORTED:
+  it rewrites firmware; needs an explicit user decision and real hardware to test.
+Clock, wake, power               DONE (r370-r373): clock read/set, wake alarm, restart,
+  shutdown, restart into firmware setup (OsIndications).
+Computer information             DONE (r370): SMBIOS, memory map, variable storage.
+Shell                            DONE (r355+): owned speaking UEFI Shell.
+
+3. Screen reader (resident: CHARON.EFI in-image, CHARONVOICE.EFI as Driver####)
+Text consoles                    DONE: ConOut hook, menus, selection by attribute,
+  framed windows, controls (check box, radio, button, edit, combo, spinner),
+  review cursor, say all, Insert+numpad NVDA desktop layout with interception,
+  Ctrl+Alt shortcuts, countdown speech/ticks. [r369-r384]
+Graphical text                   DONE for the fonts Charon carries or loads: HII font,
+  GOP Blt, Unifont (GRUB gfxterm), GRUB themes (DejaVu PF2), rEFInd (Liberation Mono
+  AA), Windows Boot Manager / Memory Diagnostic / Recovery (Segoe from the started
+  disk, wgl4_boot strikes), systemd-boot, Limine, OpenCore, Clover, Ventoy, Syslinux,
+  iPXE, Haiku loader, FreeBSD loader, Memtest86+ name. Text in other fonts is not
+  read; pictures without text are announced as such. [r357-r386]
+Formatting in speech             DONE (r393): Emacspeak-style voice-lock (pitch, rate, volume,
+  timbre) and oscillator sound icons with speech, from console colours, highlight and
+  OCR font/size; regions (Ctrl+arrows), speech history, what changed, firmware
+  pronunciation dictionary, braille dots 7-8 (braille not re-tested). [charon-r393]
+Boot-manager profiles            DONE (r393) for GRUB in QEMU: manager keys in the key list,
+  configurations read (GRUB, systemd-boot, rEFInd, Limine, Syslinux, OpenCore, Clover,
+  BCD), hidden menu announce/reveal, countdown stop; Continue boots unchanged.
+  Reveal for systemd-boot/rEFInd untested. ext4 grub.cfg not readable (stub noted).
+Speech from power-on             DONE (r356/r385): CHARONVOICE.EFI Driver####, also as a
+  UEFI add-on with the system's own loader as the default.
+After ExitBootServices           OUT OF REACH: boot services (audio, console hooks) end;
+  "System przejmuje sterowanie" is the last message. The Windows 8+ tile menu runs
+  after this point (bootim.exe).
+Before Driver#### (POST, logo)   OUT OF REACH: would need Charon inside the firmware image.
+Pointer/touch                    NOT PORTED: keyboard only; an optional mouse pointer
+  (rEFInd, OpenCanopy) is not announced. All tested managers work by keyboard.
+
+4. Signing and image properties (r387)
+  CHARON.EFI and CHARONVOICE.EFI: IMAGE_DLLCHARACTERISTICS_NX_COMPAT set, no section
+  writable+executable, .rodata read-only (.data.rel.ro/.got moved to .data), 4 KiB
+  sections, PE checksum recomputed (tools/build-charon-windows.py harden()).
+  OVMF in this test does not enforce image memory protection, so enforcement itself
+  is not tested. Remaining Microsoft UEFI CA items: EV code-signing certificate and an
+  organisation submitting the image - not technical work in this repository.
+
+5. Platforms
+  x64 UEFI only. IA32/AArch64 UEFI, CSM/BIOS boot of Charon itself: NOT PORTED.
+  Physical hardware: untested here (no physical machine available to this work).
+
+PRIMARY SPECIFICATION REFERENCES
+UEFI 2.11: https://uefi.org/specs/UEFI/2.11/ (3 Boot Manager incl. watchdog; 8 Runtime
+Services; 11 Driver Model incl. Driver Health; 13 Media Access; 23 Firmware Update;
+24 Network Protocols - PXE/HTTP boot via LOAD_FILE; 32 Secure Boot; 35 HII).

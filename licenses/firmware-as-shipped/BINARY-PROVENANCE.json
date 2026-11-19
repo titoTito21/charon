@@ -1,0 +1,15 @@
+{
+  "distribution_version": "11.1.0",
+  "origin": "QEMU distribution share directory; exact distributed notices copied alongside",
+  "files": {
+    "edk2-x86_64-code.fd": {
+      "sha256": "33090cc07675baa5190d9f1e84bf5176b33bcbfa9bacac522961150cdb6dbb2a",
+      "bytes": 3653632
+    },
+    "edk2-i386-vars.fd": {
+      "sha256": "5d2ac383371b408398accee7ec27c8c09ea5b74a0de0ceea6513388b15be5d1e",
+      "bytes": 540672
+    }
+  },
+  "edk2_source_revision": "Not established by local distribution metadata; do not substitute AUDK driver revision."
+}

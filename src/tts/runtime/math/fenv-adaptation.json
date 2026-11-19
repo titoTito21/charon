@@ -1,0 +1,5 @@
+{
+  "original_sha256": "9a1a2872f39987016e922e8a88e80c737a2f8a5a5e68503aff0edce17db7b283",
+  "adapted_sha256": "ed371a706318694c32c805b7ed0f7f2c9814ced14f6d07324779ab6708668e8e",
+  "changes": "feclearexcept/feraiseexcept: reserve 8 stack bytes, address reserved slot instead of red zone, restore stack before return; GNU-stack note. No floating-point instruction changes."
+}

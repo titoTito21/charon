@@ -1,0 +1,23 @@
+Charon r372 — ustawianie daty i godziny (2026-11-17)
+
+1. Funkcja (BootMenuModel.h ClockKey, CharonSystemTools.h SetClock/DateWords)
+- Narzędzia systemowe: nowa pozycja „Ustaw datę i godzinę, podmenu” (po
+  „Data i godzina”). Strona: Rok (2000–2099), Miesiąc, Dzień (do długości
+  miesiąca, z latami przestępnymi; zmiana miesiąca/roku przycina dzień),
+  Godzina, Minuta — każde jako suwak Lewo/Prawo z dźwiękiem granicy — oraz
+  „Zapisz w zegarze firmware: <dzień tygodnia, data, godzina>”.
+- Zapis: potwierdzenie (domyślnie Anuluj, ostrzeżenie, że systemy traktują
+  zegar jako UTC lub lokalny), SetTime z zachowaniem strefy i czasu letniego
+  podanych przez firmware, sekundy 0, odczyt kontrolny (dopuszczalna zmiana
+  o jedną minutę). Błąd odczytu lub zapisu — komunikat, nic nie udaje sukcesu.
+
+2. Testy hosta — PASS: BootPreOSMenuTests (granice, 31 marca → luty 2024 =
+   29, rok 2025 → 28, godzina/minuta na granicy, Zapisz, powrót do wiersza),
+   CharonSystemToolsTests (SetClock zachowuje strefę, wykrywa niezapisany
+   zegar, DateWords), CharonFirmwareBrowserTests.
+
+3. VM (OVMF, PL): „Rok, 2026, suwak” → Prawo → „Rok, 2027, suwak”; Zapisz →
+   „Ustawić zegar firmware na: środa, 17 listopada 2027, godzina 07:21? …” →
+   Potwierdź → „Operacja zakończona”; „Data i godzina” → „Zegar firmware:
+   środa, 17 listopada 2027, godzina 07:21:11.” Zegar zmieniony tylko w
+   jednorazowej maszynie testowej.

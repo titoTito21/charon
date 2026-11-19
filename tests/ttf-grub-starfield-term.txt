@@ -1,0 +1,4 @@
+Booting `Charon test entry one'
+Entry one selected
+Failed to boot both default and fallback entries.
+Press any key to continue...

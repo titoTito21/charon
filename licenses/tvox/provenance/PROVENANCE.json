@@ -1,0 +1,7 @@
+{
+  "lib/titan_voice/g2p_pl.py": "36f58e25500c13bf93e3702e2a83e8aeac240b1a3383abc1893693777b9c673d",
+  "lib/titan_voice/voices.py": "b3f66c359d8e3658d71cac4fce84903fbb496fe4f95794b033c04008c348f0d4",
+  "lib/titan_voice/data/levels.json": "0b708b5aa799ed914fd69ff70bb27729c50cfdfa86282093f58052614c1c2587",
+  "lib/native/tvox_dsp.c": "a89c7bd28e6b14cbaa2f5c6108b52d4bc6ae3d424bf336e222d19f2596f5ea3a",
+  "README.md": "1eeaca4c8fbe5db20ca7ee18174efdda4340fa1e787b28af1ae67174d07fbd46"
+}

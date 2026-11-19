@@ -1,0 +1,9 @@
+Limine 11.4.1 (x86-64, UEFI)
+ARROWS Select
+ENTER Boot
+E Edit
+S Firmware Setup
+B Blank Entry
+Charon probe loader
+Windows Boot Manager
+Booting automatically in 9, press any key to stop the countdown...

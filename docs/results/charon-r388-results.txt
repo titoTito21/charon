@@ -1,0 +1,46 @@
+Charon r388 — Windows PE od początku do końca, od razu treść ekranu
+
+Build: charon-win-r387q (--trace) + charon-win-r387q-drv (--driver).
+
+1. Windows PE / środowisko odzyskiwania (Winre.wim skopiowany z partycji
+   odzyskiwania hosta za zgodą użytkownika, work/copy-winre.ps1, tylko odczyt,
+   SHA256 1D7C72D4…08 zgodny; plik testowy, nie jest dystrybuowany).
+   Harness: CHARON_WINBOOT_WIM=winre-dl/winre.wim CHARON_WINBOOT_MB=1300
+   CHARON_MEM=4096 charon-r386-entry.py … 3 --winboot (szablon BCD z płyty
+   DVD, ramdisk \sources\boot.wim). Charon uruchamia wpis z listy urządzeń;
+   Windows Boot Manager wczytuje obraz, winload startuje, ExitBootServices,
+   Windows RE pokazuje „Wybierz układ klawiatury” (zrzut
+   work/r386-entry-winpe387/now.png). Od przekazania sterowania mówi już
+   Windows (Narrator: Ctrl+Win+Enter), nie Charon.
+2. Pomiar fazy wczytywania (ślady HAK_CHARON_TICK_TRACE, zrzuty co 0,5 s):
+   odczyty dysku (BlockIo, ok. 3800 wywołań, cały WIM) przy całkiem czarnym
+   ekranie, zegar czytnika działa; kręcące się kropki pojawiają się dopiero
+   pod winload, gdy zdarzenia firmware są wstrzymane (zegar Charona staje po
+   ok. 500 krokach, dźwięk HDA dostaje EFI_TIMEOUT). Wtedy żaden kod Charona
+   się nie wykonuje — kropek nie da się odczytać ani udźwiękowić.
+3. Wczytywanie słyszalne: przy Windows Boot Managerze Charon liczy odczyty
+   BlockIo (hak na ReadBlocks, zdejmowany z pozostałymi). ≥8 odczytów na
+   200 ms przy ekranie bez tekstu od 1 s: od razu „Wczytywanie, czekaj.”,
+   potem przy dźwiękach pasków postępu krążąca gama C-dur (523…1047 Hz,
+   35 ms) co 200 ms, dopóki odczyty trwają. Nagranie live.wav (winpe387p):
+   tony 587, 659, 698, 784 Hz po komunikacie. Wynik winpe387q: „Wczytywanie,
+   czekaj.”, „System przejmuje sterowanie.”
+4. Na prośbę użytkownika: czytnik nie mówi „Menedżer rozruchu: X” (zostaje
+   dźwięk boot_manager_loaded), menu Charona nie mówi „Uruchamiam: …” przy
+   zwykłych komunikatach (zostaje w szczegółowych). Narzędzia kończące usługi
+   firmware od razu (Memtest86+) nadal „Uruchomiono: …”, bo inaczej nic by nie
+   powiedziały.
+5. Odrzucone: wykrywanie kółka po pikselach (zmiana małego obszaru bez
+   tekstu) — w WinPE nie pomaga (patrz 2), a myliłoby migający kursor GRUB-a /
+   OpenCore z wczytywaniem; usunięte przed wydaniem.
+6. Regresja work/r387-regression-rg387q.txt: OpenCore, systemd-boot, Limine,
+   Clover, Windows Boot Manager (Recovery), rEFInd, Syslinux, iPXE, Ventoy,
+   Haiku, FreeBSD, Memtest86+, Debian netinst, nośniki (FreeDOS tylko BIOS,
+   shim/GRUB z USB) — 14/14 jak r387, pierwsze słowa to treść ekranu.
+7. Dodatek UEFI (tylko CHARONVOICE.EFI r387q-drv przez Driver####, bez menu
+   Charona, Windows jako domyślny program dysku z Winre.wim): work/charon-
+   addon-test.py addon-r388 (CHARON_WINBOOT_WIM, CHARON_WINBOOT_MB=1300,
+   CHARON_MEM=4096 — harness przyjmuje teraz te zmienne). Faza 2: „Charon:
+   mowa włączona od startu komputera.”, komunikat BdsDxe o starcie Boot0001,
+   „Wczytywanie, czekaj.”, „System przejmuje sterowanie.” Ten punkt dopisano
+   po spakowaniu Charon-r388.zip (archiwum ma punkty 1–6).

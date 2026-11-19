@@ -1,0 +1,9 @@
+Windows Boot Manager
+Choose an operating system to start, or press TAB to select a tool:
+(Use the arrow keys to highlight your choice, then press ENTER.)
+Windows Setup
+Windows Memory Diagnostic
+Tools:
+ENTER=Choose
+TAB=Menu
+ESC=Cancel

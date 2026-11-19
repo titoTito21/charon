@@ -1,0 +1,14 @@
+# build output and test machines
+/build/
+*.o
+*.obj
+*.elf
+*.EFI
+*.efi
+*.img
+*.qcow2
+*.fd
+*.wav
+*.ppm
+*.png
+__pycache__/

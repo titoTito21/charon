@@ -1,0 +1,43 @@
+Charon r367 — motywy GRUB-a (2026-11-17)
+
+1. Czcionki PF2 (src/efi/CharonPf2Fonts.h, tools/gen-charon-pf2fonts.py)
+- DejaVu Sans 10/12/14/16 i Bold 14 z pakietu Debiana grub-theme-starfield
+  (glify znaków czytanych przez Charona, 39 KB); włączane, gdy startuje GRUB
+  (w instalacjach czcionki motywu leżą zwykle na ext4, nieczytelnym dla
+  firmware, dlatego są wbudowane). Licencja: Bitstream Vera + DejaVu.
+- Czytnik: czcionki PF2 jako bitmapy o proporcjonalnych odstępach; spacja z
+  własnej szerokości glifu spacji.
+
+2. Tekst na zdjęciu (motyw starfield)
+- Wiersze bez dominującego tła: piksele dokładnie czarne i dokładnie białe
+  przenoszone na jednolitą stronę i czytane tak samo (PF2 rysuje glify jednym
+  kolorem); wspólne tło dla tekstu z obrazu; linia pogrubioną czcionką =
+  zaznaczenie.
+- Terminal GRUB-a z czcionką motywu (proporcjonalna czcionka w stałych
+  komórkach): spacje liczone w komórkach; kreski ramki przy lewej krawędzi
+  ekranu pomijane (gwiazdka OpenCore zostaje).
+- Kolejność: gdy działa rozpoznany menedżer inny niż rEFInd i ma własne
+  czcionki, czytane są one przed czytnikiem rEFInd-a.
+- Wiersze siatki według linii bazowej z histerezą (pozycja pogrubiana o
+  piksel nie zmienia wiersza), czyszczenie przy częściowym odczycie liczone
+  od linii bazowej.
+- OCR Unifont: linia musi mieć literę lub cyfrę.
+- Pamięć rozmiarów dla czcionek bitmapowych: próg 0,15.
+
+3. Testy
+- Host: ttf-grub-starfield (8 linii: tytuł „GRUB Boot Menu” — czarny na
+  ciemnym, 6 pozycji, podpowiedź), ttf-grub-starfield-term (4 linie
+  terminala) PASS; regresja 9 innych ekranów (Windows x6, Limine, OpenCore,
+  Clover) PASS.
+- VM (GRUB z motywem, melodia): „GRUB: menu, 6 pozycji. Charon test entry
+  one, 1 z 6 …”, strzałki: „Charon test entry two, 2 z 6”, „UEFI firmware
+  settings, 3 z 6”, „Probe loader, 4 z 6”, „UEFI firmware settings, 3 z 6”.
+  Jedna przerwa dźwięku 78 ms przy pierwszym pełnym odczycie ekranu z motywem
+  (wcześniej 118 ms). Licznik paska postępu czytany raz („… in 5|.” — kreska
+  końca paska dołączona).
+- Pakiet r367 (EN): GRUB -> „GRUB with a theme (starfield, DejaVu fonts)”
+  (pozycja potrzebowała „export theme” przed configfile): „GRUB: menu, 8
+  items. Test entry one, 1 of 8.”, strzałki „Test entry two, 2 of 8”, „UEFI
+  firmware settings, 3 of 8”. Liczba pozycji = widoczne na ekranie (motyw
+  przewija 14 pozycji). Zwykłe menu GRUB-a narysowane czcionką DejaVu w
+  stałych komórkach (bez motywu) też czytane: „GRUB: menu, 14 items …”.

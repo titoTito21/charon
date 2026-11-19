@@ -1,0 +1,13 @@
+#pragma once
+#include <stddef.h>
+namespace std {
+template<class E> class initializer_list {
+    const E* array_;size_t length_;
+    constexpr initializer_list(const E* array,size_t length):array_(array),length_(length) {}
+public:
+    constexpr initializer_list() noexcept:array_(nullptr),length_(0) {}
+    constexpr size_t size() const noexcept {return length_;}
+    constexpr const E* begin() const noexcept {return array_;}
+    constexpr const E* end() const noexcept {return array_+length_;}
+};
+}

@@ -1,0 +1,42 @@
+Charon synthesizer modules (r393): licences
+===========================================
+
+Both modules are optional add-ons. Charon works without them (TVox).
+
+espeak.tts + espeak/{espeak-ng-data,espeak-pl,espeak-en}.chsp
+  eSpeak NG b97de3cf2ad32c1d48c6bd36dfbf57a9c587fedc (github.com/espeak-ng/espeak-ng, GPL-3.0-or-later;
+  licences/espeak-ng-COPYING.txt). Algorithms unmodified; data compiled from
+  the same commit by its own compilers (phontab, phonindex, phondata,
+  intonations, pl_dict, en_dict, lang/zlw/pl, lang/gmw/en), LZMA-compressed.
+  The whole module is distributed under GPL-3.0-or-later.
+
+rhvoice.tts + rhvoice/{rhvoice-pl,rhvoice-en}.chsp
+  RHVoice 1.18.5 core (github.com/RHVoice/RHVoice, commit 6929324d2f0486dc889aebe4e0a630d9ea30b143):
+  LGPL-2.1-or-later (licences/lgpl-2.1.txt); its HTS engine files and the
+  language data are GPL-2.0-or-later (licences/gpl-2.0.txt,
+  licences/rhvoice-Polish-license.txt). The module as a whole:
+  GPL-2.0-or-later. Built without MAGE (MAGE would make it GPL-3.0).
+  Two small source patches (Boost-free voice id, standard `typename`):
+  outputs/nvda-haiku/src/synth/rhvoice/patches in the Charon sources.
+  Voice Natan (Polish, github.com/RHVoice/natan-pol, commit 42d2a7d7b60ee5b4c512d7e2a8428bbb252b7203):
+  CC0-1.0 / public domain (licences/natan-LICENSE.txt). Team: Edwin Tarka
+  (speaker), Tomasz Bilecki (audio editing), Zvonimir Stanecic (training).
+  Voice Slt (English, github.com/RHVoice/slt-eng, commit c17dded68322016aba2868d9c29f11bba14d275f): CMU ARCTIC
+  licence (licences/cmu_us_slt_arctic-COPYING.txt), Carnegie Mellon
+  University; RHVoice voice by Artem Plaksin, Zvonimir Stanecic.
+  Voice data is shipped byte-identical to upstream (16 kHz model only), only
+  losslessly compressed: LZMA, with a reversible float32 byte-plane
+  reordering of the HTS pdf blocks in voice.data; every file is checked
+  against its CRC-32 after decompression. Neither voice has a
+  no-derivatives or non-commercial condition (Alan was not used because its
+  repository carries no licence statement).
+
+Runtime parts in both modules
+  musl 1.2.5 (MIT, licences/musl-COPYRIGHT.txt), LZMA SDK 26.06 LzmaDec
+  (public domain, licences/lzma-sdk.txt). rhvoice.tts also contains libc++,
+  libc++abi and libunwind of LLVM 23.1.5 (Apache-2.0 WITH LLVM-exception,
+  licences/llvm-LICENSE.txt). Charon glue: GPL-2.0-or-later (espeak glue:
+  GPL-3.0-or-later).
+
+Corresponding source: the pinned archives listed above plus
+outputs/nvda-haiku/src/synth and tools/build-charon-synths.py.

@@ -1,0 +1,57 @@
+Charon r361 — Windows Boot Manager, nazwy menedżerów rozruchu, nowe dźwięki (2026-11-17)
+
+1. Windows Boot Manager (graficzny, Segoe UI, tekst proporcjonalny)
+- src/efi/CharonTtfOcr.h + CharonTtf.c (stb_truetype 1.28, domena publiczna/MIT):
+  czcionki TrueType bootmgr-a (segoe_slboot, segoen_slboot, segmono_boot;
+  wgl4_boot odrzucona — mapy bitowe) wczytywane w czasie działania z dysku, z
+  którego startuje Windows Boot Manager (\EFI\Microsoft\Boot\Fonts); Charon
+  ich nie zawiera.
+- Model rasteryzacji ustalony pomiarem: poziomy pokrycia to wielokrotności
+  1/16 (nadpróbkowanie 4x4), czcionka bez instrukcji hintingu, całkowite
+  pozycje pióra; glify przesunięte w pionie o ułamek piksela (faza mierzona z
+  wiersza pod linią bazową), w poziomie wzorce w 4 fazach; skala pozioma z
+  regresji odstępów pióra (16,0 px), pionowa z dopasowania (16,25 px).
+- Programowanie dynamiczne wzdłuż linii z ograniczeniem szerokości znaków
+  (advance) i spacjami z odstępów; kandydaci wybierani po znakach (profil
+  kolumn względny do atramentu); pamięć rozmiarów dla linii o tych samych
+  wysokościach liter.
+- tests/CharonTtfOcrTests.cpp (host): ekran Recovery (zrzut z VM) — 9/9 linii
+  bezbłędnie (PASS), 296 ms na hoście; 28 innych zrzutów (GRUB, rEFInd, firmware,
+  Charon): 0 linii (po zaostrzeniu progu: tekst Liberation Mono rEFInd-a
+  dawał 0,353, prawdziwe linie <= 0,241, próg 0,30).
+- VM (harness, dysk GPT z plikami z C:\Windows\Boot hosta, BCD szablonu DVD):
+  „Menedżer rozruchu: Windows Boot Manager.”, czcionki=3, cały ekran Recovery
+  przeczytany; z melodią: jedna przerwa dźwięku 76 ms (start), 77 s nagrania.
+- Pakiet (tryb sterownika, mowa od włączenia, dysk vvfat jak w launcherze):
+  „Boot manager: Windows Boot Manager.” i ekran Recovery; Esc („UEFI Firmware
+  Settings”) → ustawienia firmware czytane.
+- Naprawiony błąd z r358: po ponownym podłączeniu konsoli (UiApp po Esc z
+  bootmgr) lista hooków GOP miała zwolniony GOP → #GP w RehashBands
+  (CHARONVOICE.EFI+0x4BA7C). PruneGops sprawdza instalację GOP przed użyciem
+  i przy zdejmowaniu hooków.
+- Nie testowane: menu wyboru systemu Windows Boot Managera (BCD z wieloma
+  wpisami wymaga uprawnień administratora do bcdedit), Startup Settings (F8
+  ignorowane przy tym BCD), memtest.efi (aplikacja bootmgr-a, nie UEFI),
+  start łańcuchowy z GRUB-a Debiana („cannot load image” także dla memtest —
+  ograniczenie tej konfiguracji).
+
+2. Nazwy innych menedżerów rozruchu (src/efi/CharonBootManagers.h)
+- Hook StartImage: obraz rozpoznany po własnej nazwie (rEFInd, Windows Boot
+  Manager, systemd-boot, OpenCore, GRUB, Clover, Limine), sygnatury zapisane
+  z przesunięciem bajtów; obrazy Charona mają znacznik i nie są ogłaszane.
+- tests/CharonBootManagersTests.cpp: GRUB, rEFInd, bootmgfw, bootmgr — nazwy;
+  memtest, PROBE, CharonShell, CHARON.EFI, CHARONVOICE.EFI — brak (PASS).
+- VM: „Menedżer rozruchu: GRUB.” przy starcie GRUB-a z Charona.
+
+3. Dźwięki (src/sfx/boot_manager)
+- welcome.wav (nowy), system_will_launch.wav (ExitBootServices: z
+  komunikatem „System przejmuje sterowanie”, czekanie do 5 s), boot_manager_loaded.wav
+  (start innego menedżera). tools/prepare-charon-sounds.py przyjmuje 44,1/48 kHz,
+  mono/stereo; paczka work/charon-cues-48k-r361 (14 cue, stare bez zmian
+  bajtowo). Nowe cue opcjonalne przy ładowaniu (ESP sprzed r361 działa).
+- VM (PROBE.EFI z prawdziwym ExitBootServices): ostatni odcinek dźwięku
+  25,67–28,46 s = dźwięk przejęcia (2,72 s) z mową.
+
+4. Wydanie outputs/Charon-r361.zip: launcher kopiuje Windows Boot Managera z
+Windows\Boot tego komputera do state\windows-esp i dołącza go jako dysk FAT
+(QEMU vvfat, partycja MBR); pliki Microsoftu nie są w pakiecie.

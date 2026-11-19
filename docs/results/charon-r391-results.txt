@@ -1,0 +1,41 @@
+Charon r391 — instalator: czytnik ekranu albo menedżer rozruchu, Secure Boot
+przez shim (2026-11-18)
+
+Prośby użytkownika: instalator boot managera i screenreadera z wyborem, czy
+Charon ma być domyślnym menedżerem rozruchu, czy czytnikiem; potwierdzenie
+(mokutil albo wprost), że na pewno odblokować Charona; czytnik także przez
+shim; „Kontynuuj” na Windows Boot Manager na prawdziwym komputerze.
+
+Build: charon-win-r391b (+ -drv), work/package-charon-r391.py.
+
+1. Charon: \EFI\HAK\reader-only (BootMenu.h ReaderOnly)
+- Bez powitania i podpowiedzi, czas autostartu 0, cel Kontynuuj startuje od
+  razu z czytnikiem rezydentnym; ustawienia na dysku bez zmian.
+- QEMU (work/charon-r391-readeronly.py, --winboot): faza 1 — cel Kontynuuj
+  ustawiony w menu na „Dysk … (Windows Boot Manager: Windows Setup)”
+  („Operacja zakończona”); faza 2 z plikiem reader-only — brak mowy Charona,
+  Windows Boot Manager uruchomiony, czytnik: „Recovery. Your PC/Device needs
+  to be repaired …” (głos komunikatów). Wcześniejsza próba z celem Shell
+  (stary CONTINUE.BIN szablonu) również uruchomiła cel od razu.
+
+2. Instalatory (tools/charon-addon)
+- Install-Charon.ps1 (Windows; z Install-CharonAddon.ps1 r385): -Mode
+  Reader|Shim|Manager, -Default, -Yes, -ShimDir; rozmowa, podsumowanie,
+  „TAK”; Boot#### („Charon”, „Charon czytnik”) budowany jak Driver#### (atrybut
+  ACTIVE), BootOrder z Charonem na początku albo na końcu; cel Kontynuuj:
+  pierwszy wpis BootOrder, który nie jest Charonem (rekord HAKCONT1 jak
+  SaveContinue); shim: shimx64.efi, mmx64.efi, Charon jako grubx64.efi,
+  podpis certyfikatem komputera i \EFI\HAK\charon-mok.cer (MokManager:
+  Enroll key from disk); -Uninstall usuwa też wpisy rozruchu i \EFI\HAK
+  założone przez instalator. Parser PowerShell: bez błędów.
+- zainstaluj-charona.sh (Linux): to samo przez efibootmgr; cel Kontynuuj z
+  efivarfs; Secure Boot: openssl (klucz komputera w /var/lib/charon), sbsign,
+  mokutil --import (hasło jednorazowe), kroki MokManagera wypisane. sh -n:
+  bez błędów.
+- Niesprawdzone: oba instalatory nie były uruchomione na prawdziwym
+  komputerze (zmieniają zmienne firmware hosta); MokManager i weryfikacja
+  shimem plików ładowanych przez Charona (AudioDxe, Shell) — niesprawdzone.
+  Nośnik Debiana ma shim podpisany przez Microsoft (UEFI CA 2011 i 2023),
+  ale nie MokManagera, więc shim nie jest dołączony do wydania.
+- Driver#### (tryb 1) pod Secure Boot: firmware sprawdza tylko db, nie MOK —
+  instalator to mówi.

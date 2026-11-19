@@ -1,0 +1,29 @@
+{
+  "opencore": {
+    "repository": "acidanthera/OpenCorePkg",
+    "requested_ref": "1.0.8",
+    "commit": "6fe4d15cb66596d99d8cfedce69d8fc6dad71886",
+    "archive": "work\\charon-audio-driver-r347\\opencore-6fe4d15cb66596d99d8cfedce69d8fc6dad71886.tar.gz",
+    "url": "https://codeload.github.com/acidanthera/OpenCorePkg/tar.gz/6fe4d15cb66596d99d8cfedce69d8fc6dad71886",
+    "sha256": "23c4e86d6619d204043ee971e2eb726ca4c874bfd60357c9a6ccb7489f8a7bec",
+    "bytes": 19211278
+  },
+  "ocbuild": {
+    "repository": "acidanthera/ocbuild",
+    "requested_ref": "master",
+    "commit": "020b14fa68a9825642e0c0fb643c2963bd679ae3",
+    "archive": "work\\charon-audio-driver-r347\\ocbuild-020b14fa68a9825642e0c0fb643c2963bd679ae3.tar.gz",
+    "url": "https://codeload.github.com/acidanthera/ocbuild/tar.gz/020b14fa68a9825642e0c0fb643c2963bd679ae3",
+    "sha256": "c668601ac81839cc1f69a03d5c922e433bb6ea212e19057c5a141fcdd95c7ac5",
+    "bytes": 21557277
+  },
+  "audk": {
+    "repository": "acidanthera/audk",
+    "requested_ref": "master",
+    "commit": "dfd5516702b4911f1fc1919a429d637b456df913",
+    "archive": "work\\charon-audio-driver-r347\\audk-dfd5516702b4911f1fc1919a429d637b456df913.tar.gz",
+    "url": "https://codeload.github.com/acidanthera/audk/tar.gz/dfd5516702b4911f1fc1919a429d637b456df913",
+    "sha256": "55dbc3ee29bbc51dbea9cb2aa1251accfbc074c80ca6e2facf9895edea7cda65",
+    "bytes": 18708210
+  }
+}

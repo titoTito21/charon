@@ -1,0 +1,27 @@
+Charon r376 — tryb dosadny: wpisy konsoli i postęp sprawdzony w VM (2026-11-17)
+
+1. Wpisy konsoli (src/efi/HAKBootEFI.cpp SayStyled)
+- Wszystkie 15 wpisów „HAK EFI: …” / „Charon: …” mają wersje dosadne PL i EN
+  (np. „HAK EFI: spis zapisany, i chuj.”, „HAK EFI: wracam do kolejności
+  firmware, dalej radź sobie sam, łamago.”, „Charon: dźwięk się, kurwa, nie
+  zatrzymał; start zablokowany.”). Przed menu decyduje zapisane ustawienie,
+  po menu bieżący wybór w menu. Bez trybu dosadnego wpisy bez zmian (log
+  techniczny, angielski).
+
+2. VM (PL)
+- Mowa postępu co 10% + tryb dosadny, GPROBE z GRUB-a („Installing
+  updates”): „15 procent, ja pierdolę, jak wolno”, „20 procent i dalej
+  mieli”, „30 procent, kurwa”, „40 procent tego mielenia”, „50 procent,
+  czekaj, łamago”, „60 procent, ślimaczy się to w chuj”, … „100 procent,
+  kurwa, wreszcie”, potem „Graficzny cyrk bez jednego słowa do
+  przeczytania.” (ekran bez tekstu).
+- Ustawienia w trybie dosadnym: „Jak mam trąbić o paskach postępu? Okno
+  wyboru, sygnały”, „Mowa co 10 procent, bierz albo spierdalaj”.
+- Restart z zapisanym trybem dosadnym: konsola „HAK EFI: spis zapisany,
+  i chuj.” (poprzedni start, przed włączeniem trybu: „HAK EFI: inventory
+  saved.”); „Kontynuuj”: „Dość gadania, startuj, kurwa. — …”, „Kopa w dupę
+  dostaje: Urządzenie UEFI — EFI Internal Shell.”
+
+Co świadomie zostaje bez zmian: tekst czytany z ekranu innych programów i
+powłoki UEFI (to treść ekranu, nie słowa Charona) oraz teksty z formularzy
+firmware (dostają dosadny dopisek, ich treść zostaje).

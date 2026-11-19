@@ -1,0 +1,52 @@
+Charon r392 — ustawienia firmware w stylu AMI (pasek zakładek, zaznaczenie
+kolorem tekstu, wartości opcji), pozycje strony głównej OVMF (2026-11-18)
+
+Prośby użytkownika: „pasek zakładek, bo na pewno w ustawieniach uefi to
+jest”, „w pasku zakładek lewo prawo przełączają między zakładkami”; numeracja
+menu firmware.
+
+Build: charon-win-r392h (+ -drv). Program testowy tests/CharonTabProbe.cpp
+(work/tabprobe-r392/TABPROBE.EFI: ekran w stylu AMI Aptio — tytuł, pasek
+kart Main/Advanced/Chipset/Security/Boot/Save & Exit z otwartą kartą w
+odwróconych kolorach, pozycje z wartościami, panel pomocy, panel klawiszy;
+strzałki lewo/prawo karty, góra/dół pozycje), uruchamiany z wiersza poleceń
+GRUB-a (CHARON_GRUB_EXTRA, chainloader).
+
+1. Pozycje menu z przerwami (MenuBlock)
+- Wiersz z tekstem tylko daleko na prawo od kolumny menu (zawinięta pomoc)
+  jest dla menu przerwą. Strona główna OVMF z dodatkiem: „Ustawienia
+  firmware: menu, 6 pozycji. Select Language, lista rozwijana, Standard
+  English, 1 z 6”, „Device Manager, 2 z 6” … „Reset, 6 z 6” (było 1 z 5 i
+  5 z 6).
+
+2. Ekran w stylu AMI (QEMU, czytnik w GRUB-ie)
+- Zaznaczenie kolorem tekstu (biały na tym samym szarym tle):
+  ColourSelectedRow — jedyny wiersz kolumny pozycji w jasnym kolorze, którego
+  nie ma żaden inny; także po odrzuceniu paska na dole ekranu (konsola 100
+  kolumn, pasek 80 — wyglądał jak zaznaczenie). Tekst zaznaczenia: komórki w
+  kolorze zaznaczenia (bez panelu pomocy obok) i znacznik podmenu ►.
+- Wartości opcji „[Enabled]”, „[Disabled]”, „[On]”, „[Auto]” … bez spacji w
+  nawiasie: lista rozwijana (było: przycisk).
+- Wypowiedzi: „Main, karta 1 z 6 … BIOS Vendor American Megatrends, 1 z 4”;
+  „System Date, pole daty, Wed 11/18/2026, 2 z 4”; „Advanced, karta 2 z 6.
+  CPU Configuration, podmenu, 1 z 4”; „SATA Configuration, podmenu, 2 z 4”;
+  „Boot, karta 5 z 6. Setup Prompt Timeout 1, 1 z 5”; „Bootup NumLock State,
+  lista rozwijana, On, 2 z 5”; „Boot Option #1, lista rozwijana, Windows Boot
+  Manager, 4 z 5”; lewo z Main: „Save and Exit, karta 6 z 6”. Gdzie jestem:
+  „Ekran: Aptio Setup … Boot, karta 5 z 6. Zaznaczone: Boot Option #1
+  [Windows Boot Manager].”
+- Nazwa programu w teście: „Menedżer rozruchu Windows” — program testowy
+  zawiera tekst „Windows Boot Manager” (rozpoznawanie po treści obrazu);
+  artefakt testu.
+- Symbol nazwany przed zachowaną interpunkcją bez spacji: „up arrow down
+  arrow: Select Item”.
+- Ograniczenie: ekran testowy, nie prawdziwe firmware AMI/Insyde; kolory i
+  układ prawdziwych ustawień mogą się różnić.
+
+3. Testy hosta: CharonSpeechTextTests ALL PASSED, CharonControlsTests PASS.
+4. Regresja (work/r386-regression.sh)
+- r392g (work/r392-regression-rg392.txt): jak r390, z jedną różnicą — iPXE:
+  „iPXE: menu, 3 pozycje. iPXE 2.0.0+dfsg-5, 1 z 3” (biały tytuł wśród
+  szarych wierszy wzięty za zaznaczenie). r392h: zaznaczenie kolorem tekstu
+  tylko po klawiszu albo przy pasku zakładek; iPXE znów jak w r390, ekran AMI
+  bez zmian. Pełna regresja r392h: work/r392-regression-rg392h.txt.

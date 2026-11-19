@@ -1,0 +1,19 @@
+Windows Memory Diagnostics Tool - Options
+Test Mix:
+Basic
+Standard
+Extended
+Description: The Extended tests include all the Standard tests plus MATS+
+(cache disabled), Stride38, WSCHCKR, WStride-6, CHCKR4, WCHCKR3,
+ERAND, Stride6 (cache disabled), and CHCKR8.
+Cache:
+Default
+On
+Off
+Description: Use the default cache setting of each test.
+Pass Count (0 - 15):   2
+Description: Set the total number of times the entire test mix will
+repeat (Max = 15).
+TAB=Next
+F10=Apply
+ESC=Cancel

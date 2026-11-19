@@ -1,0 +1,3 @@
+0
+PASS 1551 original runtime component hashes
+PASS 353 pinned locale components (all 63 catalogs)

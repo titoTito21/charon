@@ -1,0 +1,139 @@
+Charon r386 — nośniki wymienne, Debian (GRUB z motywem), OpenCore, Limine
+==========================================================================
+Data: 2026-11-17. Build: work/charon-win-r386ah (CHARON.EFI),
+work/charon-win-r386ah-drv (CHARONVOICE.EFI). Maszyna: QEMU q35/TCG, OVMF,
+dźwięk dsound + wavcapture (słyszalne na hoście).
+
+1. Nośniki bez wpisu w firmware (src/efi/CharonMedia.h, BootMenu.h)
+   - Lista urządzeń dopisuje nośniki, których firmware nie ma w BootOrder:
+     system plików z \EFI\BOOT\BOOTX64.EFI (pendrive włożony później, płyta,
+     drugi dysk tylko z loaderem zapasowym). Wpis istnieje tylko w pamięci
+     (nie w NVRAM), uruchamiany przez StartVerified z id 0xFFFF; nie można go
+     ustawić jako „Kontynuuj”/„Następny rozruch”.
+   - Nośniki tylko dla BIOS (MBR z aktywną partycją bez ESP, superfloppy,
+     płyta El Torito bez obrazu EFI) są na liście jako „(…, tylko BIOS)” z
+     nazwą systemu z sektora rozruchowego (FreeDOS, MS-DOS, Windows, GRUB,
+     SYSLINUX, LILO, Linux/BSD/Haiku po typie partycji). Enter mówi, że
+     Charon (UEFI) ich nie uruchomi i co zrobić (CSM albo wersja UEFI).
+   - Wpięcie/wyjęcie w menu: co 2 s podpis UsbIo/BlockIo (co 4 s odczyt
+     napędów wymiennych), po zmianie ConnectController na USB i napędach
+     wymiennych, potem „Nowy nośnik: …” / „Odłączono nośnik: …”.
+   - Etykieta: etykieta FAT, a gdy jej brak — nazwa woluminu ISO 9660
+     (hybrydowe ISO na pendrivie); shim („UEFI SHIM”) rozpoznawany na liście,
+     przy starcie ogłaszany jest dopiero loader, który shim uruchamia.
+   - Wpis firmware napędu optycznego nazywa się „CD/DVD” (nie „Dysk”).
+   Próba (work/charon-r386-media.py, FreeDOS 1.4 LiteUSB + Debian mini.iso):
+     „USB — FD14-LITE (FreeDOS, tylko BIOS), pozycja 5 z 5”, Enter →
+     komunikat o trybie BIOS; „CD/DVD — UEFI QEMU DVD-ROM QM00009”;
+     pendrive wpięty przez QMP: „Nowy nośnik: USB — ISOIMAGE (shim, znalazł
+     Charon).”; start → „Menedżer rozruchu: GRUB.” i menu Debiana.
+   Harness: charon-vm.py --usb, CHARON_USB=img, CHARON_CDROM=iso, operacje
+   usbplug/usbunplug/cdchange, CHARON_MEM, CHARON_NET, CHARON_DEBUGCON,
+   CHARON_GDB (+ work/gdb-watch.py: punkt obserwacji zapisu przez stub GDB).
+
+2. Czytnik: GRUB Debiana (src/efi/CharonOcr.h, CharonResident.h)
+   - Tekst Unifont na tapecie: wyszukiwanie siatki pomija komórki „miękkie”
+     (kontrast < 80, krawędzie kształtów tapety), krawędzie pasków (pełne
+     pasy wierszy/kolumn) oraz znaki ramek i bloków U+2500–U+259F; przebieg
+     pasami 32 wierszy co 16 z własną siatką (etykiety motywu GRUB w
+     dowolnych miejscach), z podziałem pasa na grupy kolumn; dla GRUB-a
+     zawsze, dla nieznanych programów tylko gdy pierwszy przebieg znalazł
+     tekst, dla innych menedżerów wyłączone.
+   - Zaznaczenie GRUB-a „*” przed tytułem (tekstowe menu na tapecie) wygrywa
+     z kolorami.
+   Wyniki (VM): mini.iso: „GRUB: menu, 3 pozycje. Install, 1 z 3. GNU GRUB
+   version 2.12-9+deb13u2 …”, strzałki „Advanced options ..., 2 z 3”,
+   podmenu i Escape czytane; netinst 13.7.0 (motyw gfxmenu): „GRUB: menu,
+   5 pozycji. Graphical install, 1 z 5 …”, każda strzałka mówi pozycję
+   („Install, 2 z 5” … „Install with speech synthesis, 5 z 5”).
+   Od Charona do systemu: Enter na „Install with speech synthesis” →
+   „System przejmuje sterowanie.”, potem instalator Debiana mówi sam
+   (espeakup; ciągły dźwięk 160 s w nagraniu po przekazaniu), wybór języka
+   klawiaturą (56 = polski) → „Wybierz swoją lokalizację”. Pełna instalacja
+   nie wykonana (potrzebny osobny dysk docelowy, 1–2 h w TCG). mini.iso nie
+   ma modułów dźwięku (/proc/asound brak) — jego „speech synthesis” nie
+   może mówić; mówi netinst.
+
+3. Błędy naprawione
+   - Limine: #UD w timerze czytnika (skok pod 0xE/0xB0001) od r384a:
+     VoiceProvider z buforami tonów 2×48×500×2 próbek (~192 KB) był zmienną
+     lokalną efi_main i wystawał poza stos firmware; głęboki stos Limine
+     nadpisywał wywołania głosu. Znalezione przez bisekcję buildów
+     (r383bis dobry, r384a zły) i punkt obserwacji. Teraz pamięć statyczna.
+     Po poprawce: „Limine: menu, 2 pozycje. Charon probe loader, 1 z 2 …
+     Booting automatically in 9 …”, bez wyjątku.
+   - OpenCore czasem bez menu (czarny ekran do końca odliczania): kopia
+     struktury GOP z naszym HookBlt (ProvideConsoleGop) nie miała wpisu
+     → EFI_DEVICE_ERROR przy każdym Blt. OriginalBlt dopasowuje kopię po
+     wspólnym Mode (też po usunięciu oryginału). Do tego: obszar OCR
+     przycinany do treści, obszar jednokolorowy pomijany (szczyt czasu w
+     timerze 9,9 → 1,3 mld cykli). Pomiar work/oc-draw-time.py: r385 1,4 s;
+     r386p 1,3 s (4/4 + 1/1), wcześniej r386m „nigdy” 2/2.
+
+4. Regresja r386p (work/charon-r383-sweep.py): OpenCore (menu + „2” →
+   GRUB), Limine, Clover („Welcome to Clover 5176 …”), Windows Boot Manager
+   (ekran Recovery), systemd-boot (r386j), GRUB testowy, Debian mini/netinst.
+   Sterownik CHARONVOICE r386 zbudowany; w VM nie był osobno sprawdzany.
+
+5. Dalsze menedżery i poprawki (r386q–r386s, work/charon-r386-entry.py,
+   work/make-app-sticks.py: pendrive'y z programami z pakietów Debiana)
+   - rEFInd 0.14.2: „… Automatic boot in 30 seconds …, ikona 1 z 3”,
+     strzałki „Boot EFI\probe\PROBE.EFI from GRUBTEST, ikona 2 z 3”.
+   - Memtest86+: „Uruchomiono: Memtest86+.”, „System przejmuje sterowanie.”
+     (sam kończy usługi rozruchowe).
+   - Syslinux 6.04 EFI (menu.c32): „Menedżer rozruchu: Syslinux.”,
+     „Syslinux: menu, 3 pozycje. Debian test one, 1 z 3 …”, strzałki.
+   - iPXE 2.0.0: „Menedżer rozruchu: iPXE.”, „iPXE initialising devices…”,
+     „No more network devices. Press Ctrl-B …”, kod powrotu.
+   - Sygnatury Syslinux i iPXE w CharonBootManagers.h.
+   - Ekran czyszczony przed startem programu (jak w BDS firmware): kursor
+     stał w ostatniej kolumnie po menu Charona i pierwsza litera programu
+     kończyła wiersz („i. PXE”, „L. oading bootloader”). Czytnik bierze
+     pozycję startu tekstu z ConOut->Mode przed każdym OutputString.
+   - Dodatek UEFI (charon-addon-test.py, CHARONVOICE r386p): „Charon: mowa
+     włączona od startu komputera.”, „Menedżer rozruchu: Windows Boot
+     Manager.”, ekran Recovery czytany; 10,8 MB dźwięku (jeden wcześniejszy
+     przebieg miał zawieszone audio QEMU — powtórka bez błędów, r385 tak samo).
+   - Regresja r386s: Syslinux, OpenCore (+„2” → GRUB), Debian netinst.
+
+6. Kolejne menedżery i poprawki (r386t–r386ah)
+   - OpenCore, wbudowany wybierak: strzałki działają (bez Charona zmienia się
+     tylko znacznik w 1. kolumnie, work/oc-arrow-check.py). „>” to bieżące
+     zaznaczenie, „*” wpis domyślny. Czytnik: znaczniki „> ” i „* ” na
+     początku wiersza (jeden w bloku) są zaznaczeniem, blok menu z tolerancją
+     przesunięcia (czcionka w skali 2), znacznik nie jest czytany, wiersze,
+     w których przesunął się tylko znacznik, milczą. Wynik: „OpenCore: menu,
+     3 pozycje. 1. CHARON, 1 z 3 …”, strzałki „2. GRUBTEST, 2 z 3”,
+     „3. Windows, 3 z 3”.
+   - Loader Haiku (haiku.iso, spacja przy starcie): „Haiku: menu, 6 pozycji.
+     Select boot volume/state (Current: Haiku …), 1 z 6 …”, strzałki „Select
+     safe mode options, 2 z 6”. Bez spacji: start systemu i „System
+     przejmuje sterowanie.” (instalator Haiku).
+   - Ventoy 1.1.18 (work/make-ventoy-disk.py: MBR, partycja 1 FAT32 z ISO,
+     partycja 2 VTOYEFI): „Menedżer rozruchu: Ventoy.”, „mini.iso. L:Language
+     F1:Help F2:Browse F3:TreeView F4:Localboo. F5:Tools F6:ExMenu”.
+     Poprawki: komórki z tekstem na teksturze progowane względem rogu
+     komórki (połowa najsilniejszej zmiany, co najmniej 120); „1” między
+     literami = „l”; Ventoy traktowany jak GRUB (pasy, czcionki PF2);
+     geometria bochs: druga strona GRUB-a (page flipping 1024x768x24) leży
+     poza buforem z GOP — limit z rejestru VIDEO_MEMORY_64K (wcześniej czytnik
+     wracał do geometrii GOP 1280x800 i nie czytał nic).
+   - Loader FreeBSD 14.5 (bootonly ISO): „Menedżer rozruchu: FreeBSD
+     loader.”, „Okno: Welcome to FreeBSD … 1. Boot Installer [Enter] 2. Boot
+     Single user 3. Escape to loader prompt 4. Reboot 5. Cons: Dual (Video
+     primary). Options: 6. Kernel: default/kernel (1 of 1) 7. Boot Options”,
+     „2” → „Loading kernel…”, „System przejmuje sterowanie.”. Grafika ASCII
+     (logo, maskotka) nie jest czytana ani brana za pola edycji (fragmenty
+     z <40% liter/cyfr, strzępki symboli, całe wiersze grafiki). Strzałki
+     w menu FreeBSD nie istnieją (wybór cyframi; strzałka wychodzi do
+     wiersza poleceń „OK” — tak działa sam loader).
+   - Debian netinst: czytana też dolna pomoc („Enter: Select, E: Edit
+     Selection, C: GRUB Command line”); tło różniące się od tła obszaru o mniej
+     niż 120 nie jest paskiem zaznaczenia.
+   - Dodatek UEFI (CHARONVOICE r386ac): mowa od startu, Windows Boot Manager,
+     ekran Recovery; 10,9 MB dźwięku, bez błędów.
+   - Pełna regresja r386ah: work/r386-regression.sh → work/r386-regression-rg1.txt.
+
+Otwarte: Windows PE od początku do końca (czeka na skopiowanie Winre.wim
+skryptem work/copy-winre.ps1 jako administrator); pełna instalacja Debiana
+(osobny dysk docelowy, 1–2 h w TCG).

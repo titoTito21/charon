@@ -1,0 +1,52 @@
+Charon r362 — menu Windows Boot Managera, ekrany tekstowe, Windows Memory Diagnostic (2026-11-17)
+
+1. Menu bez bcdedit/administratora
+- work/make-bcd-menu.py i work/charon-bcd-menu.ps1 (identyczne bajty wyniku):
+  kopia szablonu BCD z DVD (Windows\Boot\DVD\EFI\BCD) — displayorder: Windows
+  Setup + Windows Memory Diagnostic (nowa komórka danych w wolnej komórce
+  hive'u), bootmenupolicy Legacy (1 bajt). regipy czyta wynik poprawnie.
+  Z polityką Standard menu rysuje dopiero program ładujący Windowsa (tu go nie
+  ma) — Windows Boot Manager od razu pokazuje Recovery.
+
+2. Czcionka bitmapowa wgl4_boot (EBLC/EBDT, 24 i 30 px, 1 bit)
+- Ekrany Legacy rysowane są bitmapami wgl4_boot (kontury puste): nowy odczyt
+  strike'ów (indexFormat 1/3, imageFormat 1/2/6/7), metryki liczone od dołu
+  komórki wyrównane do dołu „H”, bez przesunięć podpikselowych.
+- Tekst bez wygładzania (najwyżej 4 kolory w bloku) zamieniany na 0/255 przed
+  wyborem czcionki — linie dwukolorowe („Status:”, „Description:”).
+- Blok = ciąg wierszy z atramentem, tło z pierwszego wiersza (pasek
+  podświetlenia: w wierszach tekstu ciemnych pikseli bywa więcej niż koloru
+  paska); jednolite kolumny innego koloru (marginesy pasków) puste; wąskie paski
+  (opcja wybrana w Memory Diagnostic) — tło lokalne z koloru paska.
+- Pozycja w siatce czytnika liczona od linii bazowej (nie od góry paska), więc
+  pojawienie się/zniknięcie paska nie przesuwa tekstu.
+- Rozmiary szukane na 46 najczęstszych znakach, pełne wzorce tylko dla
+  zwycięzcy: ekran Legacy 2,3 s -> 80 ms na hoście.
+- tests/CharonTtfOcrTests.cpp (host), wszystkie PASS: ttf-bootmgr-recovery
+  (9 linii), ttf-bootmgr-legacy-error (12), ttf-bootmgr-legacy-menu (9),
+  ttf-memdiag-running (13), ttf-memdiag-options (17); zrzuty rEFInd, GRUB
+  gfxterm, firmware, GOP: 0 linii.
+
+3. Czytnik (CharonResident.h)
+- OCR Unifont nie uznaje linii z samych znaków ramek/bloków za tekst (krawędź
+  paska była czytana jako ▃▀▄ i blokowała odczyt TrueType/bitmap; mowa po
+  strzałce była pusta).
+- Samotny pasek w pierwszym/ostatnim wierszu ekranu (tytuł, klawisze) nie jest
+  zaznaczeniem; pierwszeństwo ma podświetlony wiersz w bloku menu.
+
+4. VM (harness, BCD z menu, melodia):
+- „Menedżer rozruchu Windows: menu, 2 pozycje. Windows Setup >, 1 z 2. …
+  Choose an operating system to start, or press TAB to select a tool …”;
+  strzałka w dół: „Windows Memory Diagnostic, 2 z 2”; w górę: „Windows Setup >,
+  1 z 2. To specify an advanced option for this choice, press F8.”
+- Enter na Windows Memory Diagnostic: „Windows Memory Diagnostics Tool.
+  Windows is checking for memory problems... Status: No problems have been
+  detected yet…” (wiersze procentowe obsługuje logika postępu); F1: ekran opcji
+  przeczytany.
+- Po upływie czasu: ekran Legacy „Windows failed to start …” przeczytany.
+- Pakiet r362 (EN, dysk vvfat z BCD z menu): „Windows Boot Manager: menu,
+  2 items. Windows Setup >, 1 of 2 …”, strzałka: „Windows Memory Diagnostic,
+  2 of 2”.
+
+Nie testowane: graficzne menu Windows 8+ (rysuje je winload), F8 Advanced Boot
+Options (przy tym BCD Windows Setup próbuje startu), sprzęt fizyczny.

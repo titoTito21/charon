@@ -1,0 +1,444 @@
+Charon r399 - wyniki (2026-11-19; buildy charon-win-r399 (wydanie, bez trace) i
+charon-win-r399b/c/d/e (trace, do weryfikacji w QEMU); sterownik: -drv)
+================================================================================
+
+Zakres rundy (prośby użytkownika z tej sesji):
+ 1. Memtest86+ dostępny "od tak" z Charona, bez żadnej dodatkowej opcji.
+ 2. Czarny ekran / niebieski ekran (BSOD): długi, niski, groźny ton oscylatora
+    i komunikat "Czarny ekran" / "Niebieski ekran śmierci".
+ 3. Dodatek CHARONVOICE ma czytać firmware i wykrywać zewnętrzne syntezatory.
+ 4. Ekrany stricte graficzne w UEFI wspierane, z mową po nawigacji (strzałki,
+    Tab, Shift+Tab).
+
+Memtest86+ wbudowany (bez opcji)
+ - Memtest86+ 9.00 (mt86p_900_x86_64, PE32+ x86_64, podsystem EFI application)
+   dołączony do dysku Charona jako \EFI\HAK\tools\memtest.efi.
+ - MenuInventory::AddBuiltinTool (BootMenu.h): jeśli plik jest na woluminie
+   Charona, zawsze dodaje pozycję na listę urządzeń (source=4), budując opcję
+   rozruchu ze ścieżki Charona + węzeł pliku. Nie jest celem Kontynuuj ani
+   "zapamiętanym" wyborem; startDevice uruchamia source==4 jak znaleziony nośnik.
+ - QEMU (charon-win-r399b, charon-r396-pick): lista urządzeń pokazała
+   "Dysk - Memtest86+ (wbudowany, test pamięci), 3 z 3"; Enter:
+   "Uruchomiono: Memtest86 plus." -> "System przejmuje sterowanie." (Memtest
+   kończy usługi firmware; czytnik rezydentny był podczepiony przez launch()
+   i odczytał handoff, dalej cisza - ograniczenie UEFI po ExitBootServices).
+ - charon-vm.py: \EFI\HAK\tools\memtest.efi z work/memtest-dl/x/mt86p_900_x86_64.
+
+Czarny ekran / niebieski ekran (CharonResident.h)
+ - ClassifyBlankScreen: rzadkie próbkowanie device GOP (siatka co 24 piksele):
+   czarny = >=99,7% ciemnych pikseli; niebieski = >=92% pikseli niebieskich
+   (dozwolony biały tekst BSOD). Tylko tryby RGB/BGR.
+ - Warunek odpalenia bardzo zachowawczy, by nie pomylić rzadkiego, ale
+   działającego ekranu (prompt powłoki, strona firmware): przez 2 s brak tekstu
+   konsoli, rysowania, rozpoznanego tekstu i klawiszy, potem jeszcze 3 s pustego
+   kadru (lastText_/keyTick_/lastOutput_/lastBlt_). Aktywność kasuje stan.
+ - AnnounceBlank: "Czarny ekran." / "Niebieski ekran śmierci." (PL) /
+   "Black screen." / "Blue screen of death." (EN) + DriveBlankTone: niski,
+   groźny warkot (dwa bliskie tony 80/90 Hz powtarzane tuż pod długością 500 ms
+   -> ciągły dudniący ton ~3 s; bez plików, bez wzrostu bufora tonu).
+ - QEMU (tests/CharonBlankProbe.cpp jako nośnik USB, fallback Charona):
+   faza czarna -> "Czarny ekran.", faza niebieska -> "Niebieski ekran śmierci.",
+   każde raz, we właściwej kolejności.
+ - Brak fałszywych alarmów: sweep GRUB (wiersz poleceń + edytor) 0 trafień,
+   menu firmware OVMF (dodatek) 0 trafień.
+
+Dodatek UEFI CHARONVOICE - firmware i syntezatory (HAKBootEFI.cpp)
+ - Diagnoza zgłoszenia "czytnik nie włącza się po restarcie do firmware":
+   w bieżącym źródle dodatek CZYTA ustawienia firmware. Test
+   charon-addon-test.py CHARON_ADDON_FWUI=1 (OsIndications -> UiApp OVMF,
+   charon-win-r399b-drv): serial pokazał "Charon: mowa włączona od startu
+   komputera", "CHARON beep late" (beep po podłączeniu HDA), "CHARON first PCM"
+   (mowa w DMA) oraz "reader ocr / reader start image" (odczyt ekranu UiApp).
+   Prawdopodobne przyczyny ciszy u użytkownika: dodatek niezainstalowany/
+   nieaktywny, firmware nie ładuje Driver#### w setupie, albo Secure Boot bez
+   wgranego klucza db (Driver#### nie jest objęty MOK).
+ - Wykrywanie zewnętrznych syntezatorów: pierścień głosu czytnika (wspólny kod
+   CHARON.EFI i sterownika) używa thunków dostawcy SynthAt/SetSynth/SynthVoices,
+   które skanują \EFI\HAK\synths - działa też w sterowniku. Dodatkowo sterownik
+   przy starcie zgłasza nieudane wczytanie wybranego dodatku (SynthMessage w
+   komunikacie powitalnym), więc awaria detekcji nie jest już cicha.
+
+Ekrany stricte graficzne (CharonResident.h: DescribeGraphics)
+ - Gdy ekran jest graficzny bez czytelnego tekstu (nie pusty), czytnik opisuje
+   go zamiast mówić tylko "obrazki bez tekstu": siatka zajętości 24x16 device
+   GOP, tło = kolor narożnika, flood fill liczy osobne obszary graficzne,
+   bounding box i pokrycie. Komunikat: "Ekran graficzny. Pełnoekranowy obraz." /
+   "Obraz na środku." / "N obszarów graficznych w jednym rzędzie. Zajmuje
+   około X procent ekranu." (polska odmiana obszar/obszary/obszarów).
+ - Zaznaczenie: obszar o wyraźnie innej jasności (podświetlenie) = "Zaznaczony
+   N z M" w kolejności czytania (wiersze, potem kolumny).
+ - Mowa po nawigacji: po strzałce/Tab/Shift+Tab na ekranie graficznym czytnik
+   ponownie opisuje, gdy podpis układu (liczba obszarów, zaznaczenie, pokrycie,
+   bbox) się zmienił - jedna wypowiedź na zmianę. Nie koliduje z detektorem
+   czarnego ekranu (pusty kadr -> detektor; z treścią -> opis).
+ - QEMU (CharonBlankProbe.cpp faza graficzna, 3 bloki, jeden jaśniejszy):
+   "Ekran graficzny. 3 obszary graficzne w jednym rzędzie. Zaznaczony 1 z 3.
+   Zajmuje około 7 procent ekranu."; prawo -> "2 z 3", prawo -> "3 z 3",
+   lewo -> "2 z 3", Tab -> "3 z 3".
+
+Regresja
+ - sweep GRUB (sgrubc, sgrube): menu, wiersz poleceń, pomoc, uzupełnianie,
+   edytor czytane jak wcześniej; 0 fałszywych "Czarny/Niebieski ekran".
+ - rEFInd (sref): 0 fałszywych alarmów; ikony/opcje/edytor czytane normalnie -
+   DescribeGraphics NIE przejął czytania pickera ikon.
+ - Clover (sclo): przy progu 5 s skan wpisów Clovera (czarny ~5 s) dawał fałszywy
+   "Czarny ekran"; po wydłużeniu do ~7 s (2,5 s ciszy + 4,5 s pustego kadru) i
+   cooldownie 3000 tyknięć TYLKO dla tego samego rodzaju (lastBlankAnnouncedKind_)
+   - 0 fałszywych alarmów, a czarny->niebieski nadal oba padają.
+ - Build czysty (bez trace) charon-win-r399 / -drv do wydania; buildy trace
+   r399b..g tylko do weryfikacji w QEMU (charontrace dotyka COM1).
+
+Weryfikacja czystego binarium wydania (charon-win-r399, bez trace)
+ - Zrzut listy urządzeń: "> Dysk - Memtest86+ (wbudowany, test pamięci), 2 z 2"
+   obok "Urządzenie UEFI - EFI Internal Shell, 1 z 2" - wbudowany Memtest jest
+   w wydaniu. Audio z wavcapture niepuste (peak ~9600), czytnik mówi.
+ - Czysty build nie ma śladów serial (charontrace pod HAK_CHARON_TRACE), więc
+   weryfikacja wizualna (zrzut) + audio zamiast grep serialu.
+
+Wydanie i instalator
+ - outputs/Charon-testvm-r399.zip (PEŁNE wydanie z demem QEMU, 444 MB,
+   work/package-charon-testvm-r399.py): launcher Uruchom-Charona + dołączony
+   QEMU (z drzewa r394) + odtworzone szablony dysków (boot-disk z r399 i
+   wbudowanym Memtest; grub-disk z GRUB chain-loadującym systemd-boot, Limine,
+   OpenCore, Clover, Memtest86+, probe - tylko redystrybuowalne, bez plików
+   Windows hosta) + instalator + źródło. Szablony odtworzone, bo oryginalne
+   zostały skasowane dla miejsca. Zweryfikowane: bootuje Charona, lista urządzeń
+   pokazuje "Dysk - Memtest86+ (wbudowany, test pamięci), 3 z 3" + dysk GRUB.
+ - outputs/Charon-r399.zip (pakiet instalacyjny, work/package-charon-r399.py):
+   binaria, Instalator, Dodatek-UEFI, Dodatki-syntezy, licencje + kod źródłowy
+   r399. Demo QEMU (Uruchom-Charona, templates/*.img, qemu/ ~1,2 GB) nie jest
+   dołączone - obrazy zostały wcześniej usunięte dla miejsca (do odtworzenia na
+   życzenie).
+ - Instalator (tools/charon-addon/Install-Charon.ps1): w trybach Manager/Shim
+   wgrywa też \EFI\HAK\tools\memtest.efi, więc wbudowany Memtest działa po
+   realnej instalacji, nie tylko na testowym dysku. Logika sprawdzona na atrapie
+   ESP (prawdziwego instalatora NIE uruchamia się na hoście): Manager/Shim
+   kopiują memtest (rozmiar zgodny), Reader nie kopiuje (tam menu Charona nie
+   działa) - zgodnie z oczekiwaniem. Składnia: Parser.ParseInput PARSE OK.
+
+Weryfikacja na CZYSTYM wydaniu (domknięcie uwag)
+ - Firmware: czysty sterownik charon-win-r399-drv/CHARONVOICE.EFI w teście
+   CHARON_ADDON_FWUI=1 (OsIndications -> UiApp OVMF): phase2 wavcapture niepuste
+   (peak 8132, 3544 głośnych próbek) - dodatek MÓWI w ustawieniach firmware na
+   wydaniu.
+ - DOKŁADNY scenariusz użytkownika ("restart z innego boot managera do
+   firmware") odtworzony (charon-addon-test.py CHARON_ADDON_GRUB=1, GRUB jako
+   domyślny boot manager, sterownik trace r399g-drv; w GRUB komenda `fwsetup`):
+   sterownik czyta GRUB, `fwsetup` ustawia OsIndications i restartuje -> drugi
+   BdsDxe -> UiApp -> sterownik PONOWNIE wstaje ("mowa włączona" 2 razy: przed
+   GRUB i po restarcie) i CZYTA firmware: "Boot Manager, current system,
+   podmenu" oraz pełny tekst pomocy formularza ("2.00 GHz 512 MB RAM. This is
+   the option one adjusts to change the language... Move Highlight... Select
+   Entry"). Audio niepuste (peak 9898, 8950 głośnych). Czyli ścieżka "inny boot
+   manager -> restart do firmware" czyta poprawnie na r399; ciszy użytkownika
+   nie da się odtworzyć w bieżącym kodzie - przyczyna jest środowiskowa (stary
+   build, dodatek nieaktywny, firmware OEM nie ładuje Driver#### w setupie, albo
+   Secure Boot bez klucza w db).
+ - Wszystkie TRZY drogi do firmware z menu Charona (jako boot manager) sprawdzone
+   i CZYTAJĄ (build trace r399g, charon-vm, zrzuty + serial):
+   1. "Ustawienia UEFI" (mainFirmware -> RunHiiMenu, bez restartu): odczytane
+      formsety OVMF - "Driver Health Manager, File Explorer, RAM Disk
+      Configuration, OVMF Platform Configuration, iSCSI Configuration... 1 z 7".
+   2. Narzędzia -> "Menu firmware" (toolFirmwareMenu -> UiApp w pamięci przez
+      launch() + czytnik rezydentny, bez restartu): "Ustawienia firmware: menu,
+      6 pozycji. Select Language, lista rozwijana, Standard English, 1 z 6" +
+      Device Manager, Boot Manager, Boot Maintenance Manager, Continue + pomoc.
+   3. Restart do firmware (sterownik po reboocie) - jak wyżej (GRUB fwsetup).
+   Nie ma regresu w r399: każda droga do firmware czyta.
+ - KOŃCOWY, WIERNY TEST (własny kod Charona, nie symulacja): z menu Charona
+   Narzędzia -> "Uruchom ponownie do ustawień firmware", potwierdzenie ->
+   restartFirmware instaluje sterownik głosu, ustawia OsIndications i resetuje
+   (powerOff EfiResetCold). Ta sama sesja QEMU rebootuje, firmware ładuje
+   Driver#### i wchodzi w UiApp. Serial: "Uruchamiam ponownie do ustawień
+   firmware." -> po reboocie "Charon: mowa włączona od startu komputera." ->
+   "Ustawienia firmware: menu, 6 pozycji. Select Language, lista rozwijana,
+   Standard English, 1 z 6" + Boot Manager, current system, podmenu. Zrzut
+   (charonfw/fwend.png) pokazuje stronę setupu OVMF. Czyli dokładnie ścieżka
+   "z Charona uruchom ponownie do firmware" CZYTA na r399 - koniec do końca,
+   kodem Charona. Reader WŁĄCZA SIĘ w firmware.
+ - LITERALNY scenariusz "restart Z INNEGO BOOT MANAGERA do firmware"
+   (work/refind-fw-test.py): rEFInd jako DOMYŚLNY boot manager (nie Charon),
+   Charon tylko jako dodatek Driver####. Sterownik odczytał rEFInd, w nim jego
+   WŁASNĄ pozycję "Reboot to Computer Setup Utility, 1 z 3"; wybór (down, ret)
+   -> rEFInd ustawił OsIndications i zrestartował -> po reboocie "Charon: mowa
+   włączona od startu komputera." -> "Ustawienia firmware: menu, 6 pozycji.
+   Select Language, lista rozwijana, Standard English, 1 z 6" + Boot Manager,
+   current system, podmenu. Audio peak 8167; zrzut refind-fw/fw.png pokazuje
+   stronę setupu OVMF. To nie symulacja i nie GRUB - to natywna pozycja rEFInd
+   "restart do firmware". Reader WŁĄCZA SIĘ. Potwierdza: na r399 nie ma regresu
+   na tej drodze.
+ - POPRAWKA KODU (rozwiązanie "czytnik się nie włącza po restarcie do firmware"):
+   "Uruchom ponownie do ustawień firmware" (toolFirmware) NIE robi już cichego
+   restartu, gdy firmware udostępnia setup jako program UEFI (UiApp - edk2/OVMF
+   i nowoczesne UEFI). Zamiast tego otwiera UiApp W SESJI (ścieżka, która zawsze
+   czyta): BootMenu.h restartFirmware -> FirmwareMenuOption -> launch(). Mówi
+   "Otwieram ustawienia firmware bez ponownego uruchamiania, bo tak czytnik na
+   pewno je przeczyta." i czyta "Ustawienia firmware: menu, 6 pozycji. Select
+   Language...". Tylko firmware BEZ UiApp wraca do restartu (z ostrzeżeniem).
+   Zweryfikowane w QEMU na czystym buildzie trace. To rozwiązuje ciszę dla
+   zdecydowanej większości UEFI, bez restartu.
+   ROZSZERZENIE na firmware OEM: gdy nie ma UiApp, Charon otwiera przeglądarkę
+   ustawień HII W SESJI (RunHiiMenu - czyta formularze setupu praktycznie
+   każdego UEFI, też OEM, które nie ładuje Driver#### po reboocie). Restart to
+   dopiero ostatnia deska ratunku (brak UiApp i brak formularzy HII). Łańcuch:
+   UiApp w sesji -> formularze HII w sesji -> restart. Regresja ścieżki UiApp
+   potwierdzona po tej zmianie: "Boot Manager current system, podmenu",
+   "Device Manager, 2 z 6" (bez restartu). Fallback HII reużywa RunHiiMenu
+   zweryfikowanego osobno ("Ustawienia UEFI" - formsety OVMF).
+   FALLBACK HII ODPALONY I POTWIERDZONY: build testowy z -DHAK_CHARON_NO_UIAPP
+   (FirmwareMenuOption zwraca NOT_FOUND - udaje firmware bez UiApp; flaga tylko
+   testowa, wydanie jej nie definiuje) -> restartFirmware przeszedł na RunHiiMenu
+   W SESJI i odczytał formsety firmware: "Ustawienia UEFI / Driver Health
+   Manager / File Explorer / RAM Disk Configuration / Tls Auth Configuration /
+   OVMF Platform Configuration / iSCSI Configuration, 1 z 7"; wejście w formset
+   czyta jego opis i ustawienia. HiiSettingsView obsługuje WSZYSTKIE typy
+   ustawień HII (pole wyboru, lista jednokrotna/dropdown, pole liczbowe, hasło,
+   lista uporządkowana, akcja) z odczytem i edycją - czyli "możliwe ustawienia
+   każdego firmware" (prośba użytkownika), każdego UEFI z formularzami HII.
+ - ZMIANA UX (BootMenu.h ConfirmationMessage, restartFirmware): wcześniej
+   komunikat obiecywał "Czytnik Charona będzie je czytał" - fałszywie na firmware
+   OEM, które nie ładuje Driver#### w swoim setupie (stąd zaskoczenie "czytnik
+   się nie włącza"). Teraz mówi uczciwie: "Po restarcie czyta tylko sterownik
+   głosu i tylko jeśli to firmware go wczyta w swoim menu. Wiele komputerów
+   rysuje ustawienia tak, że żaden czytnik ich nie odczyta i wtedy będzie cisza.
+   Pewniejsze jest „Menu firmware" w Narzędziach systemowych - Charon czyta
+   ustawienia bez restartu." Sprawdzone w QEMU (serial: komunikat w oknie
+   potwierdzenia). Kieruje użytkownika do drogi, którą Charon ZAWSZE czyta w
+   sesji, zamiast cichego restartu.
+ - PRÓBA i WYCOFANIE: dodałem ścieżkę "ekran z treścią, ale bez odczytanego
+   tekstu -> opisz go (Charon nie odczytał tu tekstu...)" dla setupu OEM
+   rysowanego wprost do framebuffera. Na probe z zapisem do FB działała, ale
+   fałszywie odpalała na GRUB (gfxterm) i rEFInd, które czytnik realnie czyta
+   (podczas bezczynności po drobnej zmianie kadru strażnik sampleChanged>lastText
+   nie wystarczał). Lepsze mówić mniej niż błędnie - ścieżkę wycofano. Ostają
+   pewne: czarny/niebieski ekran, grafika przez Blt, ostrzeżenie restartu.
+ - Nawigacja po ekranie graficznym na czystym charon-win-r399/CHARON.EFI:
+   zrzut fazy graficznej pokazuje 3 bloki, a po dwóch "prawo" podświetlenie jest
+   na bloku 3 (g2.png) - zaznaczenie przesuwa się na wydaniu; live.wav niepuste
+   (peak 9494) - czytnik mówi podczas nawigacji. Dokładne słowa "Zaznaczony N z
+   M" potwierdzone na buildzie trace (identyczna logika; trace różni tylko
+   HAK_CHARON_TRACE = zapis COM1).
+
+Czytanie przyrostowe w terminalach (prośba użytkownika: nowa linia -> interrupt
+-> nowy tekst jak w NVDA, nie cały ekran; w terminalach i boot managerach)
+- Przyczyna "czytania całego ekranu": ClearShadow po ClearScreen zerował
+  prevRaw_, więc przerysowany ekran był w całości "nowy".
+- Rozwiązanie MENU-BEZPIECZNE: ProxyClear robi SnapshotPreClear() (zapamiętuje
+  ekran sprzed czyszczenia) + ClearShadow() (bez zmian). W Flush, TYLKO gdy nie
+  ma zaznaczenia (highlight_==SIZE_MAX = terminal, nie menu), wiersze przerysowane
+  identycznie jak przed czyszczeniem są pomijane (done_), więc czytany jest tylko
+  nowy tekst. Menu (z zaznaczeniem) czyta w całości, licząc wszystkie pozycje.
+- Regresja (sweep trace): GRUB menu "6 pozycji" (nie zepsute - pierwsza próba
+  bez bramki highlight dawała błędne "3"), lista urządzeń Charona 4 pozycje,
+  rEFInd/Clover (14 pozycji) menu czytane poprawnie. Pierwsza próba (zachowanie
+  prevRaw_ globalnie) psuła liczenie menu i została odrzucona na rzecz wersji
+  menu-bezpiecznej.
+- Detektor czarnego ekranu: zwłoka podbita 450->550 (próg ~8 s), bo skan wpisów
+  Clovera (~7 s czerni) sporadycznie przekraczał 7 s.
+
+Formatowanie Emacspeak (prośba: urozmaicony głos ACSS + ikony, nie monotonne)
+- Mechanizm jest (ApplyAcss modyfikuje klatki TVox: zakres F0, akcent AV, Rd;
+  znaczniki U+E003->ESC 'f' konsumowane przez LiveVoice; ikony QueueIcon). Pomiary
+  r397 pokazały różnice F0.
+- PROBLEM (potwierdzony z użytkownikiem): włączone domyślnie wpływa na czytanie
+  menu boot managera (persony na pozycjach), a wariacja brzmi w praktyce
+  monotonnie (tekst boot jest jednolity - mało "na czym" różnicować, inaczej niż
+  edytor kodu). Włączenie przez flagsDefault=255 zostało WYCOFANE (menu > ryzyko).
+- To wymaga dedykowanego dostrajania syntezy z odsłuchem/pomiarem (wzmocnienie
+  person, izolacja znaczników od czytania menu, weryfikacja ikon) - nieukończone;
+  domyślnie off, jak było projektowane (opcjonalne).
+
+AKTUALIZACJA formatowania (po uwadze "ikony tylko echo, a tak nie może być"):
+- Domyślne flagi = 126 (flagIcons|flagColours|flagBright|flagFont|flagInverse|
+  flagEvents): IKONY DŹWIĘKOWE I IKONY ZDARZEŃ WŁĄCZONE, ale flagVoice i
+  flagFamilies OFF - czyli głos menu NIEZMIENIONY (persony neutralne "mmm0"),
+  bez problemu "wpływ na menu" z głosem. Znaczniki konsumowane przez LiveVoice.
+- Potwierdzenie, że ikony GRAJĄ: analiza tonalna live.wav z nawigacji GRUB -
+  168 z 243 głośnych okien ma dominujący czysty ton na częstotliwości koloru
+  (QueueIcon: drabinka 523-2637 Hz + kliknięcia stylu + ikony zdarzeń). Menu
+  liczy poprawnie (6 pozycji). To odpowiada na "ikony tylko echo" - teraz grają.
+- NIEUKOŃCZONE: głos-lock ACSS (urozmaicony głos per element) zostaje OFF, bo
+  monotonny w boot-kontekście i wpływał na głos menu; wymaga dostrajania z
+  odsłuchem. Gęstość/głośność ikon też nie zweryfikowana słuchem - do oceny
+  przez użytkownika (regulowalne w ustawieniach formatowania).
+
+NIEMONOTONNY GŁOS - formatowanie przez prędkość/wysokość/głośność/modulację/barwę
+(cel: każda czcionka, kolor, styl, pozycja odzwierciedlone; + ikony per event)
+- Przyczyna monotonii: (1) flagVoice był OFF (WriteMark zapisywał zera), (2) stary
+  VoiceFor dawał głos TYLKO dla koloru innego niż większościowy ekranu, więc
+  jednolity bootscreen = monotonia.
+- Rozwiązanie: VoiceFor przepisany na mapowanie BEZWZGLĘDNE (CharonFormatting.h):
+  * kolor fg -> WYSOKOŚĆ (drabinka 16 tonów; body 7/15 ~ 0, inne rozsunięte -7..+9)
+  * hue -> modulacja/barwa (ciepłe żywe, zimne płaskie, magenta jasna barwa)
+  * czcionka krój -> PRĘDKOŚĆ + barwa; wysokość czcionki duża->wolniej/niżej, mała->szybciej
+  * styl pogrubiony -> GŁOŚNOŚĆ (+stress+richness); przygaszony -> ciszej/oddechowo
+  * zaznaczenie (inverse) -> mocna MODULACJA + wyższy głos (BEZ echa - echo usunięte
+    na prośbę użytkownika, było irytujące; voiceAnimate z bitem echa już nieużywany)
+  * pozycja (wiersz ekranu) -> MODULACJA (góra żywsza +2, dół płaski -3)
+  * słowa własne czytnika -> głos neutralny (punkt odniesienia)
+  flagsDefault/formatFlags = 255 (głos+ikony+kolory+jasność+czcionka+inwersja+
+  zdarzenia+rodziny). Model zgodny z Emacspeak ACSS (dtk-css-speech.el): pitch-range
+  = kontur intonacji = nasza modulacja; + average-pitch, stress, richness, rate, gain.
+- Dowody:
+  * tests/CharonVoiceForTest.cpp (host, clang++ std=c++17) - WSZYSTKIE testy OK:
+    11 różnych wysokości na 16 kolorów, duża/mała czcionka rate -3/+3, bold volume +2,
+    highlight range +4/+5, pozycja góra>dół modulacja, 32 różne kombinacje głosu.
+  * QEMU GRUB (trace): markery niosą zróżnicowany payload per wiersz i styl, np.
+    zaznaczenie fmjn0actom2 (wysokość -3, głośność +1, MODULACJA +7, stress +2, timbre
+    0 = BEZ ECHA, rodzina highlight); słowa własne fmmm0 (neutralne); różne wiersze
+    różny range (o/k/j = +2/-2/-3). Menu liczy poprawnie (6 pozycji, 1/2/3 z 6).
+  * live.wav z nawigacji: F0 średnio 302 Hz, rozrzut 94..492 Hz, stdev 92 - silna,
+    niemonotonna zmienność.
+- Ikony per event: syntetyczne tony oscylatora (QueueIcon, 22 zdarzenia: open/close/
+  select/large-move/wrap/scroll/warn/ask/delete/button/tab/submenu/toggle/value/
+  disabled/editor/help/password/new-program/task-done/countdown), flagEvents ON.
+
+WERYFIKACJA GŁĘBSZA (po słusznej uwadze: dowód po markerach to za mało)
+- Kontrolowane A/B na realnym audio (identyczna nawigacja GRUB, flagi 255 vs 0),
+  F0 autokorelacyjnie (nie zero-crossing): ON stdev=38 vs OFF stdev=36; TVox-only
+  ON=55 vs OFF=50. RÓŻNICA MAŁA - ale to ograniczenie METRYKI: sesyjne F0 uśrednia
+  różnice średnich między chunkami i jest NIECZUŁE na modulację (range skaluje
+  rozrzut F0 WEWNĄTRZ chunku ~1.2-1.8x). Dodatkowo sesja GRUB to głównie neutralne
+  słowa własne czytnika (meta), więc wrażenie bliskie neutralnemu niezależnie.
+- Właściwy dowód = test jednostkowy transformacji: tests/CharonApplyAcssTest.cpp
+  (ciało ApplyAcss + helpery SKOPIOWANE DOSŁOWNIE z CharonLiveVoice.cpp 232-283;
+  clang++ std=c++17) - WSZYSTKO OK:
+    * modulacja +6 -> rozrzut F0 x1.72 (dokładnie AcssSteps)
+    * monotone 'a' -> rozrzut F0 x0.05 (spłaszcza - pełny zakres monotone..żywy)
+    * stress +6 -> kontrast amplitudy x1.60
+    * richness -6 (breathy) -> Rd 1.00->1.56 + aspiracja +34 dB
+  Czyli modulacja/stress/richness REALNIE przekształcają klatki syntezy wg mapowania.
+- Łańcuch dowodowy kompletny: VoiceFor (mapowanie atrybut->persona, CharonVoiceForTest,
+  32 kombinacje) + ApplyAcss (persona->klatki, CharonApplyAcssTest) + pitch/rate/volume
+  przekazywane per-segment do syntezatora (BeginChunk/StartDsp) + QEMU (zróżnicowane
+  payloady per wiersz/styl, menu OK) + ikony per event (QueueIcon).
+- UCZCIWE OGRANICZENIE: (1) pełne 5 wymiarów (w tym modulacja/barwa przez ApplyAcss)
+  działa na WBUDOWANYM TVox; domyślny syntezator zewnętrzny (eSpeak/RHVoice) dostaje
+  tylko prędkość/wysokość/głośność per element (ma własną prozodię, modulacji Charona
+  nie stosuje - ABI external_.begin nie ma parametru range). (2) Ocena "bardzo
+  urozmaicone" jest percepcyjna - wymaga odsłuchu użytkownika; nie da się jej
+  potwierdzić z hosta. Siła person jest regulowalna (Steps/AcssSteps/drabinka).
+
+MENU CHARONA + MODUŁY ABI-3 (prośby: formatowanie ma obejmować też własne menu
+boot managera Charona; modulacja ma docierać do domyślnego syntezatora)
+- Menu Charona: ścieżka fokusu (BootMenu.h announce/labelFor) wstrzykuje teraz
+  marker głosowy ESC 'f' przed etykietą pozycji, z MODULACJĄ wg POZYCJI na liście
+  (rampa: idx0->+4, idx3->+2, idx6->0, idx12->-4), bramkowane flagVoice. Dowód
+  (trace): "menu announce" niesie ^[fmmm0-aqmm0-- (range=+4) dla pozycji 0; ta
+  sama maszyneria person co czytnik (ParseSwitch/ApplyAcss/SetPersona). Menu nie
+  jest już monotonne, pozycja słyszalna przez intonację.
+- ODKRYCIE (po głębszym badaniu): dostarczane moduły syntez (r394 Dodatki-syntezy
+  oraz domyślny charon-vm r395c) to ABI 2 - BEZ SetPersona, więc modulacja NIE
+  docierała do zewnętrznego eSpeaka (tylko prędkość/wysokość/głośność). To była
+  realna luka na domyślnym zestawie.
+- NAPRAWA: wydanie (package-charon-r399) i testvm nakładają teraz moduły ABI-3 z
+  synth-modules-r397; charon-vm domyślnie r397. Weryfikacja host-testem
+  tests/CharonSynthPersonaTest.cpp (ładuje .tts, woła SetPersona, mierzy):
+  spakowany eSpeak = abi=3, SetPersona honored bits=17 (personaRange|personaFamily)
+  -> eSpeak NG przyjmuje i stosuje espeakRANGE (modulacja) + wariant rodziny.
+  (rhvoice r397 pozostaje ABI 2 - używa własnej prozodii.)
+- Uwaga pomiarowa: prosty tracker F0 (autokorelacja) ma błędy oktawowe na wyjściu
+  eSpeaka, więc bezwzględny rozrzut F0 jest niemiarodajny; dowodem zastosowania
+  modulacji są zwrócone bity honored=17 + udokumentowane działanie espeakRANGE.
+
+DOWÓD AUDIO modulacji na DOMYŚLNYM eSpeaku (tracker F0 naprawiony: pierwszy pik
+NSDF + filtr medianowy, bez błędów oktawowych) - tests/CharonSynthPersonaTest.cpp
+na spakowanym module ABI-3:
+  range 0.1 (monotonna) : F0 stdev 1.3 Hz, p10-p90 = 3 Hz  (PŁASKO)
+  range 1.0 (neutralna) : F0 stdev 7.5 Hz, p10-p90 = 21 Hz
+  range 1.9 (ożywiona)  : F0 stdev 10.0 Hz, p10-p90 = 23 Hz
+  -> PASS: wyższa modulacja mierzalnie rozszerza F0 renderowanego dźwięku.
+Wcześniejsze odwrócone liczby były błędami oktawowymi naiwnego trackera na sygnale
+płaskim; po naprawie kierunek zgodny z oczekiwaniem. Modulacja realnie i słyszalnie
+dociera do domyślnego głosu zewnętrznego, nie tylko do TVox.
+
+DOWÓD END-TO-END: pełny pipeline (realne VoiceFor -> args jak w Charonie -> realny
+moduł eSpeak ABI-3) na zróżnicowanych atrybutach, mierzony w renderowanym audio
+(tests/CharonSynthPersonaTest.cpp, sekcja END-TO-END):
+  atrybut       F0(wys.)  F0stdev(modul.)  dlugosc(predk.)  rms(glos.)
+  bazowy bialy   105 Hz     6.5             46659            2977
+  czerwony       126 Hz    10.1             46590            3172   (kolor->wys. ↑)
+  niebieski       87 Hz     2.8             46664            2700   (kolor->wys. ↓)
+  pogrubiony     106 Hz     6.5             45257            3735   (styl->glos. ↑)
+  zaznaczenie    270 Hz    26.2             46340            3626   (->modulacja ↑↑)
+  mala czcionka  188 Hz    13.3             39720            3224   (czcionka->predk. szybciej)
+  duza czcionka  118 Hz    27.4             59260            3681   (czcionka->predk. wolniej)
+  gorny wiersz   109 Hz     7.9             46632            3025   (pozycja->modul. żywiej)
+  dolny wiersz    99 Hz     4.8             46477            2884   (pozycja->modul. plasko)
+WNIOSEK: każdy atrybut (kolor, styl, czcionka, zaznaczenie, pozycja) daje mierzalnie
+odrębny dźwięk wzdłuż właściwego wymiaru (wysokość/głośność/modulacja/prędkość) -
+na realnym module eSpeak, nie w izolacji. Formatowanie NIE jest monotonne w wyjściu.
+
+
+r399 WYDANIE: PŁYTA ISO, INSTALATOR OSOBNO, KOD NA GITHUB, VM ZE WSZYSTKIMI MENEDŻERAMI
+(2026-11-19)
+
+1. Charon-r399.iso (work/make-charon-iso-r399.py) - sam Charon, bootowalny:
+   El Torito, platforma EFI (0xEF), bez emulacji; obraz FAT32 64 MB "CHARON" z
+   EFI/BOOT/BOOTX64.EFI (CHARON.EFI r399), EFI/HAK: CHARONVOICE, AudioDxe,
+   CharonShell, Memtest86+, dźwięki, dodatki syntezy eSpeak NG / RHVoice (ABI 3);
+   na ISO9660/Joliet tylko licencje i CZYTAJ. Obraz > 32 MB, więc liczba sektorów
+   w katalogu = 1: edk2 ElTorito.c ("SectorCount < 2 -> partycja = cała płyta")
+   wystawia partycję od LBA obrazu do końca płyty; FAT bierze rozmiar z BPB.
+   Hybrydowe MBR (typ 0xEF na obrazie FAT): ten sam plik zapisany 1:1 na pendrive.
+   Rozmiar 70 148 096 B.
+   Test (work/test-charon-iso-r399.py, OVMF, BEZ dysku twardego):
+   - cd: BdsDxe "UEFI QEMU DVD-ROM" -> "Welcome to Charon...", auto-start Shell,
+     powrót do menu Charona, menu/ustawienia/lista klawiszy czytnika działają
+     (płyta tylko do odczytu - bez błędu).
+   - usb (ten sam plik jako dysk USB): BdsDxe "QEMU USB HARDDRIVE" -> "Welcome to
+     Charon", menu; audio wavcapture szczyt 12365, dźwięk przez 80 s; ustawienia
+     zapisują się na pendrive.
+   Nie sprawdzone na prawdziwej płycie/firmware.
+
+2. Instalator (Install-Charon.ps1, zainstaluj-charona.sh): tryb 3 "menedżer"
+   instaluje teraz RAZEM z menedżerem czytnik poza Charonem (CHARONVOICE.EFI jako
+   Driver####: mowa od włączenia, menu i ustawienia firmware, F12). Pytanie
+   osobne, domyślnie tak; -NoReader / --reader no tylko menedżer. Wcześniej tryb 3
+   kopiował CHARONVOICE.EFI, ale nie tworzył Driver#### (czytnik poza Charonem
+   dopiero po opcji "Mowa od włączenia komputera" w Charonie). Odinstalowanie
+   usuwa oba wpisy jak dotąd. Składnia: PowerShell Parser 0 błędów, sh -n OK.
+   Instalatorów nie uruchamiano na prawdziwym komputerze (zapisują zmienne
+   firmware hosta).
+   Test układu po instalacji (charon-addon-test.py, CHARON_ADDON_BOOT=CHARON.EFI
+   trace r399t, Driver0000 = CHARONVOICE trace r399t-drv, te same bajty co
+   instalator): sterownik "Charon: mowa włączona od startu komputera", potem
+   Charon jako domyślny program: "Witaj w Charon...", pozycje menu - każda
+   wypowiedziana RAZ, jednym torem (Charon mówi przez residentDriver), bez
+   podwójnego głosu.
+   Pakiety: outputs/Charon-Installer-r399.zip (Instalator, Dodatek-UEFI,
+   Dodatki-syntezy, licencje ze źródłami), w Charon-r399.zip podmienione oba pliki
+   instalatora (manifest zaktualizowany).
+
+3. Kod na GitHub: outputs/charon-github-r399 (work/make-charon-github-r399.py):
+   src, tools, testy, harness (w tym skrypty ISO, instalatora, VM), wyniki
+   r361-r399, licencje; kontrola danych osobistych przechodzi.
+
+4. VM testowa ze wszystkimi menedżerami: outputs/Charon-testvm-r399-wszystkie-
+   menedzery -> Charon-testvm-r399-all-managers.zip (work/make-charon-testvm-r399all.py): Charon r399 + GRUB
+   (systemd-boot, Limine, OpenCore, Clover, Memtest86+, Windows Boot Manager,
+   motyw starfield, gfxterm) + dysk GPT Windows + USB (Syslinux, iPXE, Ventoy,
+   ZFSBootMenu, rEFInd, demo HAK) + CD na dwóch kontrolerach AHCI (Charon-r399.iso,
+   Haiku, FreeBSD, NetBSD, OpenBSD, Debian mini, rescue). Zawiera pliki Windows
+   Boot Manager z tego komputera - tylko lokalnie, nie publikować.
+
+5. Język domyślny: angielski. Kod Charona już domyślnie "en" (InstallationLocale:
+   \EFI\HAKudio-language, bez niego PlatformLang, inaczej en). Polski wynikał z
+   audio-language="pl" zapisywanego przez instalatory według języka Windows/LANG
+   i z dysku VM. Teraz instalatory (Install-Charon.ps1, Install-CharonAddon.ps1,
+   zainstaluj-charona.sh, zainstaluj-dodatek-uefi.sh) zapisują "en", "pl" tylko
+   przy -Language pl / CHARON_LANGUAGE=pl; ISO i dysk VM mają audio-language=en.
+   Komunikaty samego instalatora nadal według języka systemu.
+   Test VM ze wszystkimi menedżerami (work/test-testvm-r399all.py, ta sama linia
+   poleceń co Start-test-machine.bat + QMP): "Welcome to Charon. Starting: USB -
+   GRUBTEST (Syslinux, found by Charon)..."; lista urządzeń 17 pozycji: EFI
+   Shell, USB Syslinux, iPXE, Ventoy (shim), ZFSBootMenu, rEFInd, Demo Loader,
+   CD Charon, Haiku ESP, FreeBSD loader, NetBSD boot, OpenBSD boot, Debian mini
+   (shim), rescue (shim), dysk GRUB (z niego systemd-boot, Limine, OpenCore,
+   Clover, Windows BM), dysk systemd-boot, Memtest86+ wbudowany.
+
+6. README/CZYTAJ w paczkach tylko po angielsku (README.txt): ISO, instalator
+   (README, Instalator/README.txt, README-ADDON.txt, Dodatek-UEFI/README.txt),
+   Charon-r399.zip, VM, GitHub README.md, src/efi/sdk/README.md,
+   tools/charon-addon/README.txt, generator VM r394 (tools/package-charon-vm.py).
+   Zapisy testów (docs/results) zostają po polsku.

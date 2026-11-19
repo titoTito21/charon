@@ -1,0 +1,48 @@
+Charon r394 — dodatki syntezy eSpeak NG i RHVoice (\EFI\HAK\synths, 2026-11-18)
+
+Prośby użytkownika: pliki .tts w katalogu synths jako dodatki (nie wbudowane),
+z manifestem; espeak.tts (polski, angielski), rhvoice.tts (Natan i głos
+angielski); RHVoice skompresowany maksymalnie; wybór w ustawieniach czytnika,
+w pierścieniu ustawień, także głos menu i komunikatów; TVox awaryjnie; moduł
+jako sterownik usług (subsystem 11); wczytywany tylko wybrany głos;
+CHARONVOICE i TVox zostają podstawą, syntezatory są dodatkami; w maszynach
+testowych mogą być.
+
+Moduły (src/synth, tools/build-charon-synths.py, staging work/synth-modules-r393b):
+- ABI 2 (src/efi/CharonSynthModule.h): sterownik UEFI, EFIAPI, Prepare jednego
+  głosu, Begin/Render/Cancel, manifest z SHA-256.
+- espeak.tts 465 216 B (eSpeak NG b97de3cf, GPL-3.0+), dane 429 129 B (z
+  990 865 B); rhvoice.tts 2 399 424 B (RHVoice 1.18.5), dane 3 399 087 B (z
+  14,08 MB w działaniu; LZMA + rozdzielenie floatów na płaszczyzny bajtów).
+- Test hosta (loader PE z emulacją boot services): audio identyczne próbka w
+  próbkę z hostowanymi buildami tych samych źródeł; Prepare natan 233 ms,
+  slt 153 ms, eSpeak ~20 ms; szczyt pamięci jednego głosu RHVoice 19,9 MB.
+
+Charon (build charon-win-r393q + -drv):
+- src/efi/CharonSynthHost.h: manifesty, klucz (FNV nazwy manifestu), SHA-256
+  (CharonSha256.h), LoadImage ze ścieżką pliku na dysku Charona, LoadOptions =
+  katalog danych, StartImage, protokół na nowym uchwycie; druga instancja
+  modułu dla drugiego głosu (komunikaty).
+- LiveVoice ExternalSynth: tekst dzielony na przełącznikach (język,
+  formatowanie ESC f), każdy kawałek do Begin, Render w porcjach,
+  przepróbkowanie do 22,05 kHz, barwa i ikony formatowania z r393.
+- Ustawienia V11 („CHARS00B”): bajt 42 klucz dodatku, bajt 43 głos.
+- Ustawienia czytnika: „Syntezator” (TVox, wbudowany / eSpeak NG, dodatek /
+  RHVoice, dodatek) i „Głos syntezatora”; pierścień Ctrl+Alt: „Głos”.
+- Sterownik CHARONVOICE wczytuje wybrany dodatek przy starcie (Driver####).
+
+QEMU:
+- RHVoice: „CHARON synth=…330000” (klucz 0x33, głos 0, bez błędu); eSpeak NG:
+  „…200000”. Nagranie wavcapture 16 s z mową menu: średni współczynnik przejść
+  przez zero w blokach z dźwiękiem TVox 87, RHVoice 102, eSpeak NG 126 — w
+  maszynie mówią różne silniki.
+- Stare moduły (ABI 1): „Witaj w Charon. … Dodatek syntezy niedostępny
+  (rhvoice.manifest): inna wersja interfejsu. Mówi TVox.”
+- Ustawienia czytnika: „Syntezator, okno wyboru, TVox, wbudowany, 23 z 24” ->
+  strzałka w prawo -> „Syntezator: eSpeak NG, eSpeak NG polski.”
+- Test hosta tests/CharonFormattingTests.cpp: ALL PASSED (V11, SHA-256,
+  manifest).
+
+Nie sprawdzone: zmiana głosu w pierścieniu w QEMU, tryb dodatku UEFI z
+syntezatorem, czas Prepare RHVoice w QEMU (na hoście 0,2 s), prawdziwy sprzęt.
+Tekst w drugim języku czyta wybrany głos (wczytywany jest tylko on).

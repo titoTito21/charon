@@ -1,0 +1,4 @@
+#pragma once
+namespace std {
+template<class T> struct is_trivially_destructible {static constexpr bool value=__is_trivially_destructible(T);};
+}

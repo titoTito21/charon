@@ -1,0 +1,26 @@
+Charon r380 — czytnik: okna, gdzie jestem, pasek klawiszy, szczegółowość (2026-11-17)
+
+1. Funkcja (src/efi/CharonResident.h, CharonKeyNotify.h)
+- Okna w ramkach: gdy w zmienionym wierszu pojawia się górny róg ramki
+  (┌ ╔ ╭ ╒ ╓) z poziomą kreską, Charon mówi „Okno” albo „Okno: tytuł”
+  (tytuł z górnej krawędzi), raz na okno, do jego zniknięcia. Ramka bez
+  tytułu prawie na cały ekran (np. menu GRUB-a) to strona programu, nie okno.
+- Ctrl+Alt+W — gdzie jestem: program, pierwszy wiersz ekranu, okno,
+  zaznaczona pozycja.
+- Ctrl+Alt+Y — pasek klawiszy: dolny blok tekstu (do 3 wierszy).
+- Ctrl+Alt+V — szczegółowość czytnika krótka / szczegółowa.
+- Pomoc i nowe komunikaty z wersjami dosadnymi (audyt: 1103 teksty, 0
+  łagodnych).
+
+2. VM
+- GRUB (PL): Ctrl+Alt+W „Program: GRUB. Ekran: GNU GRUB version
+  2.12-9+deb13u4. Zaznaczone: Charon test entry two.” (po poprawce bez
+  „Okno.” dla ramki menu), Ctrl+Alt+V „Czytnik mówi szczegółowo.”, potem
+  szczegółowe „Program rozruchowy kończy usługi firmware…”.
+- Ustawienia OVMF (sterownik głosu od włączenia komputera, restart do
+  ustawień z narzędzi systemowych): Enter na „Select Language” — „Okno.
+  …” przed treścią okienka wyboru języka.
+
+Nie zrobione (pytanie do użytkownika): układ numeryczny jak w NVDA — UEFI
+nie odróżnia klawiszy klawiatury numerycznej od zwykłych cyfr i strzałek,
+a powiadomienia o klawiszach ich nie zatrzymują.

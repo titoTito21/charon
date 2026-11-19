@@ -1,0 +1,17 @@
+Charon r366 — narzędzia uruchamiane z menedżerów: Memtest86+ (2026-11-17)
+
+- Memtest86+ 9.00 (GPL-2.0): rozpoznawany po nazwie jako narzędzie —
+  „Uruchomiono: Memtest86+.” (bez dźwięku menedżera rozruchu).
+- Memtest86+ zaraz po starcie kończy usługi firmware (ExitBootServices), jak
+  system operacyjny: Charon gra dźwięk przejęcia i mówi „System przejmuje
+  sterowanie.”; potem nie ma już timera ani dźwięku firmware, więc ekran
+  testu nie jest czytany (zrzut: 640x480, czcionka VGA wczytana).
+- Uruchomiony z GRUB-a (własny loader PE) kończy usługi szybciej niż
+  sprawdzanie obrazu co 0,5 s: obraz jest sprawdzany także przy
+  ExitBootServices i nazwa dołączana do komunikatu — VM: „Uruchomiono:
+  Memtest86+. System przejmuje sterowanie.”
+- Czcionka IBM VGA („A” od 10 38 6C) jako drugi wariant VGA obok Limine.
+- tests/CharonBootManagersTests.cpp: 14 obrazów z Memtest86+ — PASS; ekrany
+  hosta (6) PASS.
+- Pakiet r366: pozycja GRUB-a „Memtest86+ (ends firmware services)”, źródła
+  i licencja w licenses/memtest86plus.

@@ -1,0 +1,16 @@
+{
+  "binary": "work\\ha\\Build\\HakAudioDriver\\RELEASE_VS2022\\X64\\AudioDxe.efi",
+  "sha256": "b12c281d250eb7f47f5a295fc5118a2e6ded731b1b10bcf923e8373d95928adf",
+  "build_log": "work/charon-audio-driver-r347/stream-build-b.log",
+  "baseline_log": "work/charon-audio-driver-r347/baseline-build-k.log",
+  "hardware_audio_tested": false,
+  "sources": {
+    "apply-driver-extension.py": "d0eb478c415a64bff68674b206e8561f6fb306c1e45a718d5946e443d9c95371",
+    "build-host-baseline.cmd": "f4f667fd441d445bf9ade6ddaed537302dde56f702ae79efb9ddc8aef0223a1e",
+    "HakAudioRing.h": "3a63920f1a458d07b7be5872ad27547befc956c73a8fd10418f5ff7fa1a9961d",
+    "HakAudioRingTests.c": "cb1d3f16ae163ec902d50362eeba3aaca446920ceeaf53a1069909b9ddf16e65",
+    "HakAudioStream.c": "786f99bd3503bfd15f5aa1cd86e2c716d50f3f51eefdbf0e8050b5de97a24a0c",
+    "HAKAudioStream.h": "2fd4e76f90b8425af20ac048b10a0cf7af49695ca2937b10baf5df53559f3633",
+    "prepare-driver-dsc.py": "5ee2a71774f869202d41240d253f2b3c05b394bb63c329840af33042d7a7fcb8"
+  }
+}
