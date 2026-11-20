@@ -1,6 +1,7 @@
 #pragma once
 #include <efi/boot-services.h>
 #include "AudioIo.h"
+#include "CharonTrace.h"
 #include "CharonAc97.h"
 #include "../tts/runtime/CharonAudioEngine.h"
 namespace charonaudioefi {
@@ -15,11 +16,12 @@ struct Stream {
     efi_status (EFIAPI *state)(Stream*,State*);
     efi_status (EFIAPI *stop)(Stream*);
     efi_status (EFIAPI *discard)(Stream*,uint64_t*);   // revision 2 (r389) only
+    efi_status (EFIAPI *linger)(Stream*,const int16_t*,uint32_t,uint32_t);   // revision 3 (r400) only
 };
 static efi_guid streamGuid={0xa5e7cf46,0x421c,0x4ea9,{0x93,0x1e,0x16,0x4b,0xf3,0xa8,0xb2,0x70}};
 static_assert(offsetof(Stream,begin)==8 && offsetof(Stream,write)==8+sizeof(void*)
     && offsetof(Stream,state)==8+2*sizeof(void*) && offsetof(Stream,stop)==8+3*sizeof(void*)
-    && offsetof(Stream,discard)==8+4*sizeof(void*) && sizeof(Stream)==8+5*sizeof(void*),"HAK stream rev1/2 ABI");
+    && offsetof(Stream,discard)==8+4*sizeof(void*) && sizeof(Stream)==8+6*sizeof(void*),"HAK stream rev1-3 ABI");
 static constexpr uint32_t streamSize1=8+4*sizeof(void*),streamSize2=8+5*sizeof(void*);
 static_assert(offsetof(State,submitted)==8 && offsetof(State,consumed)==16
     && offsetof(State,underrun)==24 && offsetof(State,queued)==32
@@ -34,13 +36,13 @@ public:
     efi_status Open(efi_boot_services* boot) {
         if(bound_)return EFI_ALREADY_STARTED;
         if(!boot || !boot->LocateHandleBuffer || !boot->HandleProtocol || !boot->FreePool)return EFI_INVALID_PARAMETER;
-        error_=EFI_SUCCESS;submitted_=lastConsumed_=0;
+        error_=EFI_SUCCESS;submitted_=lastConsumed_=0;boot_=boot;
         efi_handle* handles=nullptr;size_t count=0;
         auto status=boot->LocateHandleBuffer(ByProtocol,&streamGuid,nullptr,&count,&handles);
         if(status!=EFI_SUCCESS || !handles || !count || count>1024) {
             if(handles)boot->FreePool(handles);
             // r389: no HDA stream (yet): Charon's own AC'97 output, if the machine has one.
-            if(ac97_.Open(boot)==EFI_SUCCESS) {internal_=bound_=running_=true;return EFI_SUCCESS;}
+            if(ac97_.Open(boot)==EFI_SUCCESS) {internal_=bound_=running_=true;vanished_=false;return EFI_SUCCESS;}
             return Fail(status!=EFI_SUCCESS?status:EFI_DEVICE_ERROR);}
         status=EFI_NOT_FOUND;
         // r389: first a codec with analog outputs (speakers, headphones, line
@@ -58,7 +60,9 @@ public:
                 || !stream->begin || !stream->write || !stream->state || !stream->stop
                 || !audio || audio->revision!=4 || !audio->outputs || !audio->setup) {status=EFI_UNSUPPORTED;continue;}
             hakaudioefi::Port* ports=nullptr;size_t portCount=0;uint64_t mask=0;
+            charontrace::Value("CHARON audio outputs",uint64_t(i));
             found=audio->outputs(audio,&ports,&portCount);
+            charontrace::Value("CHARON audio ports",uint64_t(portCount)|(uint64_t(found)<<8));
             if(found==EFI_SUCCESS && portCount<=64 && (!portCount || ports)) {
                 // r389: every analog output at once: line out (0), built-in
                 // speakers (1, laptops) and headphones (2); before r389 only
@@ -75,27 +79,35 @@ public:
             // Retain the provider before a state-changing call. Even failed
             // setup/begin requires an explicit successful Stop before release.
             stream_=stream;handle_=handles[i];bound_=true;
-            status=audio->setup(audio,mask,-12,64,2,2,0);
+            charontrace::Value("CHARON audio setup mask",mask);
+            // r404: the codec at its maximum gain (AudioDxe clamps 127 dB to the top amp step); was -12 dB.
+            status=audio->setup(audio,mask,127,64,2,2,0);
+            charontrace::Value("CHARON audio setup",uint64_t(status));
             if(status==EFI_SUCCESS)status=stream_->begin(stream_);
-            if(status==EFI_SUCCESS)running_=true;
+            charontrace::Value("CHARON audio begin",uint64_t(status));
+            if(status==EFI_SUCCESS) {running_=true;vanished_=false;}
             boot->FreePool(handles);return status==EFI_SUCCESS?status:Fail(status);
         }
         boot->FreePool(handles);return Fail(status);
     }
     charon::AudioEngine::Sink Sink() {return {this,WriteThunk,DrainedThunk};}
     efi_status LastError() const {return error_;}
+    bool Vanished() const {return vanished_;}
+    void MarkVanished() {vanished_=true;}   // r402: the driver's stream went away; Open may find it again
     bool NeedsStop() const {return bound_;}
     efi_handle Handle() const {return handle_;}
     efi_status Stop() {
         if(!bound_)return EFI_SUCCESS;
         if(internal_) {ac97_.Stop();internal_=bound_=running_=false;return EFI_SUCCESS;}
+        if(!Alive())return EFI_SUCCESS;   // the driver is gone: nothing to stop
         const auto status=stream_->stop(stream_);
         if(status!=EFI_SUCCESS)return Fail(status);
-        bound_=running_=false;stream_=nullptr;handle_=nullptr;return EFI_SUCCESS;
+        bound_=running_=false;lingerStream_=stream_;lingerHandle_=handle_;stream_=nullptr;handle_=nullptr;return EFI_SUCCESS;
     }
     size_t Write(const int16_t* samples,size_t frames) {
         if(!running_ || error_!=EFI_SUCCESS)return 0;
         if(internal_)return ac97_.Write(samples,frames);
+        if(!Alive())return 0;
         // r389: while a boot message speaks (its sound cannot be discarded
         // without cutting it) the driver holds at most leadLimit_ frames, so
         // the reader interrupting itself is still heard within ~64 ms.
@@ -119,11 +131,19 @@ public:
     }
     // r389: a newer utterance replaces the old one at once: the driver drops
     // what the hardware has not come near (revision 2). False when unsupported.
+    // r400: the stopped stream is handed to the hardware (see HAKAudioStream.h Linger).
+    bool Linger(const int16_t* loop,uint32_t frames,uint32_t repeats) {
+        Stream* s=lingerStream_;
+        if(s && !StreamOn(lingerHandle_,s)) {lingerStream_=nullptr;return false;}
+        if(!s || s->revision<3 || s->size<8+6*sizeof(void*) || !s->linger)return false;
+        return s->linger(s,loop,frames,repeats)==EFI_SUCCESS;
+    }
     void LimitLead(uint64_t frames) {leadLimit_=frames;}
     bool CanDiscard() const {return running_ && error_==EFI_SUCCESS && (internal_ || (stream_ && stream_->revision>=2));}
     bool Discard() {
         if(!CanDiscard())return false;
         if(internal_) {ac97_.Discard();return true;}
+        if(!Alive())return false;
         uint64_t dropped=0;const auto status=stream_->discard(stream_,&dropped);
         if(status!=EFI_SUCCESS) {Fail(status);return false;}
         if(dropped>submitted_-lastConsumed_) {Fail(EFI_DEVICE_ERROR);return false;}
@@ -132,6 +152,7 @@ public:
     bool Drained() {
         if(!running_ || error_!=EFI_SUCCESS)return false;
         if(internal_)return ac97_.Drained();
+        if(!Alive())return false;
         State state{};state.size=sizeof(state);
         const auto status=stream_->state(stream_,&state);
         if(status!=EFI_SUCCESS) {Fail(status);return false;}
@@ -145,10 +166,26 @@ public:
         return true;
     }
 private:
+    // r402: firmware may stop the audio driver under us (it reconnects controllers
+    // before a boot option; the stream then is freed memory, and calling into it
+    // crashed the firmware at start-up with the voice driver loaded). The stream is
+    // used only while its handle still carries this very interface.
+    bool StreamOn(efi_handle handle,Stream* stream) const {
+        if(!boot_ || !handle || !stream)return false;
+        Stream* now=nullptr;
+        return boot_->HandleProtocol(handle,&streamGuid,(void**)&now)==EFI_SUCCESS && now==stream;
+    }
+    bool Alive() {
+        if(StreamOn(handle_,stream_))return true;
+        stream_=nullptr;handle_=nullptr;lingerStream_=nullptr;bound_=running_=false;vanished_=true;Fail(EFI_DEVICE_ERROR);
+        return false;
+    }
+    efi_boot_services* boot_=nullptr;efi_handle lingerHandle_=nullptr;bool vanished_=false;
     static size_t WriteThunk(void* self,const int16_t* samples,size_t frames) {return static_cast<Device*>(self)->Write(samples,frames);}
     static bool DrainedThunk(void* self) {return static_cast<Device*>(self)->Drained();}
     efi_status Fail(efi_status status) {if(error_==EFI_SUCCESS)error_=status;return status;}
     Stream* stream_=nullptr;efi_handle handle_=nullptr;
+    Stream* lingerStream_=nullptr;   // the stream stopped last (r400 Linger)
     uint64_t submitted_=0,lastConsumed_=0;efi_status error_=EFI_SUCCESS;
     bool bound_=false,running_=false,internal_=false;
     uint64_t leadLimit_=0;

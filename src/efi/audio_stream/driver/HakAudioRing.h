@@ -7,8 +7,8 @@
 #define HAK_RING_BLOCK_FRAMES 512U  /* r389: 8 x 10.7 ms (was 4 x 21.3 ms) */
 #define HAK_RING_BLOCK_COUNT 8U
 #define HAK_RING_DMA_FRAMES (HAK_RING_BLOCK_COUNT*HAK_RING_BLOCK_FRAMES)
-#define HAK_RING_MAX_ADVANCE 2048U /* 42.7 ms between polls, as before r389 */
-#define HAK_RING_MAX_POLL_NS 40000000ULL
+#define HAK_RING_MAX_ADVANCE 3584U /* r404: 74.7 ms; the ring (85.3 ms) less one block keeps the cursor unambiguous */
+#define HAK_RING_MAX_POLL_NS 70000000ULL /* r404: VMware deschedules the vCPU for 45 ms; was 40 ms */
 #define HAK_RING_PADDING_FRAMES 128U
 typedef struct {
   INT16 Queue[HAK_RING_QUEUE_FRAMES*2];

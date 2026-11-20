@@ -15,8 +15,10 @@ import os,sys,shutil,subprocess,socket,json,time,array
 base=Path(__file__).resolve().parent
 sys.path[:0]=[str(base/'fat-image-deps'),str(base/'fat-legacy-deps')]
 QEMU=os.environ.get('CHARON_QEMU','qemu-system-x86_64')  # QEMU 10.x with SDL and dsound/wav audio
-PORT=4466
+PORT=int(os.environ.get('CHARON_PORT','4466'))   # r402: CHARON_PORT for a second machine beside a long test
 
+# r401: the machine runs on the Windows hypervisor (CHARON_ACCEL=whpx, default: speed of a real computer) with CHARON_SMP processors (default 4);
+# CHARON_ACCEL=tcg is the old pure emulation (the timing baselines up to r400 were measured on it).
 def qmp():
     s=socket.create_connection(('127.0.0.1',PORT),timeout=10);f=s.makefile('rwb',buffering=0);f.readline()
     def cmd(n,a=None):
@@ -180,10 +182,13 @@ def prepare(name,efi,wav=False,grub=None,paused=False):
      # r397 (user): Memtest86+ shipped with Charon, always offered in the device list.
      'EFI/HAK/tools/memtest.efi':base/'memtest-dl/x/mt86p_900_x86_64'}
     if __import__('os').environ.get('CHARON_VOICE'):parts['EFI/HAK/CHARONVOICE.EFI']=Path(__import__('os').environ['CHARON_VOICE'])
+    # r400: Charon's installers travel with it (a cloud install leaves them in the new system).
+    for _p in sorted((base/'charon-src-r395/tools/charon-addon').glob('*')):
+        if _p.is_file():parts['EFI/HAK/addon/'+_p.name]=_p
     shutil.copyfile(prior/'boot-disk.img',area/'boot-disk.img')
     shutil.copyfile(prior/'firmware-code.fd',area/'firmware-code.fd')
     shutil.copyfile(base/'charon-machine-r347/firmware-vars.fd',area/'firmware-vars.fd')
-    with PyFatFS(str(area/'boot-disk.img')) as fs:
+    with (PyFatFS(str(area/"boot-disk.img")) if sys.argv[3:] else __import__("contextlib").nullcontext()) as fs:
         for n in ['EFI/HAK/charon-settings-a.bin','EFI/HAK/charon-settings-b.bin','EFI/HAK/once.bin','EFI/HAK/continue.bin','EFI/HAK/continue-set']:
             if fs.exists(n):fs.remove(n)
         if '--quiet-reader' in sys.argv:
@@ -222,6 +227,14 @@ def prepare(name,efi,wav=False,grub=None,paused=False):
             assert synths.is_dir(),('CHARON_SYNTHS has no EFI/HAK/synths',synths)
             for p in sorted(synths.rglob('*')):
                 if p.is_file():parts['EFI/HAK/synths/'+p.relative_to(synths).as_posix()]=p
+        # r400: a tree copied to the boot disk root, e.g. CHARON_PACKAGES=pkg-r400 (holding charon-packages/...)
+        if os.environ.get('CHARON_PACKAGES'):
+            tree=(base/os.environ['CHARON_PACKAGES']).resolve()
+            for p in sorted(tree.rglob('*')):
+                if p.is_file():parts[p.relative_to(tree).as_posix()]=p
+        # r400: optional UEFI drivers (EFI/HAK/drivers/*.efi), e.g. CHARON_DRIVERS=charon-drivers-r400
+        if os.environ.get('CHARON_DRIVERS'):
+            for p in sorted((base/os.environ['CHARON_DRIVERS']).resolve().glob('*.efi')):parts['EFI/HAK/drivers/'+p.name]=p
         # r396: boot-manager profile files (EFI/HAK/profiles/*.txt) from a directory.
         if os.environ.get('CHARON_PROFILES'):
             for p in sorted(Path(os.environ['CHARON_PROFILES']).resolve().glob('*.txt')):
@@ -232,14 +245,16 @@ def prepare(name,efi,wav=False,grub=None,paused=False):
             if fs.exists(n):fs.remove(n)
             with fs.openbin(n,'w') as f:f.write(data)
             with fs.openbin(n,'r') as f:assert f.read()==data
-    command=[QEMU,'-name','Charon-'+name,'-machine','q35,accel=tcg','-cpu','max','-smp','2','-m',os.environ.get('CHARON_MEM','512')]+(['-nic','user,model=e1000'+(',tftp='+str(Path(os.environ['CHARON_TFTP']).resolve())+',bootfile='+os.environ.get('CHARON_BOOTFILE','BOOTX64.EFI') if os.environ.get('CHARON_TFTP') else '')] if os.environ.get('CHARON_NET') or os.environ.get('CHARON_TFTP') else ['-nic','none'])+['-display','sdl']
+    command=[QEMU,'-name','Charon-'+name,'-machine','q35,accel='+{'whpx':'whpx,kernel-irqchip=off','tcg':'tcg'}[os.environ.get('CHARON_ACCEL','whpx')],'-cpu',os.environ.get('CHARON_CPU','max'),'-smp',os.environ.get('CHARON_SMP','4'),'-m',os.environ.get('CHARON_MEM','512')]+((['-netdev','user,id=n0','-device','e1000,netdev=n0,romfile='] if os.environ.get('CHARON_NET_NOROM') else ['-nic','user,model='+os.environ.get('CHARON_NIC','e1000')+(',tftp='+str(Path(os.environ['CHARON_TFTP']).resolve())+',bootfile='+os.environ.get('CHARON_BOOTFILE','BOOTX64.EFI') if os.environ.get('CHARON_TFTP') else '')]) if os.environ.get('CHARON_NET') or os.environ.get('CHARON_TFTP') else ['-nic','none'])+['-display','sdl']
     if os.environ.get('CHARON_GDB'):command+=['-gdb','tcp:127.0.0.1:1234']  # r386: watchpoints via gdb-watch.py
     if os.environ.get('CHARON_DEBUGCON'):command+=['-debugcon','file:debugcon.log','-global','isa-debugcon.iobase=0x402']  # r386: firmware debug output / exceptions
     if '--ramfb' in sys.argv:command+=['-vga','none','-device','ramfb']  # GOP with a plain linear frame buffer (no GRUB native driver), like physical machines
     if paused:command.append('-S')
     command+=['-drive','if=pflash,format=raw,readonly=on,file=firmware-code.fd','-drive','if=pflash,format=raw,file=firmware-vars.fd',
      # r396: Charon's disk boots first even with blank firmware variables (OVMF follows bootindex).
-     '-drive','if=none,id=charondisk,format=raw,file=boot-disk.img','-device','ide-hd,drive=charondisk,bus=ide.0,bootindex=0']
+     '-drive','if=none,id=charondisk,format=raw,file=boot-disk.img']
+    # r401: CHARON_BOOT_USB=1 puts Charon's own disk on USB (Charon started from a stick; the internal disk is only the target)
+    command+=['-device','qemu-xhci,id=xhci','-device','usb-storage,bus=xhci.0,drive=charondisk,bootindex=0'] if os.environ.get('CHARON_BOOT_USB') else ['-device','ide-hd,drive=charondisk,bus=ide.0,bootindex=0']
     if grub:
         cfg=(b'set timeout=3\nset timeout_style=hidden\n' if os.environ.get('CHARON_GRUB_HIDDEN') else b'set timeout=8\nset timeout_style=menu\n')+b'menuentry "Charon test entry one" {\n  echo "Entry one selected"\n  sleep 3\n}\nmenuentry "Charon test entry two" {\n  echo "Entry two selected"\n  sleep 3\n}\nmenuentry "UEFI firmware settings" {\n  fwsetup\n}\nmenuentry "Probe loader" {\n  chainloader /EFI/probe/PROBE.EFI\n}\nmenuentry "Graphical probe" {\n  chainloader /EFI/probe/GPROBE.EFI\n}\nmenuentry "Graphical GRUB menu" {\n  insmod all_video\n  insmod gfxterm\n  loadfont /boot/grub/fonts/unicode.pf2\n  set gfxmode=auto\n  terminal_output gfxterm\n  configfile /boot/grub/grub.cfg\n}\n'
         if '--gfxterm' in sys.argv:
@@ -297,11 +312,19 @@ def prepare(name,efi,wav=False,grub=None,paused=False):
     # r386: removable media. --usb adds an xHCI controller (hot-plug with
     # 'usbplug'); CHARON_USB=img[,img] attaches sticks at power-on;
     # CHARON_CDROM=iso adds a SATA CD drive (media swap with 'cdchange').
-    if '--usb' in sys.argv or os.environ.get('CHARON_USB') or os.environ.get('CHARON_USBKBD') or os.environ.get('CHARON_BRAILLE'):command+=['-device','qemu-xhci,id=xhci']
+    if not os.environ.get('CHARON_BOOT_USB') and ('--usb' in sys.argv or os.environ.get('CHARON_USB') or os.environ.get('CHARON_USBKBD') or os.environ.get('CHARON_BRAILLE')):command+=['-device','qemu-xhci,id=xhci']
     # r390: CHARON_USBKBD=1 adds a USB keyboard (numpad review needs its HID reports; QEMU sends keys to the newest keyboard).
     if os.environ.get('CHARON_USBKBD'):command+=['-device','usb-kbd,bus=xhci.0']
     # r390: CHARON_BRAILLE=1 adds a Baum braille display (QEMU usb-braille, FTDI) on a socket for work/charon-braille-sim.py.
     if os.environ.get('CHARON_BRAILLE'):command+=['-chardev','socket,id=brl,host=127.0.0.1,port=4470,server=on,wait=off','-device','usb-braille,chardev=brl,bus=xhci.0']
+    # r400: a blank target disk for install tests, e.g. CHARON_BLANK=24 (GB, raw, in the machine folder)
+    if os.environ.get('CHARON_BLANK'):
+        blank=area/'blank-disk.img'
+        # r401: a sparse file - it takes only what the guest really writes (a 64 GB disk used to cost 64 GB at once)
+        open(blank,'wb').close()
+        subprocess.run(['fsutil','sparse','setflag',str(blank)],capture_output=True)
+        with open(blank,'r+b') as f:f.truncate(int(os.environ['CHARON_BLANK'])<<30)
+        command+=['-drive',f'if=none,id=blank0,format=raw,file={blank}','-device',{'virtio':'virtio-blk-pci,drive=blank0','sata':'ide-hd,drive=blank0,bus=ide.0','nvme':'nvme,drive=blank0,serial=charonblank'}[os.environ.get('CHARON_BLANK_BUS','virtio')]]
     for i,img in enumerate(x for x in os.environ.get('CHARON_USB','').split(',') if x):
         command+=['-drive',f'if=none,id=stick{i},format=raw,file={Path(img).resolve()}','-device',f'usb-storage,bus=xhci.0,drive=stick{i},removable=on']
     if os.environ.get('CHARON_CDROM') is not None:
@@ -358,7 +381,7 @@ if __name__=='__main__':
         name,rel=sys.argv[2],Path(sys.argv[3]);area=base/name;area.mkdir(exist_ok=False)
         for f in ['templates/boot-disk.img','templates/grub-disk.img','templates/firmware-vars.fd','firmware-code.fd']:
             shutil.copyfile(rel/f,area/Path(f).name)
-        command=[str(rel/'qemu/qemu-system-x86_64.exe'),'-name','Charon-'+name,'-machine','q35,accel=tcg','-cpu','max','-smp','2','-m','512','-nic','none','-display','sdl',
+        command=[str(rel/'qemu/qemu-system-x86_64.exe'),'-name','Charon-'+name,'-machine','q35,accel=whpx,kernel-irqchip=off','-cpu','max','-smp','4','-m','512','-nic','none','-display','sdl',
             '-drive','if=pflash,format=raw,readonly=on,file=firmware-code.fd','-drive','if=pflash,format=raw,file=firmware-vars.fd',
             '-drive','if=ide,format=raw,file=boot-disk.img,index=0','-drive','if=ide,format=raw,file=grub-disk.img,index=1',
             '-audiodev','dsound,id=charon_audio','-device','ich9-intel-hda','-device','hda-duplex,audiodev=charon_audio',
@@ -377,7 +400,7 @@ if __name__=='__main__':
         from pyfatfs.PyFatFS import PyFatFS
         area=base/sys.argv[2]
         with socket.socket() as probe:assert probe.connect_ex(('127.0.0.1',PORT))!=0,'Stop the running Charon QEMU first'
-        with PyFatFS(str(area/'boot-disk.img')) as fs:
+        with (PyFatFS(str(area/"boot-disk.img")) if sys.argv[3:] else __import__("contextlib").nullcontext()) as fs:
             for spec in sys.argv[3:]:
                 name,src=spec.split('=',1);data=Path(src).read_bytes()
                 if fs.exists(name):fs.remove(name)

@@ -42,7 +42,7 @@ Its interface and messages are in Polish and English.
   that language is spoken. Without them Charon speaks with its built-in TVox.
 - A new boot message interrupts the one still being read (r396).
 
-**Since r397 (current: r399)**
+**Since r397 (current: r404)**
 - Formatting is never monotone: every colour, brightness, font size, style,
   inverse/highlight and screen position moves rate, pitch, volume, modulation and
   timbre, also with eSpeak NG (persona ABI 3); Charon's own menu carries a
@@ -52,6 +52,84 @@ Its interface and messages are in Polish and English.
 - Memtest86+ built in; "Restart into firmware setup" opens the firmware's UiApp or
   its HII forms in-session (full settings editor for any UEFI that publishes forms),
   rebooting only as a last resort.
+
+**r404 (current)**
+- `DisconnectFirmwareHda` (`src/efi/CharonAc97.h`): a firmware HD Audio driver (VMware,
+  Apple) is disconnected before AudioDxe connects; sharing the controller crashed VMware.
+- HAK stream (`src/efi/audio_stream/driver`): poll gap limit 70 ms (was 40), maximum
+  cursor advance 3584 frames, LPIB equal to CBL read as position 0.
+- Codec gain at its maximum step (was -12 dB).
+- Results: `tests/charon-r404-results.txt`.
+
+**r403**
+- CharonDOS as a separate system (`CharonWsDosSystem.h`): GPT/FAT32 writer, firmware
+  Boot/Driver options (CharonDOS first, Charon after it, Charon voice driver),
+  optional Windows 11 beside it (`Install-Charon.ps1 -FirstEntry`). CharonDOS
+  commands `WINNT` (start the installed Windows Boot Manager) and `WIN [profile]`.
+- `CHARONPC.EFI` (`src/pc`, `tools/build-charon-bochs.py`): Bochs 3.1 as a UEFI
+  application with musl and libc++, text modes on the console, graphics on GOP,
+  COM1 Braille 'n Speak speaking with Charon's voice; profiles from `CHARONPC.CFG`
+  (`src/pc/PLAN.txt`). Windows 95/98/ME/XP only from the user's own media; reader
+  catalogue `src/pc/WIN9X-READERS.txt`.
+- Screen reader check boxes in the install dialogues (`CharonWsReaders.h`): Orca,
+  Cthulhu, Speakup, Fenrir, Emacspeak, desktops; NVDA, JAWS, Narrator for Windows.
+- ReactOS dropped (findings in `tests/charon-r403-results.txt`, points 5-7).
+- Results of the trials: `tests/charon-r403-results.txt`.
+
+**r402**
+- Fixes: synthesizer switching from Charon's own screens (a nested add-on load
+  overflowed the loaded-module table); the voice driver crashing firmware at
+  power-on when installed with a "force reconnect" driver option (r400, r401);
+  the reader being deaf in programs that stay at `TPL_CALLBACK` (iPXE,
+  netboot.xyz) — a rescue timer one level higher takes over.
+- The install dialogue is arranged in groups, and every entry states whether
+  the system speaks: Windows (11, 10, evaluation images incl. LTSC and Server;
+  first-logon profiles), Debian/Ubuntu installers, Arch with speech from the
+  network, bootable ISOs to a stick or a RAM disk, ready disk images, tools
+  (netboot.xyz and rescue systems), CharonDOS.
+- Ready disk images (`CharonWsImages.h`, `CharonWsSeed.h`, `CharonQcow2.h`,
+  `CharonSeedDisk.h`): raw or qcow2 images are written while they download,
+  the GPT is repaired, and a cloud-init `CIDATA` partition written by Charon
+  sets up the user, console speech and Charon itself. Dual boot: the image's
+  partitions can be placed into free space beside existing systems.
+- A text web browser (`CharonWsBrowser.h`, `CharonHtmlText.h`); 118 trust
+  anchors from Mozilla's list.
+- CharonDOS downloads tested free DOS programs (`CharonDosCatalog.h`,
+  `CharonWsDosApps.h`, `CharonZip.h`).
+- Results of the trials: `tests/charon-r402-results.txt`.
+
+**r401**
+- Every Charon screen (menu, settings, workspace, install dialogue) answers the
+  reader's shortcuts: the reader runs beside Charon in a review-only mode
+  (`ResidentOptions.reviewOnly`, work done from the key hooks, `BootMenu.h`
+  `ReviewReaderOn`). The install dialogue is written on the screen.
+- One progress feedback for the reader and Charon's own tasks (`CharonProgress.h`);
+  one position voice marker for the menu and workspace lists (`CharonMenuVoiceMark.h`).
+- Ubuntu network install tested end to end; the installer itself speaks
+  (`liveSpeechScript` in `CharonWsInstall2.h`).
+- Windows 11 install media made by Charon on a FAT32 USB stick: UDF reader
+  (`CharonUdf.h`), on-the-fly split of `install.wim` into `.swm` parts
+  (`CharonWimSplit.h`), streaming writer (`CharonWsWinUsb.h`); choice between USB and
+  RAM disk. Tested with a synthetic image and wimlib; not with Microsoft's image.
+  Host tests: `tests/CharonUdfTests.cpp`, `tests/CharonWimSplitTests.cpp`.
+- The test harness runs on the Windows hypervisor (`accel=whpx`, 4 processors).
+
+**r400**
+- Charon workspace (`src/efi/CharonWorkspace.h`, `CharonWs*.h`, guide in
+  `src/efi/WORKSPACE.txt`): launcher for every `*.efi`, Dired-style files, speaking
+  editor, hex viewer, calculator, command palette, packages on any volume.
+- Network: DHCP, http and https downloads (own TLS client on BearSSL,
+  `CharonHttps.h`), optional drivers from `\EFI\HAK\drivers`; disc images started
+  from memory through `EFI_RAM_DISK_PROTOCOL`.
+- Installing a system from the network: spoken questionnaire, installer loaded into
+  RAM, Charon copied to the new EFI partition, reader registered as `Driver####`
+  and "Charon" as a boot entry after the system's own. Debian verified end to end
+  in QEMU; **Windows 11 and Ubuntu paths are written but untested**.
+- CharonDOS (`src/dos`): 8086/80186 real-mode emulator with DOS/BIOS services, text
+  mode, as a package.
+- Reader add-on: rising chime and "Charon." at power-on, falling chime and "Charon
+  is turning off." before a firmware reset; quiet menus while a countdown runs;
+  optional cue that keeps playing after `ExitBootServices` (audio stream rev 3).
 
 **Limits** — nothing can speak after `ExitBootServices` (the OS must take over) or
 before firmware loads drivers (POST). x64 UEFI only. Tested in QEMU with OVMF, not
@@ -94,13 +172,13 @@ clang++ -std=c++17 -I inc -I src/efi tests/BootPreOSMenuTests.cpp -o menu-tests 
 
 ## Boot CD
 
-`harness/make-charon-iso-r399.py` builds `Charon-r399.iso`: a UEFI El Torito CD
+`harness/make-charon-iso-r404.py` builds `Charon-r404.iso`: a UEFI El Torito CD
 (platform EFI, no emulation) with only Charon on it (boot FAT image:
 `EFI/BOOT/BOOTX64.EFI`, `EFI/HAK` voice driver, audio driver, Shell, Memtest86+,
 sounds, synthesizer add-ons) and an isohybrid MBR so the same file can be written
 raw to a USB stick. The FAT image is larger than 32 MB, so the catalogue's sector
 count is 1 (edk2 then uses the rest of the disc as the partition).
-`harness/test-charon-iso-r399.py cd|usb` boots it on OVMF with no hard disk.
+`harness/test-charon-iso-r404.py cd|usb` boots it on OVMF with no hard disk.
 
 ## Testing in QEMU
 

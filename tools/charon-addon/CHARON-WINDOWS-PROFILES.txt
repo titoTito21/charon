@@ -1,0 +1,69 @@
+Charon: Windows profiles and making room for a second system
+=============================================================
+
+Two scripts for Windows PowerShell 5.1. Both speak their progress with a
+Windows voice (System.Speech) and print it, are English unless -Language pl is
+given or Windows is Polish, and have -DryRun (read-only queries, prints the
+plan, changes nothing, writes no log).
+
+STATUS: both were only syntax-checked and run with -DryRun, without
+administrator rights, on a Windows 11 build 26300 computer. Neither was run for
+real, and nothing was tried on a freshly installed Windows.
+
+Charon-WindowsProfile.ps1 (after Windows is installed, at first logon)
+----------------------------------------------------------------------
+  -Profile None     nothing.
+  -Profile Slim     removes the factory apps of the tiny11builder list (kept:
+                    both Dolby packages, Sound Recorder, Quick Assist, Windows
+                    Terminal), uninstalls OneDrive with its own setup, turns
+                    off Copilot, Teams/Chat, consumer features and
+                    advertising. Edge, WebView2, Store libraries, Windows
+                    Security, .NET, Windows Update, sound and accessibility
+                    parts stay.
+  -Profile ReviOS   downloads 7zr.exe + 7za.exe (7-zip.org), the AME CLI 0.8.4
+  -Profile AtlasOS  and the playbook, checks SHA-256 (GitHub's digests), checks
+                    the Windows build against the playbook (AtlasOS 26100 and
+                    26200; ReviOS 26.04: 19044, 19045, 22631, 26100, 26200),
+                    and runs TrustedUninstaller.CLI.exe "<playbook>" <options>.
+                    NOT fully unattended:
+                    - Tamper Protection must be turned off by hand (no script
+                      can); the script opens the page, speaks the keys, waits
+                      -SecurityWaitMinutes (20) and turns the other three
+                      Windows Security toggles off itself;
+                    - the AME CLI may wait for a key before its own restart.
+                    Default options keep Defender, mitigations, Windows Update
+                    and Edge; -PlaybookOptions "a b c" replaces them.
+  -Profile Script   downloads a zip or .ps1 (https only) to
+                    %ProgramData%\Charon\profile-script and runs it. Default:
+                    Win11Debloat's release zip (checked against its SHA256SUMS)
+                    with "-RunDefaults -Silent". Other scripts: -ScriptUrl,
+                    -ScriptArguments, -ScriptEntry.
+Narrator: before and after every profile the Narrator hotkey
+(Win+Ctrl+Enter) is switched on, "narrator" is put back into the logon and user
+Accessibility Configuration values if it was there before (always with
+-NarratorAtLogon On), the audio services are set to Automatic and started, and
+missing voices or a missing Narrator are reported aloud. For the playbooks the
+settings are saved and a logon task "Charon restore Narrator" restores them
+after the restart and removes itself.
+Log: %ProgramData%\Charon\profile.log. Exit codes: 0 done, 1 error, 2 refused
+(unsupported build, not administrator), 3 the manual step was not done in time.
+The script restarts Windows only with -Restart.
+
+In the answer file (FirstLogonCommands, after the command that copies \charon
+to %ProgramData%\Charon, and LAST, because a playbook may restart Windows):
+  cmd.exe /c powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%ProgramData%\Charon\Charon-WindowsProfile.ps1" -Profile Slim -Yes -Language en
+
+Charon-MakeRoom.ps1 (in a running Windows, before installing a second system)
+------------------------------------------------------------------------------
+  Charon-MakeRoom.ps1 [-SizeGB 64] [-Yes] [-ClockUtc] [-NoFastStartup:$false]
+Shrinks the Windows partition by -SizeGB and leaves the space unallocated; no
+partition is created and no other partition or disk is touched. Before that it
+reports the disk (GPT required, MBR and dynamic disks are refused), size, free
+space and the largest shrink Windows allows; suspends BitLocker for two
+restarts when the drive is protected or being encrypted, or sets
+PreventDeviceEncryption=1 when it is not encrypted; warns about Secure Boot
+(shim and MOK); turns fast start-up off (HiberbootEnabled=0, hibernation stays)
+and, with -ClockUtc, sets RealTimeIsUniversal=1 (REG_DWORD). Without -Yes it
+reads the plan and asks for the typed word TAK / YES.
+Log: %ProgramData%\Charon\makeroom.log. Exit codes: 0 done, 1 error, 2 refused
+or not confirmed (nothing changed).

@@ -1,0 +1,18 @@
+BearSSL 0.6 (Thomas Pornin), MIT licence - see LICENSE.txt.
+
+Origin:  https://bearssl.org/bearssl-0.6.tar.gz
+SHA-256: 6705bba1714961b41a728dfc5debbe348d2966c117649392f8c8139efc83ff14
+
+Copied unchanged: src/ and inc/ (library sources and public headers),
+LICENSE.txt, README.txt. Not copied: T0 compiler, tools, tests, samples,
+build files.
+
+Added for Charon (not part of BearSSL):
+  compat/string.h, compat/stdlib.h   freestanding declarations for the
+                                     UEFI build (no C library)
+  SOURCE.txt                         this note
+
+Build for the UEFI target: tools/build-charon-bearssl.py OUTDIR
+(operating system hooks are switched off there: no time(), no /dev/urandom,
+no CryptGenRandom; the certificate clock and the entropy come from the
+caller, see src/efi/CharonHttps.h).

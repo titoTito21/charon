@@ -134,16 +134,39 @@ static hakefi::ReaderControl driverControl;
 static efi_status EFIAPI DriverSuspend(hakefi::ReaderControl*) {return hakefi::residentReader.Suspend();}
 static void UnpackReading(hakefi::ResidentOptions& o,uint32_t reading) {
     o.punctuation=uint8_t(reading&3);o.capitals=uint8_t((reading>>2)&7);o.screenLanguage=uint8_t((reading>>5)&3);o.readerFlags=uint8_t((reading>>8)&63);
-    o.formatFlags=hakefi::ReadingFormat(reading);o.stereo=hakefi::ReadingStereo(reading);const uint8_t extra=uint8_t((reading>>20)&31);o.managerFlags=uint8_t(extra&7);o.brailleAttributes=(extra&8)!=0;o.dictionary=(extra&16)!=0;   // r393
+    o.formatFlags=hakefi::ReadingFormat(reading);o.stereo=hakefi::ReadingStereo(reading);const uint8_t extra=uint8_t((reading>>20)&31);o.managerFlags=uint8_t(extra&7);o.linger=(reading>>29)&1;o.brailleAttributes=(extra&8)!=0;o.dictionary=(extra&16)!=0;   // r393
 }
 static efi_status EFIAPI DriverResume(hakefi::ReaderControl*,const char* language,uint8_t polish,uint8_t verbosity,uint8_t progress,uint32_t voice,uint32_t reading) {
     hakefi::ResidentOptions update;
     if(language && language[0] && language[1]) {update.language[0]=language[0];update.language[1]=language[1];}
     // polish: bit 0 Polish, bit 1 explicit messages (r373; older menus pass 0/1).
     update.polish=(polish&1)!=0;update.explicitMessages=(polish&2)!=0;update.positions=(polish&4)==0;update.timers=uint8_t((polish>>3)&3);update.verbosity=verbosity;update.progress=progress;
+    update.reviewOnly=(polish&0x20)!=0;   // r401: Charon's own screens - review keys only
     update.rate=uint8_t(voice);update.pitch=uint8_t(voice>>8);update.volume=uint8_t(voice>>16);update.effectsVolume=uint8_t(voice>>24);
     UnpackReading(update,reading);
     return hakefi::residentReader.Resume(&update);
+}
+// r402: an active driver option marked "force reconnect" (the options Charon's
+// Windows installer writes) makes firmware disconnect and reconnect every
+// controller right after the driver options are processed. A sound card bound
+// before that loses its driver again under the voice (r400/r401 crashed the
+// firmware there), and the reconnect binds it anyway.
+static bool ReconnectFollows() {
+    if(!systemTable || !systemTable->RuntimeServices)return false;
+    uint16_t order[64];size_t size=sizeof(order);
+    if(systemTable->RuntimeServices->GetVariable((char16_t*)u"DriverOrder",&globalGuid,nullptr,&size,order)!=EFI_SUCCESS)return false;
+    static uint8_t option[4096];
+    for(size_t i=0;i<size/2;++i) {
+        char16_t name[11]=u"Driver0000";static const char16_t hex[]=u"0123456789ABCDEF";
+        for(int d=0;d<4;++d)name[6+d]=hex[(order[i]>>(12-4*d))&15];
+        size_t bytes=sizeof(option);
+        if(systemTable->RuntimeServices->GetVariable(name,&globalGuid,nullptr,&bytes,option)!=EFI_SUCCESS || bytes<4)continue;
+        if((option[0]&1) && (option[0]&2))return true;   // LOAD_OPTION_ACTIVE | LOAD_OPTION_FORCE_RECONNECT
+    }
+    return false;
+}
+static void EFIAPI DriverConnectAudio(efi_event,void*) {
+    if(systemTable && systemTable->BootServices)charonaudioefi::ConnectAudioControllers(systemTable->BootServices);
 }
 extern "C" efi_status EFIAPI efi_main(efi_handle self,efi_system_table* table) {
     systemTable=table;
@@ -197,8 +220,19 @@ extern "C" efi_status EFIAPI efi_main(efi_handle self,efi_system_table* table) {
     boot->InstallProtocolInterface(&handle,&hakefi::readerControlGuid,EFI_NATIVE_INTERFACE,&driverControl);
     // r385: the add-on greets with one short PC-speaker style beep (as after
     // POST), not with the menu's welcome sound.
-    if(effects && effects->Beep)effects->Beep(effects->context,900,200);
-    char16_t greet[400]={};hakefi::Append(greet,400,pl?u"Charon: mowa włączona od startu komputera.":u"Charon: speech is on from power-on.");
+    // r400: fast-booting firmware never binds the sound card for us.
+    // r402: not when firmware is about to reconnect everything (see ReconnectFollows).
+    if(!ReconnectFollows())charonaudioefi::ConnectAudioControllers(boot);
+    {static efi_guid readyToBoot={0x7ce88fb3,0x4bd7,0x4679,{0x87,0xa8,0xa8,0xd8,0xde,0xe5,0x0d,0x2b}};
+     static efi_guid endOfDxe={0x02ce967a,0xdd7e,0x4ffc,{0x9e,0xe7,0x81,0x0c,0xf0,0x47,0x08,0x80}};
+     static efi_event events[2];
+     if(boot->CreateEventEx) {
+         boot->CreateEventEx(EVT_NOTIFY_SIGNAL,TPL_CALLBACK,DriverConnectAudio,nullptr,&endOfDxe,&events[0]);
+         boot->CreateEventEx(EVT_NOTIFY_SIGNAL,TPL_CALLBACK,DriverConnectAudio,nullptr,&readyToBoot,&events[1]);
+     }}
+    // r400 (user): two rising tones and just the name.
+    if(effects && effects->Beep)effects->Beep(effects->context,8000,320);
+    char16_t greet[400]={};hakefi::Append(greet,400,u"Charon.");
     if(synthNote[0]) {hakefi::Append(greet,400,u" ");hakefi::Append(greet,400,synthNote);}
     hakefi::residentReader.Announce(greet);
     return EFI_SUCCESS;
@@ -244,6 +278,8 @@ extern "C" efi_status EFIAPI efi_main(efi_handle self,efi_system_table* table) {
     // r356: a resident CHARONVOICE.EFI of this release already speaks and
     // reads the screen; the menu then uses that voice and pauses the reader.
     hakefi::residentDriver=hakefi::FindReaderControl(table->BootServices);
+    // r400: the add-on's sound card may still have no driver bound (fast boot).
+    if(hakefi::residentDriver)charonaudioefi::ConnectAudioControllers(table->BootServices);
     if(hakefi::residentDriver)hakefi::residentDriver->Suspend(hakefi::residentDriver);
     // r386: the provider holds ~200 KB of tone buffers (r384's 500 ms end
     // tone): on the firmware's stack it reached below the stack, and a deep

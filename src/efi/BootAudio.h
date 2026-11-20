@@ -2,6 +2,7 @@
 #pragma once
 #include <efi/protocol/simple-file-system.h>
 #include "BootAnnouncements.h"
+#include "CharonAc97.h"
 namespace hakaudioefi {
 static uint8_t bootPcm[4*1024*1024];
 static Completion bootCompletion;
@@ -38,6 +39,7 @@ inline efi_status InitializeAudio(efi_handle self,efi_boot_services* boot,
         if(status!=EFI_SUCCESS) {if(driver)boot->UnloadImage(driver);return status;}
         status=boot->StartImage(driver,nullptr,nullptr);
         if(status!=EFI_SUCCESS) {boot->UnloadImage(driver);return status;}
+        charonaudioefi::DisconnectFirmwareHda(boot,driver);   // r404: see CharonAc97.h
         size_t count=0;efi_handle* handles=nullptr;
         if(boot->LocateHandleBuffer(AllHandles,nullptr,nullptr,&count,&handles)==EFI_SUCCESS) {
             for(size_t i=0;i<count;++i)boot->ConnectController(handles[i],nullptr,nullptr,true);
@@ -57,7 +59,7 @@ inline efi_status InitializeAudio(efi_handle self,efi_boot_services* boot,
     if(ports)boot->FreePool(ports);
     if(!mask)return EFI_UNSUPPORTED;
     // AudioDxe requires an initialized stream before the first StopPlayback.
-    return audio->setup(audio,mask,-12,64,2,2,0);
+    return audio->setup(audio,mask,127,64,2,2,0);
 }
 inline efi_status BootAudio(efi_handle self,efi_system_table* table,efi_file_protocol* root) {
     char language[3]={};

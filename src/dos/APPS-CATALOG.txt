@@ -1,0 +1,305 @@
+CharonDOS application catalog - test record
+============================================
+
+Test date: 2026-11-20.  Data file: src/efi/CharonDosCatalog.h (generated).
+
+Candidates looked at: 101.  Passed and offered: 38 (kPrograms).  Work alone but
+blocked by emulator gap E1: 12 (kBlockedByStdHandleBug).  Rejected: 51 (kRejected).
+
+How it was tested
+-----------------
+* Sources: the FreeDOS 1.4 package repository on ibiblio
+  (https://www.ibiblio.org/pub/micro/pc-stuff/freedos/files/repositories/1.4/<group>/<name>.zip), two older
+  FreeDOS packages (1.1, 1.2) and DOS Frotz 2.55 from the IF Archive.
+* Emulator: src/dos of this tree as of 2026-11-20, built for the host with the
+  flags of tools/build-charondos.py --host-only. The released
+  charondos-r400/charondos-host.exe is older than bios.cpp / dosint.cpp /
+  backend_host.cpp and was not the test subject. The test binary used a copy of
+  backend_host.cpp with three additions to the key script only: {WAIT} (400 ms
+  pause, needed because programs flush type-ahead when they start), {A-x} and
+  {C-x}. No emulator source file was changed.
+* The downloaded programs were never run on the host; they ran only inside the
+  emulator. Each test got a fresh drive C: holding the program's files at the
+  catalog's install path and C:\WORK with small text files and a two-level
+  directory tree.
+* Each program was started from the CharonDOS shell with scripted keys and had
+  to do one real thing (see the table). Effects on files were checked on the
+  host file system. After the program the script typed ECHO to prove that the
+  shell and its console output were still alive. All interrupts that reach the
+  emulator were logged (--inttrace) and calls the emulator does not implement
+  were listed.
+* Full-screen programs were judged from the final text screen (B800:0000).
+* Not done: nothing was run on CHARONDOS.EFI / real UEFI, nothing was heard
+  through the screen reader, and no program was used for longer than the
+  scripted minute. "Passed" means the listed operation worked, not that every
+  function of the program does.
+
+Passed (kPrograms)
+------------------
+
+edlin     edit     ZIP   377009 bytes, installs   56421 bytes in \APPS\EDLIN, run: EDLIN.EXE
+          line editor EDLIN / edytor wierszowy EDLIN; licence GPL-2.0
+          Test: listed a file, inserted a line, W wrote it (checked on the host), Q quit.
+e3        edit     ZIP   209743 bytes, installs   17217 bytes in \APPS\E3, run: E3-16.COM
+          tiny editor E3 / mały edytor E3; licence GPL-2.0
+          Test: full-screen: opened a file, typed, Ctrl+K X saved (checked on the host) and left; WordStar keys.
+uhex      edit     ZIP    36915 bytes, installs   14950 bytes in \APPS\UHEX, run: UHEX.COM
+          hex editor UHEX / edytor szesnastkowy UHEX; licence BSD-2-Clause
+          Test: full-screen hex view of a file, Esc leaves.
+doszip    files    ZIP   388461 bytes, installs  188314 bytes in \APPS\DOSZIP, run: DZ.EXE
+          file manager Doszip / menedżer plików Doszip; licence GPL-2.0
+          Test: two-panel file manager: panels drawn, F3 viewer showed a file, F10 + Enter left; has its own viewer, editor and unzip.
+tree      files    ZIP   110184 bytes, installs   12214 bytes in \APPS\TREE, run: TREE.COM
+          directory tree TREE / drzewo katalogów TREE; licence GPL-2.0-or-later
+          Test: TREE \WORK /F /A printed the correct tree.
+move      files    ZIP   104281 bytes, installs   41217 bytes in \APPS\MOVE, run: MOVE.EXE
+          file mover MOVE / przenoszenie plików MOVE; licence GPL-2.0
+          Test: moved a file into a directory and renamed a file (checked on the host).
+deltree   files    ZIP    38651 bytes, installs   36015 bytes in \APPS\DELTREE, run: DELTREE.COM
+          directory tree remover DELTREE / usuwanie drzewa katalogów DELTREE; licence GPL-2.0
+          Test: DELTREE /Y removed a two-level tree (checked on the host).
+xcopy     files    ZIP    84444 bytes, installs   46385 bytes in \APPS\XCOPY, run: XCOPY.EXE
+          tree copier XCOPY / kopiowanie drzew XCOPY; licence GPL-2.0
+          Test: XCOPY SUB NEW\ /S /E copied a two-level tree (checked on the host).
+xdel      files    ZIP    50928 bytes, installs   21611 bytes in \APPS\XDEL, run: XDEL.COM
+          file remover XDEL / usuwanie plików XDEL; licence GPL-2.0
+          Test: XDEL SUB\*.TXT /S /N deleted the matching file (checked on the host).
+attrib    files    ZIP    25297 bytes, installs   24376 bytes in \APPS\ATTRIB, run: ATTRIB.COM
+          file attributes ATTRIB / atrybuty plików ATTRIB; licence GPL-2.0
+          Test: listed attributes, set and cleared read-only.
+du        files    ZIP    11783 bytes, installs   16964 bytes in \APPS\DU, run: DU.EXE
+          disk usage DU / zajętość katalogów DU; licence GPL-2.0
+          Test: printed sizes of the tree.
+search    files    ZIP    24446 bytes, installs   34514 bytes in \APPS\SEARCH, run: SEARCH.EXE
+          file finder SEARCH / szukanie plików SEARCH; licence GPL-2.0
+          Test: found a file two levels down.
+pg        view     ZIP    65268 bytes, installs   53096 bytes in \APPS\PG, run: PG.EXE
+          text viewer PG / przeglądarka tekstu PG; licence GPL-2.0
+          Test: full-screen pager: PgDn paged a 60-line file, Esc left.
+ambread   view     ZIP    37057 bytes, installs   13567 bytes in \APPS\AMB, run: AMB.COM
+          AMB book reader / czytnik książek AMB; licence MIT
+          Test: AMB.COM opened the FreeDOS help book, index page drawn; Esc twice leaves. Needs a .AMB book (see fdhelp).
+fdhelp    view     ZIP  1468782 bytes, installs 1492440 bytes in \APPS\AMB, run: AMB.COM FDHELPEN.AMB
+          FreeDOS help in English / pomoc FreeDOS po angielsku; licence GFDL-1.1
+          Test: data only: FDHELPEN.AMB (English FreeDOS help), read with AMB.COM in the test above.
+find      tools    ZIP   102855 bytes, installs   27379 bytes in \APPS\FIND, run: FIND.COM
+          text search FIND / szukanie tekstu FIND; licence GPL-2.0
+          Test: FIND /N and /C gave the right lines and count.
+grep      tools    ZIP   226527 bytes, installs  118733 bytes in \APPS\GREP, run: GREP.EXE
+          pattern search GREP / szukanie wzorców GREP; licence GPL-2.0
+          Test: GNU grep 2.0, 16-bit: regular expression over two files, -n and -c correct.
+sort      tools    ZIP    40259 bytes, installs   11249 bytes in \APPS\SORT, run: SORT.EXE
+          line sorter SORT / sortowanie wierszy SORT; licence GPL-2.0
+          Test: sorted redirected stdin; SORT /R file > OUT.TXT correct on the host.
+comp      tools    ZIP    14743 bytes, installs    3670 bytes in \APPS\COMP, run: COMP.COM
+          file compare COMP / porównywanie plików COMP; licence MIT
+          Test: compared two files, listed the four differing bytes.
+tail      tools    ZIP    38822 bytes, installs   56316 bytes in \APPS\TAIL, run: TAIL.EXE
+          file tail TAIL / koniec pliku TAIL; licence LicenseRef-OpenSource
+          Test: TAIL LONG.TXT printed the last lines (probes INT 2Fh AX=2701h and LFN, falls back).
+choice    tools    ZIP    67707 bytes, installs    6333 bytes in \APPS\CHOICE, run: CHOICE.EXE
+          batch choice prompt CHOICE / wybór w skryptach CHOICE; licence GPL-2.0
+          Test: CHOICE /C:YN waited for a key, errorlevel 2 seen by IF ERRORLEVEL.
+cal       tools    ZIP     8373 bytes, installs    2385 bytes in \APPS\CAL, run: CAL.COM
+          calendar CAL / kalendarz CAL; licence LicenseRef-Freeware-with-source
+          Test: current month and CAL 2 2024 printed.
+compute   tools    ZIP    40063 bytes, installs   31602 bytes in \APPS\COMPUTE, run: COMPUTE.EXE
+          expression calculator COMPUTE / kalkulator wyrażeń COMPUTE; licence GPL-2.0-or-later
+          Test: COMPUTE 2+3*4 = 14, 100/7 = 14.286 (software floating point).
+rcal      tools    ZIP    90975 bytes, installs   24130 bytes in \APPS\RCAL, run: RCAL.COM
+          calculator RCAL / kalkulator RCAL; licence MIT
+          Test: interactive paper-roll calculator: 12*12 = 144, Esc leaves.
+gnubc     tools    ZIP   185943 bytes, installs  126871 bytes in \APPS\BC, run: BC.EXE
+          arbitrary precision calculator BC / kalkulator dowolnej precyzji BC; licence GPL-2.0
+          Test: GNU bc 1.02: 2^100, scale=20, 1/7, quit.
+rpn       tools    ZIP   301505 bytes, installs  109654 bytes in \APPS\DOSUTIL, run: RPN.COM
+          RPN calculator and TR tool / kalkulator RPN i narzędzie TR; licence EUPL-1.1
+          Test: RPN 2 3 + 4 * = 20; TR a-z A-Z on redirected stdin.
+md5sum    tools    ZIP   158001 bytes, installs   38292 bytes in \APPS\MD5SUM, run: MD5SUM.EXE
+          MD5 checksum MD5SUM / suma MD5 MD5SUM; licence GPL-2.0
+          Test: MD5 of a file equal to the value computed on the host.
+bsum      tools    ZIP     6081 bytes, installs    2861 bytes in \APPS\BSUM, run: BSUM.COM
+          checksum BSUM / suma kontrolna BSUM; licence MIT
+          Test: BSD checksum of a file printed.
+nro       tools    ZIP    42944 bytes, installs   15446 bytes in \APPS\NRO, run: NRO.COM
+          text formatter NRO / formatowanie tekstu NRO; licence PD
+          Test: formatted a small nroff document (centred title, filled paragraph).
+runtime   tools    ZIP    19077 bytes, installs    3096 bytes in \APPS\RUNTIME, run: RUNTIME.COM
+          execution timer RUNTIME / pomiar czasu RUNTIME; licence PD
+          Test: RUNTIME VER ran the command through COMSPEC and printed the elapsed time.
+zip       archive  ZIP  1719581 bytes, installs  102987 bytes in \APPS\ZIP, run: ZIP16.EXE
+          ZIP archiver / archiwizator ZIP; licence Info-ZIP
+          Test: ZIP16 -r made a 6-entry archive; opened and CRC-checked on the host with Python zipfile.
+arj       archive  ZIP   635203 bytes, installs  184249 bytes in \APPS\ARJ, run: ARJ.EXE
+          archiver ARJ / archiwizator ARJ; licence GPL-2.0
+          Test: ARJ a, l, e round trip; extracted file identical (checked on the host).
+tinyasm   devel    ZIP   180716 bytes, installs   40764 bytes in \APPS\TINYASM, run: TINYASM.EXE
+          assembler TINYASM / asembler TINYASM; licence BSD-2-Clause
+          Test: assembled HELLO.ASM to HELLO.COM, which ran and printed its text.
+wasm      devel    ZIP   483564 bytes, installs  228388 bytes in \APPS\WASM, run: WASM.COM
+          assembler WASM / asembler WASM; licence MIT
+          Test: Wolfware assembler: assembled HELLO.ASM to HELLO.COM, which ran.
+jwasm     devel    ZIP  1858798 bytes, installs  320891 bytes in \APPS\JWASM, run: JWASMR.EXE
+          assembler JWasm / asembler JWasm; licence Watcom-1.0
+          Test: JWASMR -bin assembled a MASM-syntax program to HELLO.COM, which ran.
+gnuchess  games    ZIP   590986 bytes, installs  482795 bytes in \APPS\GNUCHESS, run: GNUCHESR.EXE
+          GNU Chess / szachy GNU Chess; licence GPL-2.0
+          Test: GNUCHESR (plain teletype version): level 40 5, e2e4 answered with c7c5 from the book, bd printed the board, quit. GNUCHESS.EXE itself needs ANSI.SYS.
+row4      games    ZIP    76002 bytes, installs   51760 bytes in \APPS\ROW4, run: ROW4T.COM
+          four in a row game ROW4 / gra cztery w rzędzie ROW4; licence AGPL-3.0-or-later
+          Test: four in a row, text mode: 1 player, dropped a piece, computer answered; Q in the menu leaves.
+eliza     games    ZIP    15068 bytes, installs   10820 bytes in \APPS\ELIZA, run: ELIZA.EXE
+          ELIZA chatterbot / rozmowa z ELIZĄ; licence PD
+          Test: conversation works, QUIT leaves; must be started in its own directory (RESPONSE.DAT).
+
+Work alone, blocked by gap E1 (kBlockedByStdHandleBug)
+------------------------------------------------------
+Each of these did its job in a fresh session, then closed DOS handles 0, 1 and 2
+(or only 0, where noted) on exit, as the Borland / Microsoft C run-time does.
+After that ECHO and DIR of the shell print nothing, later programs cannot read
+the keyboard through handle 0, and the next file a program opens can receive
+handle 1, so console messages land in data files (seen with ZOO).
+
+edit      edit     ZIP   132858 bytes, installs  116508 bytes in \APPS\EDIT, run: EDIT.EXE
+          text editor EDIT / edytor tekstu EDIT; licence GPL-2.0
+          Test: opened a file, typed, F10 menus, Alt+X with the save dialogue (file saved, checked on the host). F1 help did not open; a menu opened by Alt+letter closes again when the Alt flag drops, F10 works.
+ospedit   edit     ZIP  1095767 bytes, installs  119264 bytes in \APPS\OSPEDIT, run: OSPEDIT.EXE
+          text editor OSPEDIT / edytor tekstu OSPEDIT; licence GPL-2.0
+          Test: Turbo Vision style editor: opened a file, typed, F2 saved (checked on the host), Alt+X left.
+doshexed  edit     ZIP    48918 bytes, installs   61582 bytes in \APPS\HEXED, run: HEXED.EXE
+          hex editor HEXED / edytor szesnastkowy HEXED; licence GPL-3.0
+          Test: hex view of a file, Esc leaves.
+more      view     ZIP    69829 bytes, installs   26518 bytes in \APPS\MORE, run: MORE.EXE
+          text pager MORE / stronicowanie tekstu MORE; licence GPL-2.0
+          Test: paged a file and redirected stdin (closes handle 0 only).
+less      view     ZIP   307248 bytes, installs   96201 bytes in \APPS\LESS, run: LESS.EXE
+          text pager LESS / przeglądarka tekstu LESS; licence BSD-2-Clause
+          Test: paged, searched, q left (closes handles 0 and 2).
+head      tools    ZIP    20973 bytes, installs   25423 bytes in \APPS\HEAD, run: HEAD.COM
+          file head HEAD / początek pliku HEAD; licence GPL-2.0
+          Test: HEAD -N 3 printed three lines.
+fc        tools    ZIP   130243 bytes, installs   38307 bytes in \APPS\FC, run: FC.EXE
+          file compare FC / porównywanie plików FC; licence GPL-2.0
+          Test: text comparison of two files correct.
+replace   files    ZIP    28867 bytes, installs   43666 bytes in \APPS\REPLACE, run: REPLACE.EXE
+          file replacer REPLACE / zastępowanie plików REPLACE; licence GPL-2.0
+          Test: REPLACE *.TXT SUB /A added three files (checked on the host).
+xgrep     tools    ZIP    27029 bytes, installs   31721 bytes in \APPS\XGREP, run: XGREP.COM
+          pattern search XGREP / szukanie wzorców XGREP; licence 0BSD
+          Test: regular expression search correct (closes handle 0 only).
+b64       tools    ZIP    23438 bytes, installs   15806 bytes in \APPS\B64, run: B64.EXE
+          Base64 coder B64 / kodowanie Base64 B64; licence MIT
+          Test: encode and decode round trip identical (checked on the host).
+zoo       archive  ZIP   273432 bytes, installs   67955 bytes in \APPS\ZOO, run: ZOO.EXE
+          archiver ZOO / archiwizator ZOO; licence PD
+          Test: first ZOO a worked; the following ZOO x wrote its console message into the extracted file because handle 1 had been closed.
+frotz     games    ZIP    75550 bytes, installs  138792 bytes in \APPS\FROTZ, run: FROTZ.EXE
+          text adventure interpreter Frotz / interpreter gier tekstowych Frotz; licence GPL-2.0-or-later
+          Test: Frotz 2.55 played Adventure (Advent.z5 from the IF Archive): enter building, take lamp, inventory, quit. Story files are not in the ZIP.
+
+Rejected (kRejected)
+--------------------
+debug     A, U, D, R work, but G ends DEBUG itself: INT 21h AX=4B01h, AH=55h and AH=5Dh are missing
+insight   "Can't load program": INT 21h AX=4B01h and AH=55h are missing; Alt+X did not leave
+tde       illegal instruction 66h (TDER.EXE is built for the 80386)
+sayswho   illegal instruction 0Fh (80386 code)
+freemacs  ends at once; calls INT 10h AH=FEh (video buffer query) 1031 times
+vitetris  TETRIS16 draws with ANSI escape sequences; the console has no ANSI driver
+hangman   sets graphics mode 04h
+drmind    sets graphics mode 13h
+psrinvad  sets graphics mode 13h
+sudoku86  "no mouse detected" (INT 33h) and graphics
+zmiy      no reaction, runs until the time limit; hooks INT 1Ch, probably reads the keyboard through INT 09h / port 60h; real-time game
+dn2       DOS Navigator prints its banner and hangs (1 MB DN.PRG image)
+zdir      prints nothing: uses FCB find first, INT 21h AH=11h/12h
+gzip      LONG.TXT was replaced by a file the host shows as LONG.TX; gzip -d cannot find it afterwards (data loss)
+msa       "No output file." for a valid source; cause not found
+which     prints nothing for a program that is on PATH
+fdbanner  prints nothing
+tee       copies correctly but prints "Error loading kitten file" on every run
+mem       works; not listed because the CharonDOS shell has MEM built in
+senet     board drawn (probes INT 10h AH=4Fh/5Fh/6Fh), play and exit not verified
+fdtui     menu bar drawn, nothing more verified
+stamp     help works, STAMP file printed nothing; not verified
+touch     no error on an existing file, effect not measured; not verified
+utf8tocp  only the usage text seen; not verified
+exe2bin   only the usage text seen; not verified
+cpp2ccmt  only the usage text seen; not verified
+dog       LS.COM lists a directory; the shell itself not evaluated
+bcc       not tested: needs its LIB and INCLUDE tree and several passes
+wcd       not tested: needs a batch wrapper to change directory
+topspin   not tested
+fmines    not downloaded: ZIP larger than 12 MB
+bwbasic   protected mode (DOS/4GW LE), needs a 386 and a DOS extender
+bwbasic12 protected mode (DOS/4GW LE, FreeDOS 1.2 package), needs a 386 and a DOS extender
+bwbasic11 protected mode (Win32 PE, FreeDOS 1.1 package), needs a 386 and a DOS extender
+foxcalc   protected mode (DJGPP), needs a 386 and a DOS extender
+foxtype   protected mode (DJGPP), needs a 386 and a DOS extender
+gnused    protected mode (DJGPP), needs a 386 and a DOS extender
+lha       protected mode (DJGPP), needs a 386 and a DOS extender
+lua       protected mode (DJGPP), needs a 386 and a DOS extender
+mined     protected mode (DJGPP), needs a 386 and a DOS extender
+minibox   protected mode (DJGPP), needs a 386 and a DOS extender
+msedit    protected mode (DJGPP), needs a 386 and a DOS extender
+pico      protected mode (DJGPP), needs a 386 and a DOS extender
+tar       protected mode (DJGPP), needs a 386 and a DOS extender
+unzip     protected mode (DJGPP), needs a 386 and a DOS extender
+unzip12   protected mode (DJGPP, FreeDOS 1.2 package), needs a 386 and a DOS extender
+pdtree    protected mode (PE), needs a 386 and a DOS extender
+pbox      protected mode (DJGPP), needs a 386 and a DOS extender
+hexcomp   protected mode (DJGPP), needs a 386 and a DOS extender
+mistral   protected mode (DJGPP), needs a 386 and a DOS extender
+bolitare  protected mode (DJGPP), needs a 386 and a DOS extender
+
+Emulator gaps met, in the order worth fixing
+--------------------------------------------
+E1  One handle table for all processes. A child that closes handle 0, 1 or 2
+    (normal C run-time exit) closes it for the shell and for every later
+    program. Fix: a job file table per PSP (inherit on EXEC, drop on
+    terminate), or at least restore handles 0-4 of the parent when a child
+    ends. Unblocks 12 tested programs at once: EDIT, OSPEDIT, HEXED, MORE,
+    LESS, HEAD, FC, REPLACE, XGREP, B64, ZOO and Frotz (text adventures).
+E2  Alt+letter in full-screen programs. The Alt bit of 0040:0017 appears
+    together with the key and is cleared 400 ms later; FreeDOS EDIT (DFlat+)
+    takes that as "Alt pressed and released" and closes the menu it has just
+    opened. Seen with scripted keys on the host backend; F10 works. The Alt
+    bit should be visible before the key and go away with the next non-Alt key.
+E3  FreeDOS EDIT: F1 does not open the help window (EDIT.HLP is installed and
+    opened at start; after F1 only an INT 21h AH=4Ah follows). Not analysed.
+E4  INT 21h AX=4B01h (load without executing), AH=55h (create child PSP) and
+    AH=5Dh. Without them DEBUG's G ends DEBUG and Insight cannot load a
+    program.
+E5  No ANSI escape sequences on the console (no ANSI.SYS). VITETRIS and the
+    full-screen GNUCHESS.EXE print raw "ESC[" text.
+E6  INT 21h AH=11h/12h (FCB find first/next) return FFh. ZDIR lists nothing.
+E7  File name handling seen with GZIP: output "long.txz" ended on the host as
+    LONG.TX and could not be opened again. Not analysed; worth a test with
+    names whose extension is rewritten by the program.
+E8  INT 10h AH=FEh (TopView video buffer) is ignored; Freemacs depends on it.
+E9  No INT 33h mouse (AX=0 returns "not installed"). Correct for a keyboard
+    system, but SUDOKU86 refuses to start. EDIT, Frotz and Doszip poll it
+    constantly without harm.
+E10 Graphics modes (04h, 13h) are not there by design: HANGMAN, DRMIND,
+    PSR Invaders.
+E11 80386 instructions (prefix 66h, opcodes 0Fh xx) are not there by design:
+    TDE (TDER.EXE), SAYSWHO; every DJGPP / DOS/4GW program (16-bit UNZIP does
+    not exist in the FreeDOS repository, so there is no stand-alone unzip in
+    the catalog; Doszip and ZIP16 are the ZIP tools that work).
+E12 Asked for and answered "not supported" without harm: INT 21h AH=71h/73h
+    (LFN, FAT32), AX=440Dh, AX=4452h, INT 2Fh AX=4300h/1600h/2701h/4010h,
+    INT 15h AH=E8h/C0h, INT 10h AH=1Bh/4Fh/EFh/0Bh.
+E13 Programs without a hint: MSA ("No output file."), WHICH and FDBANNER
+    (no output), ZMIY and DOS Navigator (hang).
+
+Notes for the downloader
+------------------------
+* File names inside the ZIPs are case-sensitive and mixed (BIN/amb.com,
+  appinfo/BSUM.LSM); File::zipPath is exact, File::dest is the 8.3 target.
+* GNU Chess needs its data in the subdirectory MISC; this is why File has a
+  separate dest.
+* ELIZA and GNU Chess look for their data in the current directory: start
+  `run` in installDir.
+* fdhelp is data only and installs into the directory of ambread.
+* Frotz needs story files (.z3/.z5/.z8), which are single files and not ZIPs;
+  the catalog format has no entry kind for them yet.
+* Logs of every run: work/dos-catalog/logs/<name>.log (outside this tree).

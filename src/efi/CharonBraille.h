@@ -93,7 +93,7 @@ public:
                 if(ep.address&0x80)in=ep.address;else out=ep.address;
             }
             if(!in || !out)continue;
-            io_=io;in_=in;out_=out;ftdi_=dev.vendor==0x0403;
+            io_=io;in_=in;out_=out;ftdi_=dev.vendor==0x0403;handle_=handles[i];boot_=boot;
         }
         boot->FreePool(handles);
         if(!io_)return false;
@@ -107,7 +107,7 @@ public:
     // `offset` is the first character shown (panning).
     // r393: `marks` (may be null) adds dots 7 and 8 to highlighted cells.
     void Show(const char16_t* text,size_t length,size_t offset,size_t cursor,const bool* marks=nullptr) {
-        if(!io_)return;
+        if(!Alive())return;
         uint8_t cells[maxCells]={};
         for(size_t k=0;k<cells_;++k) {
             const size_t i=offset+k;
@@ -126,7 +126,7 @@ public:
     // Reads what the display sent; returns one key event (or none).
     Event Poll() {
         Event event{};
-        if(!io_)return event;
+        if(!Alive())return event;
         uint8_t buffer[64];size_t length=sizeof(buffer);uint32_t status=0;
         if(io_->BulkTransfer(io_,in_,buffer,&length,1,&status)!=EFI_SUCCESS || !length)return event;
         size_t from=ftdi_?2:0;   // FTDI status bytes
@@ -134,6 +134,15 @@ public:
         return event;
     }
 private:
+    // The display may be unplugged: its UsbIo instance is then freed by the bus
+    // driver. True only while the handle still carries this very instance;
+    // otherwise the display is forgotten (Present() false, Find looks again).
+    bool Alive() {
+        if(!io_)return false;
+        efi_guid guid={0x2b2f68d6,0x0cd2,0x44cf,{0x8e,0x8b,0xbb,0xa2,0x0b,0x1b,0x5b,0x75}};void* now=nullptr;
+        if(boot_ && handle_ && boot_->HandleProtocol(handle_,&guid,&now)==EFI_SUCCESS && now==static_cast<void*>(io_))return true;
+        io_=nullptr;handle_=nullptr;shownOnce_=false;state_=0;escaped_=false;topKeys_=0;return false;
+    }
     void SetupFtdi() {
         // Reset, 19200 baud (Baum's rate: divisor 0x809c of 3 MHz/16), 8N1, no flow control.
         auto vendor=[&](uint8_t request,uint16_t value) {UsbRequest r{0x40,request,value,0,0};uint32_t s=0;io_->ControlTransfer(io_,&r,2/*EfiUsbNoData*/,100,nullptr,0,&s);};
@@ -186,6 +195,7 @@ private:
         }
     }
     UsbIoApi* io_=nullptr;uint8_t in_=0,out_=0;bool ftdi_=false;
+    efi_handle handle_=nullptr;efi_boot_services* boot_=nullptr;   // to see an unplugged display (Alive)
     size_t cells_=40;char name_[17]={};
     uint8_t shown_[maxCells]={};bool shownOnce_=false;
     uint8_t state_=0,code_=0,topKeys_=0;size_t got_=0,need_=0;bool escaped_=false;uint8_t payload_[16]={};

@@ -27,6 +27,9 @@ struct MenuVoiceV2 {
     bool (EFIAPI *Preparing)(MenuVoice*);
 };
 static_assert(sizeof(void*)!=8 || sizeof(MenuVoice)==32,"MenuVoice v1 ABI");
+// r401: set while a synthesizer is being changed at application level (a module is loaded or released):
+// nothing may feed the voice from a timer meanwhile - a pump in the middle of the change crashed Charon.
+inline volatile int& VoiceSwitching() {static volatile int switching=0;return switching;}
 inline bool ValidMenuVoice(MenuVoice* voice) {
     return voice && voice->SpeakUtf8 && voice->Pump && voice->Stop
         && ((voice->version==1 && voice->size==sizeof(MenuVoice))

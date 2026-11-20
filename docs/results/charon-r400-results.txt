@@ -1,0 +1,220 @@
+Charon r400 - wyniki prób (2026-11-19, QEMU 11.1 + OVMF, Windows host)
+======================================================================
+
+Buildy: work/charon-win-r400 (CHARON.EFI, bez śledzenia), work/charon-win-r400-drv
+(CHARONVOICE.EFI), próby na buildach śledzonych r400a..z z tych samych źródeł
+(work/charon-src-r395). Sterownik dźwięku: charon-audio-driver-r400 (strumień rev 3).
+Nic nie było sprawdzane na fizycznym sprzęcie.
+
+1. Przegląd kodu: 23 poprawki (CharonResident.h, menu, LiveVoice, USB) - kompilacja
+   -Wall -Wextra -Werror czysta; regresja menedżerów niżej.
+
+2. Przestrzeń robocza (menu główne -> "Przestrzeń robocza"): nawigacja, skan programów
+   *.efi, edytor (pisanie, zapis), pliki, paleta poleceń, kalkulator - ZALICZONE
+   (charon-r396-menu.py, mowa w logu szeregowym).
+
+3. Sieć: DHCP 10.0.2.15, pobranie pliku przez HTTP z hosta, ładowanie sterownika karty
+   z \EFI\HAK\drivers (romfile= wyłączony) - ZALICZONE. Pobranie przez HTTPS własnym
+   klientem (BearSSL) w firmware - ZALICZONE (r400t). Klient na hoście: 23/23 kontroli
+   (tests/CharonHttpsHostTest.cpp), w tym odrzucenie złych certyfikatów.
+   Wi-Fi: NIESPRAWDZONE (QEMU nie ma Wi-Fi).
+
+4. Obraz płyty z pamięci: http://10.0.2.2:8765/mini.iso (Debian mini.iso) pobrany do
+   RAM z paskiem i mową co 10%, zarejestrowany w EFI_RAM_DISK_PROTOCOL, uruchomiony;
+   czytnik odczytał GRUB-a z płyty ("grub: menu, 2 pozycje. Install, 1 z 2") -
+   ZALICZONE (maszyna t401, build r400v).
+
+5. Instalacja Debiana z sieci (maszyna deb2, tryb szybki, pl, bez pulpitu, mowa tak):
+   dialog -> jądro i initrd do RAM (pasek, mowa dziesiątek) -> całe \EFI\HAK dopisane
+   jako cpio w RAM -> LoadFile/LoadFile2 -> d-i automatycznie z własną mową ->
+   nowa ESP ma 61 plików Charona (HAKBOOT.EFI hash zgodny), Driver0000 "Charon voice",
+   Boot "Charon" po "debian"; po restarcie firmware ładuje czytnik, czytnik czyta
+   GRUB-a Debiana, system startuje, espeakup aktywny - ZALICZONE.
+   Uwaga: OVMF z urządzeniem bootindex usuwa wpisy Boot spoza fw_cfg (artefakt QEMU).
+
+6. Instalacja Windows 11 z sieci: NIESPRAWDZONA. Plik odpowiedzi i start Setup z
+   nośnika - tylko kompilacja. Pobranie ISO od Microsoftu do RAM: klient dostał
+   prawdziwy link na hoście raz, dwie kolejne próby 2026-11-19 odrzucone na etapie
+   sesji (vlscppe, "could not connect"); start Windows Setup z dysku RAM nie był
+   wykonany i może nie działać po przejęciu sterowania przez Windows.
+   Ubuntu (autoinstall): napisane, NIESPRAWDZONE.
+
+7. CharonDOS: testy hosta 33/33; pod UEFI uruchomiony jako pakiet, polecenia powłoki
+   czytane przez czytnik - ZALICZONE. Programów MS-DOS firm trzecich nie uruchamiano.
+
+8. Sterownik czytnika:
+   - powitanie: dwa tony rosnące 784 -> 1175 Hz i "Charon." - ZALICZONE (nagranie);
+   - pożegnanie przy ResetSystem (GRUB "reboot"): tony 1175 -> 784 Hz, potem
+     "Wyłączanie Charona.", restart po 1,6 s; Enter -> tony 0,2 s - ZALICZONE
+     (work/farewell-test.sh, farewell-check.py; nagranie deb2/live2.wav).
+     GRUB "halt" wyłącza przez ACPI z pominięciem firmware - bez pożegnania (ograniczenie).
+   - szybki rozruch bez podłączonej karty dźwiękowej: sterownik sam podłącza kartę;
+     nieudane zatrzymanie dźwięku nie blokuje startu systemu - ZALICZONE;
+   - "ha, ha, haron" (restart wypowiedzi po przestoju firmware) - naprawione, ZALICZONE;
+   - ciche menu z odliczaniem (czytane dopiero po klawiszu), komunikaty rozruchu czytane -
+     ZALICZONE na GRUB-ie Debiana w obu wariantach;
+   - GRUB Debiana: zaznaczenie '*' zamiast całej ramki ("Debian GNU/Linux, 1 z 3") - ZALICZONE.
+
+9. Dźwięk po ExitBootServices (Linger, strumień rev 3): PROBE.EFI, "CHARON linger=1",
+   sygnał co 1,2 s po przejęciu sterowania - ZALICZONE.
+
+10. Opis ekranów graficznych (kolory, kształty, logo, postęp): tests/CharonLogoProbe.cpp -
+    ZALICZONE.
+
+11. Regresja menedżerów rozruchu (work/r396-regression.sh, build r400z):
+    14/14 przebiegów: wynik zgodny z zapisem r398q/r399 (work/r398q-regression.txt) poza zmianami
+    zamierzonymi: menu z odliczaniem nie jest czytane przed klawiszem (GRUB z pakietu sam startuje
+    wpis pierwszy po czasie - czytane komunikaty, menu po klawiszu); ekran Recovery Windows po
+    odczytaniu tekstu dostaje też komunikat "Niebieski ekran śmierci" (od r399).
+    Dodatkowo 4 przebiegi (GRUB, rEFInd, Windows, Limine) ze sterownikiem dźwięku r400:
+    tekst mowy zgodny z przebiegami na sterowniku r389 (work/regression-r400-audio.out); sterownik otwarty, próbki dostarczone do karty (ślad "first PCM"). Dźwięk nagrany w próbie ISO (pkt 12).
+
+== grub
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 3 | Dysk — GRUBTEST (GRUB, znalazł Charon), 2 z 3
+   M: Booting Charon test entry one' . Entry one selected
+   M: Failed to boot both default and fallback entries.  Press any key to continue...
+  == down
+     R: grub : menu, 6 pozycji. Charon test entry one , 1 z 6
+     M: GNU grub version 2.12-9 plus deb13u4 . Use the up arrow and down arrow keys to select which entry is highlighted. Press enter to boot the selected OS, e' to edit
+  == down
+     R: Charon test entry two , 2 z 6
+  == up
+     R: Charon test entry one , 1 z 6
+  przerwane komunikaty: 1
+== sdboot
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 4 | Dysk — GRUBTEST (GRUB, znalazł Charon), 2 z 4 | Dysk lub partycja — GRUBTEST (systemd-boot, znalazł Charon), 3 z 4
+  == down
+     R: Windows Setup , 2 z 3
+     R: systemd-boot : menu, 3 pozycje. Windows Setup , 2 z 3
+     M: Charon probe loader. Reboot Into Firmware Interface
+  == up
+     R: Charon probe loader , 1 z 3
+  przerwane komunikaty: 0
+== limine
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 4 | Dysk — GRUBTEST (GRUB, znalazł Charon), 2 z 4 | Dysk lub partycja — GRUBTEST (Limine, znalazł Charon), 3 z 4
+  == down
+     R: Windows Boot Manager , 2 z 2
+  == up
+     R: Charon probe loader , 1 z 2
+  przerwane komunikaty: 0
+== opencore
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 4 | Dysk — GRUBTEST (GRUB, znalazł Charon), 2 z 4 | Dysk lub partycja — GRUBTEST (OpenCore, znalazł Charon), 3 z 4
+   R: OpenCore : menu, 3 pozycje. fpnm0-eomm5-- 1. CHARON , 1 z 3
+   M: OpenCore Boot Menu (REL-108-2026-09-27) . Shutdown , przycisk, Restart , przycisk. Choose the Operating System:
+   M: fpnm0-elmm5-- Timeout
+   R: Witaj w Charon. Uruchamiam: Dysk — GRUBTEST (GRUB, znalazł Charon). Naciśnij spację, aby otworzyć menu opcji
+   M: Choose the Operating System: Timeout
+   R: fpnm0-eomm5-- grub : menu, 8 pozycji. Charon test entry one , 1 z 8
+   M: fpnm0-eomm5-- GNU grub version 2.12-9 plus deb13u4
+  == down
+     R: Charon test entry two , 2 z 8
+  == down
+     R: U E F I firmware settings , 3 z 8
+  == up
+     R: Charon test entry two , 2 z 8
+  przerwane komunikaty: 0
+== clover
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 4 | Dysk — GRUBTEST (GRUB, znalazł Charon), 2 z 4 | Dysk lub partycja — GRUBTEST (Clover, znalazł Charon), 3 z 4
+   M: Welcome to Clover 5176 . ... scan entries ...
+   M: Boot Microsoft E F I Boot from GRUBTEST . F 1:Help
+  == right
+     R: Clover Boot Options , 1 z 5
+  == left
+     M: Boot Microsoft E F I Boot from GRUBTEST
+  przerwane komunikaty: 1
+== winbm
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 4 | Dysk — GRUBTEST (GRUB, znalazł Charon), 2 z 4 | Dysk lub partycja — GRUBTEST (Windows Boot Manager, znalazł Charon), 3 z 4
+   R: Wczytywanie, czekaj.
+   M: fjkm0-eqmm4-- Recovery . fjkm0-epmm4-- Your PC slash Device needs to be repaired . A required device isn't connected or can't be accessed.  fpnm0-emmm5-- Error c
+   R: Niebieski ekran śmierci.
+  == down
+  == up
+  przerwane komunikaty: 0
+== refind
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 3 | Dysk — GRUBTEST (rEFInd, znalazł Charon), 2 z 3
+   R: Boot E F I probe GPROBE dot E F I from GRUBTEST , 1 z 3
+   M: Automatic boot in 30 seconds . Use arrow keys to move cursor; Enter to boot;
+  == right
+     R: Boot E F I probe PROBE dot E F I from GRUBTEST , 2 z 3
+  == left
+     R: Boot E F I probe GPROBE dot E F I from GRUBTEST , 1 z 3
+  przerwane komunikaty: 0
+== memtest
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 4 | Dysk — GRUBTEST (GRUB, znalazł Charon), 2 z 4 | Dysk lub partycja — GRUBTEST (Memtest86+, znalazł Charon), 3 z 4
+   R: Uruchomiono: Memtest86 plus .
+   R: System przejmuje sterowanie.
+  przerwane komunikaty: 0
+== syslinux
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 4 | USB — GRUBTEST (Syslinux, znalazł Charon), 2 z 4
+  == down
+     R: Debian test two , 2 z 3
+     R: Syslinux : menu, 3 pozycje. Debian test two , 2 z 3
+     M: Charon Syslinux test . Press Tab to edit options . Automatic boot in 49 seconds...
+  == down
+     R: Rescue shell , 3 z 3
+  == up
+     R: Debian test two , 2 z 3
+  przerwane komunikaty: 0
+== ipxe
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 4 | USB — GRUBTEST (iPXE, znalazł Charon), 2 z 4
+   M: eye pixie initialising devices...  file:autoexec dot ipxe... Not found (https: slash slash ipxe dot org slash 7f4de18e) . file: slash autoexec dot 
+   M: No more network devices . Press Ctrl-B for the eye pixie command line...
+   R: Program rozruchowy zwrócił sterowanie do Charon. Sprawdź jego komunikaty i podany kod stanu. UEFI: 0x8000000000000007 Enter lub Escape zamyka komunikat.
+   M: Porada: aby otworzyć listę klawiszy, naciśnij Insert F1 albo Alt F1.
+   M: Porada: w ustawieniach Charona, w ustawieniach czytnika ekranu, zmienisz interpunkcję, język tekstu ekranu, wielkie litery i echo klawiszy.
+   M: Porada: po uruchomieniu programu Alt ukośnik wsteczny wstrzymuje rozruch, a strzałki czytają ekran.
+   M: Porada: sam numpad przy wyłączonym NumLocku przegląda ekran, tak jak w NVDA.
+  przerwane komunikaty: 2
+== ventoy
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 4 | USB — VTOYEFI (shim, znalazł Charon), 2 z 4
+   R: Menu GRUB jest ukryte. Naciśnij dowolny klawisz w ciągu 2 sekund, aby je pokazać.
+   R: Czarny ekran.
+   R: Ventoy : menu, 3 pozycje. e debian-mini dot iso , 1 z 3
+   M: L:Language F 1:Help F 2:Browse F3:TreeView F4:Localboot F5:Tools F6:ExMenu
+  == down
+     R: mini dot iso , 2 z 3
+  == down
+     R: rescue-tools dot iso , 3 z 3
+  == up
+     R: mini dot iso , 2 z 3
+  przerwane komunikaty: 0
+== haiku
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 4 | CD/DVD — HAIKU ESP (znalazł Charon), 2 z 4
+   R: Haiku : menu, 6 pozycji. Select boot volume slash state (Current: Haiku (1.367 GiB)) , 1 z 6
+   M: hrev59866 plus 79 . Welcome to the . Haiku Boot Loader . Copyright 2004-2026 Haiku, Inc.
+  == down
+     R: Select safe mode options , 2 z 6
+  == up
+     R: Select boot volume slash state (Current: Haiku (1.367 GiB)) , 1 z 6
+  przerwane komunikaty: 0
+== freebsd
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 4 | CD/DVD — EFISYS (FreeBSD loader, znalazł Charon), 2 z 4
+   M: Okno: Welcome to FreeBSD . 1. Boot Installer Enter . 2. Boot Single user.
+  == down
+     M: Exiting menu!  Type ? for a list of commands, help' for more detailed help.  OK B
+  == up
+     R: A
+  przerwane komunikaty: 0
+== debian
+  lista: Urządzenie UEFI — EFI Internal Shell, 1 z 4 | CD/DVD — Debian 13.7.0 amd64 n (shim, znalazł Charon), 2 z 4
+   M: Loading bootloader...
+   R: grub : menu, 5 pozycji. Graphical install , 1 z 5
+   M: Debian GNU slash Linux 13.7.0 . Debian GNU slash Linux U E F I Installer menu . Enter: Select . Edit Selection fmmm0-am
+  == down
+     R: Install , 2 z 5
+  == down
+     R: Advanced options ... , 3 z 5
+  == up
+     R: Install , 2 z 5
+  przerwane komunikaty: 0
+
+12. Pakiety wydania r400:
+    - outputs/Charon-r400.iso: start jako CD i jako pendrive (obraz surowy) w OVMF bez dysku,
+      test-charon-iso-r400.py: 22 s mowy z 76 s nagrania w obu trybach (szczyt 16310 / 13950),
+      zrzuty identyczne jak r399 (po powitaniu bez systemu Charon przechodzi do UEFI Shell).
+    - outputs/Charon-testvm-r400-all-managers.zip: uruchomiona poleceniem z launchera
+      (test-testvm-r400all.py), lista urządzeń Charona ma 17 pozycji (Syslinux, iPXE, Ventoy,
+      rEFInd, Demo Loader, płyty Charon/Haiku/FreeBSD/NetBSD/OpenBSD/Debian, GRUB,
+      systemd-boot, Memtest86+ wbudowany), mowa nagrana (szczyt 8267).
+    - Instalatorów (Install-Charon.ps1, zainstaluj-charona.sh) nie uruchamiano na prawdziwym
+      komputerze; sprawdzona tylko składnia po dodaniu kopiowania drivers/packages/addon.

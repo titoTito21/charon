@@ -52,12 +52,12 @@ struct CharSettings {uint64_t sequence=0;uint8_t language=0,startMelody=1,backgr
     uint8_t welcome=7,pitch=10,readerRate=10,readerPitch=10,readerVolume=10,detail=7,timers=2;
     uint8_t messageRate=14,messagePitch=10;   // r389 V8 bytes 34/35: the boot-message voice (tenths)
     uint8_t punctuation=1,capitals=1,screenLanguage=0,readerFlags=47;   // r390 V9 bytes 36-39
-    uint8_t formatFlags=255,readerExtra=25;   // r399 non-monotone voice (colour/font/style/position) + per-event icons
+    uint8_t formatFlags=255,readerExtra=153;   // r399 non-monotone voice (colour/font/style/position) + per-event icons
     uint8_t synthKey=0,synthVoice=0;};      // r393 V11 bytes 42-43
 constexpr uint8_t readerFlagMessages=1,readerFlagTyped=2,readerFlagAutoRead=4,readerFlagCursor=8,readerFlagWords=16,readerFlagHints=32;
 constexpr uint8_t readerFlagsDefault=47;   // all but typed words (NVDA's defaults)
 constexpr uint8_t timerSpeech=1,timerSound=2;
-constexpr uint8_t extraHiddenMask=3,extraStopCountdown=4,extraBraille=8,extraDictionary=16,readerExtraDefault=25;
+constexpr uint8_t extraHiddenMask=3,extraStopCountdown=4,extraBraille=8,extraDictionary=16,extraLinger=128 /* r400: loading cue after ExitBootServices */,readerExtraDefault=153;
 // r390 (user): rate and pitch are said on NVDA's scale: the default (1.0x,
 // 10 tenths) is 50%, the slowest / lowest (0.5x) 0%, the fastest / highest
 // (2.0x) 100%. Stored values are unchanged (tenths 5..20).
@@ -82,7 +82,7 @@ inline bool EncodeSettings(const CharSettings& value,uint8_t* bytes,size_t capac
         || value.readerVolume<1 || value.readerVolume>10 || value.detail>7 || value.timers>3
         || value.messageRate<5 || value.messageRate>20 || value.messagePitch<5 || value.messagePitch>20
         || value.punctuation>3 || value.capitals>7 || value.screenLanguage>3 || value.readerFlags>63
-        || value.readerExtra>127 || (value.readerExtra&3)>2 || ((value.readerExtra>>5)&3)>2 || value.synthVoice>15)return false;
+        || (value.readerExtra&3)>2 || ((value.readerExtra>>5)&3)>2 || value.synthVoice>15)return false;
     for(size_t i=0;i<capacity;++i)bytes[i]=0;
     const char magic[]="CHARS00C";for(unsigned i=0;i<8;++i)bytes[i]=uint8_t(magic[i]);
     for(unsigned i=0;i<8;++i)bytes[8+i]=uint8_t(value.sequence>>(i*8));

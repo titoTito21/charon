@@ -1,0 +1,96 @@
+Charon r403 (released 2026-11-20 after the user said "gotowe"; final builds charon-win-r403final, charon-win-r403final-drv, charondos-r403b, charon-pc-stage-r403)
+
+1. CharonDOS WINNT / WIN (src/dos): WINNT finds \EFI\Microsoft\Boot\bootmgfw.efi on any volume, stops
+   Charon's MenuVoice (failed Stop forbids the hand-off) and starts it; WIN [profile] starts CHARONPC.EFI
+   (next to CHARONDOS.EFI) with "config=<path>\PC\<NAME>\CHARONPC.CFG [pl]" and returns to the shell.
+   Built: charondos-r403a. Verified: WINNT with no Windows says "not found" (typed by the user in dos2).
+   NOT verified: WINNT starting a real Windows; WIN (needs CHARONPC.EFI).
+2. CharonDOS installed as a separate system (src/efi/CharonWsDosSystem.h), one entry in group CharonDOS:
+   profile (none/95/98/ME/XP) -> DOS programs group -> reader (9x: downloaded from datajake, SHA-256;
+   XP: NVDA 2017.3) -> medium (user's own ISO/VHD/VMDK/IMG found on every volume, "search again", or later)
+   -> whole disk (new GPT, ESP FAT32) or free space (basic data FAT32) -> typed TAK -> files, Boot "CharonDOS"
+   first (+ "pl" load option), "Charon" after it, Driver "Charon voice", fallback \EFI\BOOT\BOOTX64.EFI
+   (Charon) -> optional Windows 11 beside (Classic Windows dialogue, dosdefault=yes ->
+   Install-Charon.ps1 -FirstEntry CharonDOS at first logon).
+   VERIFIED in QEMU (OVMF, NVMe 16 GB blank disk, builds charon-win-r403a..c):
+   - dos2: GPT + FAT32 valid (CRC checked, pyfatfs reads every file); after restart without Charon's disk
+     priority firmware started Boot0003 "CharonDOS" from the NVMe disk; audio RMS 600-1700 for 71 s (reader
+     from power-on speaks under CharonDOS).
+   - dos3: games group fetched (ELIZA, GNUCHESS, ROW4 in C:\APPS); CharonDOS started from firmware in Polish.
+   - dos4: Windows 98 profile, JAWS 3.31: CHARONPC.CFG written, READER\JFW33135.EXE 13922304 bytes with
+     the catalogue's SHA-256, \EFI\BOOT\BOOTX64.EFI present.
+   NOT verified: free-space mode, Windows 11 beside it (diskmode free + -FirstEntry), XP reader fetch
+   (NVDA 2017.3 hash not yet in the table), copying a real medium.
+3. Install-Charon.ps1 -FirstEntry D (parser-checked only).
+4. Media: Charon downloads no Windows 9x/XP; outSPOKEN 2.01 (Polish UI) only inside batol.7z (370 MB) - not
+   offered until Charon unpacks 7z.
+
+5. ReactOS release or nightly (2026-11-20 evening)
+   Nightly reactos-bootcd-0.4.17-dev-1371-g303d27d-x86 remastered the same way as 0.4.16
+   (work/reactos2/build-iso.py, unattended setup + NVDA 2017.3):
+   - WHPX: setup finished, desktop froze (clock stopped, keys ignored).
+   - TCG, clean install: STOP 0x0000001E (C0000005) in win32k.sys during setup (shot
+     work/reactos2/shots/r1.png).
+   - Its only UEFI loader is efi/boot/bootia32.efi (32-bit UEFI): no use on x64 UEFI.
+   - Published as .7z only, address changes daily.
+   Decision: Charon uses the 0.4.16 release (zip, fixed address and SHA-256); native
+   ReactOS needs legacy BIOS (CSM) with either version.
+   Also: the host's WHPX freezes guests (Debian image test img5 froze 39 s after start,
+   ReactOS nightly at the desktop); long guest tests run under TCG.
+
+6. NVDA 2017.3 in ReactOS - which ReactOS (2026-11-20 evening, machine config:
+   -machine pc,accel=whpx,kernel-irqchip=off, AC97, std or cirrus VGA; WHPX without
+   kernel-irqchip=off freezes the guest when audio starts - the earlier "silence after the
+   first utterance" and the hung Debian image test were this freeze, not the guests)
+   - 0.4.16 release + espeakros (44.1 kHz stereo shim, CALLBACK_FUNCTION, injection off):
+     speaks, takes NVDA commands (title, time, Alt+Tab), but follows NO focus: ReactOS
+     0.4.16 oleacc.dll has AccessibleObjectFromEvent as a stub.
+   - nightly 0.4.17-dev-1371: BSOD 0x1E in win32k.sys with the VBE (std VGA) driver during
+     setup, both TCG and WHPX; with Cirrus it installs. oleacc synced to Wine 10 ->
+     NVDA follows focus (Run, edit, dialogs), BUT explorer.exe crashes (0xC0000005) every
+     time a program is started from Run while NVDA runs - not usable.
+   - CHOSEN: 0.4.16 release + oleacc.dll of the nightly placed next to nvda.exe (LGPL,
+     system files untouched): focus "Untitled - Notepad", "edit multi line", say-all of the
+     typed text, menu navigation speech, no explorer crash (kd log serial-run26-kd.log,
+     work/reactos1/wav/r26-focus.wav). Open: Right arrow repeats "a" (caret not followed),
+     Alt+F menu opening not announced, typed characters not echoed.
+
+7. ReactOS installed by Charon - feasibility, and the decision (2026-11-20 night)
+   - ReactOS x86 starts only from legacy BIOS (CSM); Charon (UEFI) could reach it only via
+     EFI_LEGACY_BIOS_PROTOCOL.LegacyBoot on CSM machines.
+   - Install stick made like Rufus (dosmbr.bin + FAT32 with fat32.bin, FREELDR.SYS,
+     \loader\rosload.exe - FreeLoader's second stage since 0.4.16 - and the disc tree):
+     FreeLoader boots through the BIOS, but Setup's own usbstor fails on EHCI
+     (USBSTOR_FdoHandleStartDevice c0000001) and the kernel stops on an assertion.
+   - Setup from a RAM disk (SystemPath=ramdisk(0), /RDPATH=reactos.iso /RDEXPORTASCD,
+     work/reactos3/make-ros-ramstick.py): loads, copies files, installs boot code
+     ("Installing from RamDisk is UNSUPPORTED"); the installed disk then stops at
+     "Could not load SYSTEM.ALT hive".
+   DECISION (user): ReactOS is dropped - no ReactOS group in Charon. What was learned about
+   NVDA in ReactOS stays in point 6.
+
+8. Screen reader check boxes (src/efi/CharonWsReaders.h), trace build charon-win-r403f
+   Linux: Orca, Cthulhu, Speakup, Fenrir, Emacspeak + desktop (GNOME, MATE, KDE, Xfce,
+   Cinnamon, LXQt, LXDE); the "which reader speaks" question appears only for two of one
+   kind (console: Speakup/Fenrir/Emacspeak; desktop: Orca/Cthulhu). Windows: NVDA, JAWS,
+   Narrator (NVDA 2026.3 put on the medium, Charon-Readers.ps1 at the first logon; Polish
+   JAWS from \charon\readers, else Freedom Scientific).
+   VERIFIED in QEMU: the dialogue with a Debian image (Fenrir + Speakup -> the question);
+   the installed Debian started fenrir-uinput and speakup.
+   NOT verified: the rest of that run (the VM froze under WHPX), other systems, Windows
+   readers on a real installation. The user tests the images and systems on their own.
+
+9. CharonPC (Bochs 3.1, CHARONPC.EFI, src/pc, tools/build-charon-bochs.py) - stage 1
+   VERIFIED: CharonDOS WIN boots FreeDOS in the emulator, COM1 Braille 'n Speak spoken by
+   Charon's MenuVoice (measured), Ctrl+Shift+F12 leaves it. NOT done: graphics speed,
+   SB16, NE2000, Polish keyboard, overlap of Charon's reader with a guest reader.
+   XP profile writes reader=nvda-2017.3 but does not download it yet.
+
+10. Release builds: clean CHARON.EFI charon-win-r403final, CHARONVOICE.EFI
+   charon-win-r403final-drv (no source change since the trace build charon-win-r403f).
+   Regression of the boot managers on the trace build: regression-r403-tcg.out beside
+   regression-r402t-tcg.out (one run at the end of the batch).
+   Result: 14/14 boot managers found by name and read with the same texts and positions as
+   in r402; the only differences are timing on slow tcg (OpenCore's timeout fell through to
+   GRUB before the keys, so the keys moved GRUB entries 2-3 instead of 1-2; Syslinux
+   countdown 50 instead of 49 s; one more interrupted message).

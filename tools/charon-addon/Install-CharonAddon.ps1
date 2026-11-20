@@ -53,8 +53,8 @@ $DriverFile = '\EFI\HAK\CHARONVOICE.EFI'
 $EspType = '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}'
 . (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'CharonEfiSign.ps1')
 $Pl = if ($Language) { $Language -eq 'pl' } else { (Get-UICulture).Name -like 'pl*' }
-function Say([string]$pl, [string]$en) { if ($Pl) { Write-Host $pl } else { Write-Host $en } }
-function Fail([string]$pl, [string]$en) { if ($Pl) { throw $pl } else { throw $en } }
+function Say([string]$textPl, [string]$textEn) { if ($Pl) { Write-Host $textPl } else { Write-Host $textEn } }   # r402: a parameter named $pl hid the $Pl flag (names are case-insensitive): everything was said in Polish
+function Fail([string]$textPl, [string]$textEn) { if ($Pl) { throw $textPl } else { throw $textEn } }
 
 # ---- load option bytes (UEFI 2.10, 3.1.3 and 10.3) --------------------------
 function New-DriverOption([uint32]$Number, [uint64]$Start, [uint64]$Size, [guid]$Guid) {

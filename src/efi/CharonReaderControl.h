@@ -9,14 +9,15 @@
 #include "CharonCues.h"
 namespace hakefi {
 static efi_guid readerControlGuid={0x5f0c2c8e,0x8a2d,0x4c8b,{0x9e,0x31,0x6a,0x0d,0x71,0x2b,0x44,0x55}};
-constexpr uint32_t charonRelease=397;  // r397: reading also carries event icons, voice families, stereo
+constexpr uint32_t charonRelease=401;  // r401: Resume polish bit 0x20 = review only (Charon's own screens)
+// was: charonRelease=397;  // r397: reading also carries event icons, voice families, stereo
 // was: charonRelease=393;  // r393: reading carries formatting and reader extras
 // was: charonRelease=390;  // r390: Resume carries reading (symbols, capitals, language, flags); r389: AudioEffects boot-message voice; r382: SetPitch
 // r390 reading word: symbol level | capitals<<2 | screen language<<5 | reader flags<<8 (CharSettings V9);
 // r393: | formatting<<14 | reader extras<<20 (CharSettings V10).
 inline uint32_t PackReading(uint8_t punctuation,uint8_t capitals,uint8_t screenLanguage,uint8_t flags,uint8_t format=60,uint8_t extra=25) {
     return uint32_t(punctuation&3)|(uint32_t(capitals&7)<<2)|(uint32_t(screenLanguage&3)<<5)|(uint32_t(flags&63)<<8)|(uint32_t(format&63)<<14)|(uint32_t(extra&31)<<20)
-        |(uint32_t((format>>6)&3)<<25)|(uint32_t((extra>>5)&3)<<27);   // r397: event icons, voice families, stereo
+        |(uint32_t((format>>6)&3)<<25)|(uint32_t((extra>>5)&3)<<27)|(uint32_t((extra>>7)&1)<<29);   // r397: event icons, voice families, stereo
 }
 // r397: the whole formatting byte (bits 0-5 at 14, bits 6-7 at 25) and the stereo mode (27-28).
 inline uint8_t ReadingFormat(uint32_t reading) {return uint8_t(((reading>>14)&63)|(((reading>>25)&3)<<6));}

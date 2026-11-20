@@ -18,7 +18,7 @@ public:
         effects_.context=this;effects_.QueueCue=CueThunk;effects_.SetEnabled=EnabledThunk;
         effects_.SetMelodies=MelodiesThunk;effects_.SetRate=RateThunk;
         effects_.SetVolumes=VolumesThunk;effects_.SpeechIdle=SpeechIdleThunk;effects_.CuesIdle=CuesIdleThunk;effects_.Tone=ToneThunk;effects_.SetPitch=PitchThunk;effects_.Beep=BeepThunk;
-        effects_.SetSynth=SetSynthThunk;effects_.SynthVoices=SynthVoicesThunk;effects_.UseSynthVoice=UseSynthVoiceThunk;effects_.SynthAt=SynthAtThunk;effects_.ActiveSynthKey=ActiveKeyThunk;effects_.PreloadSynths=PreloadThunk;effects_.SynthLoaded=LoadedThunk;
+        effects_.SetSynth=SetSynthThunk;effects_.SynthVoices=SynthVoicesThunk;effects_.UseSynthVoice=UseSynthVoiceThunk;effects_.SynthAt=SynthAtThunk;effects_.ActiveSynthKey=ActiveKeyThunk;effects_.Linger=LingerThunk;effects_.PreloadSynths=PreloadThunk;effects_.SynthLoaded=LoadedThunk;
         effects_.SpeakMessage=MessageThunk;effects_.Silence=SilenceThunk;effects_.SetMessageVoice=MessageVoiceThunk;effects_.MessageIdle=MessageIdleThunk;
     }
     // deferDevice (r356 resident driver, loaded from Driver#### before
@@ -42,9 +42,12 @@ public:
         // once Open has established the actual device stream.
         assetsStatus_=assets_.Load(root,&pool_);
         status=device_.Open(boot);
+        charontrace::Value("CHARON audio open",uint64_t(status));
         if(status==EFI_NOT_FOUND && !device_.NeedsStop()) {
             status=LoadDriver(self,root,!deferDevice);
+            charontrace::Value("CHARON audio driver",uint64_t(status));
             if(status==EFI_SUCCESS)status=device_.Open(boot);
+            charontrace::Value("CHARON audio open2",uint64_t(status));
         }
         if(deferDevice && status!=EFI_SUCCESS && !device_.NeedsStop()) {ready_=true;return EFI_SUCCESS;}
         if(status!=EFI_SUCCESS)return status;
@@ -107,16 +110,32 @@ private:
     efi_status Recover() {
         const auto fault=device_.LastError();
         if(fault!=EFI_TIMEOUT || recoveries_>=maximumRecoveries || !device_.NeedsStop())return fault;
-        const bool resume=lastTextBytes_ && (voice_.Preparing() || voice_.BufferedSpeech());
-        if(messagesReady_)intro_.CancelSpeech();   // r389: its channel is cleared with the engine
-        if(voice_.StopAll()!=0)return fault;
+        // r400 (user: the greeting came out as "ha, ha, haron"): only the
+        // device is restarted. The speech already synthesized stays queued in
+        // the engine and goes on from where the sound card stopped; saying
+        // the utterance again from its start made every stall of the firmware
+        // (a disk read while a boot option loads) a stutter.
         if(device_.Stop()!=EFI_SUCCESS)return fault;
         ++recoveries_;charontrace::Value("CHARON audio recovered",recoveries_);
-        const auto status=EnsureRunning();if(status!=EFI_SUCCESS)return status;
-        if(resume)voice_.QueueText(lastLanguage_,lastText_,lastTextBytes_,rate_,pitch_);
-        return EFI_SUCCESS;
+        return EnsureRunning();
     }
     efi_status EnsureRunning() {
+        // r402: firmware took the audio driver away (it reconnects controllers at
+        // start-up). Speech stays queued and sound returns when the card is bound again.
+        if(device_.Vanished()) {
+            auto reopened=device_.Open(boot_);
+            if(reopened!=EFI_SUCCESS) {
+                if(reconnects_<12)charontrace::Value("CHARON audio reopen status",reopened);
+                // a failed setup leaves the stream held: let go of it before the next try
+                if(device_.NeedsStop())device_.Stop();
+                // the card may have been left without a driver: bind it again, a few times at most
+                if(reconnects_>=12)return EFI_SUCCESS;
+                ++reconnects_;if(driver_)DisconnectFirmwareHda(boot_,driver_);ConnectAudioControllers(boot_);   // r404: the firmware's own HDA driver may have taken the card back
+                reopened=device_.Open(boot_);
+                if(reopened!=EFI_SUCCESS) {if(device_.NeedsStop())device_.Stop();device_.MarkVanished();return EFI_SUCCESS;}
+            }
+            charontrace::Value("CHARON audio reopened",1);
+        }
         if(device_.NeedsStop())return device_.LastError()==EFI_TIMEOUT?Recover():device_.LastError();
         const auto status=device_.Open(boot_);
         if(status==EFI_SUCCESS && assets_.Ready()) {
@@ -148,6 +167,7 @@ private:
         size_t bytes=0;while(bytes<=charon::LiveVoice::maximumTextBytes && text[bytes])++bytes;
         if(bytes>charon::LiveVoice::maximumTextBytes)return EFI_BAD_BUFFER_SIZE;
         const auto status=self->EnsureRunning();if(status!=EFI_SUCCESS)return status;
+        self->recoveries_=0;   // r400: the bound is per utterance, or a long session went mute after 64 stalls
         charontrace::Text("CHARON speak");charontrace::Text(language);charontrace::Text(text);
         // r389: an interruption drops the old speech the driver still holds
         // (up to 150 ms before), so the new text is heard at once.
@@ -196,6 +216,11 @@ private:
             && (!self->melodiesSet_ || !self->background_);
         const auto armed=self->boot_->SetTimer(self->preparationDeadline_,TimerRelative,urgent?250000:50000);
         if(armed!=EFI_SUCCESS)return armed;
+        if(self->device_.Vanished()) {   // r402
+            if(!(self->reopenTick_%256))charontrace::Value("CHARON audio vanished",self->reopenTick_);
+            if(++self->reopenTick_%32==0)self->EnsureRunning();
+            if(self->device_.Vanished())return EFI_SUCCESS;
+        }
         charon::LiveVoice::Progress progress;
         // r355 stutter fix. Callers (menu, HII, owned Shell) ask for 480
         // frames per 10 ms tick: exactly real time with no reserve. Firmware
@@ -229,6 +254,7 @@ private:
             charontrace::Value("CHARON pump synthesis",uint64_t(result));
             charontrace::Value("CHARON pump device",self->device_.LastError());
         }
+        if(self->device_.Vanished())return EFI_SUCCESS;   // r402: reopened by a later pump
         if(self->device_.LastError()==EFI_TIMEOUT && (!result || result==charon::LiveVoice::SinkError)
             && self->Recover()==EFI_SUCCESS)return EFI_SUCCESS;
         const auto playback=self->device_.LastError()!=EFI_SUCCESS?self->device_.LastError():Convert(result);
@@ -284,7 +310,31 @@ private:
         self->voice_.CancelCues();self->voice_.QueueCue(buffer,frames);
     }
     // r385: PC-speaker style beep: square wave, 1 ms edges against clicks.
+    // r400: the add-on's start sound: two soft rising tones (a fairly high
+    // one, then a higher one), like an interface switching on.
+    static constexpr unsigned chimeHertz=8000;   // Beep(chimeHertz, any) asks for it
+    void Chime(bool falling=false) {
+        static const unsigned rising[2][3]={{784,0,110},{1175,140,170}};   // hertz, start ms, length ms
+        static const unsigned sinking[2][3]={{1175,0,110},{784,140,170}};  // the reverse: switching off
+        const auto& tones=falling?sinking:rising;
+        const size_t frames=size_t(48)*320;int16_t* buffer=tone_[toneSlot_^=1];
+        for(size_t i=0;i<frames*2;++i)buffer[i]=0;
+        for(const auto& tone:tones) {
+            const size_t start=size_t(48)*tone[1],length=size_t(48)*tone[2];
+            for(size_t i=0;i<length;++i) {
+                const uint32_t phase=uint32_t((uint64_t(i)*tone[0]*65536/48000)&65535);
+                const int64_t u=phase<32768?phase:phase-32768;
+                int64_t v=7000*4*u*(32768-u)/(int64_t(32768)*32768);if(phase>=32768)v=-v;
+                // quick attack, falling tail
+                const int64_t envelope=i<96?int64_t(i)*1024/96:int64_t(length-i)*1024/int64_t(length-96);
+                v=v*envelope/1024;
+                buffer[(start+i)*2]=int16_t(v);buffer[(start+i)*2+1]=int16_t(v);
+            }
+        }
+        voice_.CancelCues();voice_.QueueCue(buffer,frames);
+    }
     void Square(unsigned hertz,unsigned milliseconds) {
+        if(hertz==chimeHertz || hertz==chimeHertz-1) {Chime(hertz!=chimeHertz);return;}
         if(milliseconds>toneMaxMs)milliseconds=toneMaxMs;
         const size_t frames=size_t(48)*milliseconds,period=48000/hertz,fade=48;
         int16_t* buffer=tone_[toneSlot_^=1];
@@ -371,10 +421,11 @@ private:
     void UseTvox() {voice_.SetExternal(nullptr);if(messagesReady_)intro_.SetExternal(nullptr);activeSynth_=SIZE_MAX;otherReader_=otherMessage_=Other::None;}
     bool Activate(size_t slot,uint32_t voice) {
         LoadedSynth& l=loaded_[slot];
-        if(!l.reader || voice>=l.reader->voiceCount || l.reader->Prepare(l.reader,voice)!=0)return false;
+        if(!l.reader || voice>=l.reader->voiceCount)return false;
+        {const int prepared=l.reader->Prepare(l.reader,voice);if(prepared!=0) {charontrace::Value("CHARON synth prepare failed",uint64_t(uint32_t(prepared)));return false;}}
         if(l.message && l.message->Prepare(l.message,voice)!=0)l.message=nullptr;   // messages keep TVox then
         const auto e=External(l.reader,voice);
-        if(voice_.SetExternal(&e))return false;
+        if(voice_.SetExternal(&e)) {charontrace::Value("CHARON synth voice busy",1);return false;}
         if(messagesReady_) {if(l.message) {const auto m=External(l.message,voice);intro_.SetExternal(&m);} else intro_.SetExternal(nullptr);}
         activeSynth_=slot;activeVoice_=voice;
         // r395 (user's choice 2026-11-18): the other language's voice of this
@@ -429,25 +480,33 @@ private:
         if(!self->volume_ || self->boot_->HandleProtocol(self->volume_,&fsGuid,(void**)&fs)!=EFI_SUCCESS || !fs || fs->OpenVolume(fs,&root)!=EFI_SUCCESS || !root) {
             self->UseTvox();Put(report,cap,at,u"!8");return false;}
         static hakefi::synths::Info list[hakefi::synths::maxSynths];
-        const size_t n=hakefi::synths::Scan(self->boot_,root,list,hakefi::synths::maxSynths);
+        const size_t n=hakefi::synths::ScanAll(self->boot_,self->volume_,root,list,hakefi::synths::maxSynths);
         const hakefi::synths::Info* info=hakefi::synths::Find(list,n,key);
         unsigned reason=9;bool ok=false;
         if(info) {
             size_t slot=SIZE_MAX;for(size_t i=0;i<self->loadedCount_;++i)if(self->loaded_[i].key==key)slot=i;
-            if(slot==SIZE_MAX && self->loadedCount_<2) {
+            if(slot==SIZE_MAX && self->loadedCount_<maxLoaded && !self->loading_) {
+                // r402: starting a module goes through the reader's StartImage hook, which preloads
+                // every add-on: nested in this load it loaded them all again and the table overflowed
+                // (eSpeak NG vanished from the list, speech stopped, Charon crashed).
+                self->loading_=true;
                 hakefi::CharonSynthModule* reader=nullptr;
-                const Failure f=hakefi::synths::Load(self->boot_,self->image_,self->volume_,root,*info,&reader);
+                const Failure f=hakefi::synths::LoadAny(self->boot_,self->image_,self->volume_,root,*info,&reader);
                 reason=unsigned(f);
                 if(f==Failure::none) {
                     // a second instance speaks the boot messages (a module speaks one text at a time)
                     hakefi::CharonSynthModule* message=nullptr;
-                    if(self->messagesReady_ && hakefi::synths::Load(self->boot_,self->image_,self->volume_,root,*info,&message)!=Failure::none)message=nullptr;
-                    slot=self->loadedCount_++;self->loaded_[slot].key=key;self->loaded_[slot].reader=reader;self->loaded_[slot].message=message;
+                    if(self->messagesReady_ && hakefi::synths::LoadAny(self->boot_,self->image_,self->volume_,root,*info,&message)!=Failure::none)message=nullptr;
+                    if(self->loadedCount_<maxLoaded) {slot=self->loadedCount_++;self->loaded_[slot].key=key;self->loaded_[slot].reader=reader;self->loaded_[slot].message=message;}
+                    else reason=unsigned(Failure::load);
                 }
+                self->loading_=false;
             }
+            charontrace::Value("CHARON synth slot",(uint64_t(self->loadedCount_)<<32)|(uint64_t(uint16_t(slot))<<16)|(uint64_t(self->voice_.Pumping())<<8)|uint64_t(self->activeSynth_&0xff));
             if(slot!=SIZE_MAX) {
                 const bool listed=voiceIndex<info->voices;
                 const uint32_t v=hakefi::synths::VoiceIndex(self->loaded_[slot].reader,listed?info->id[voiceIndex]:nullptr,listed?info->language[voiceIndex]:"pl");
+                charontrace::Value("CHARON synth voice",(uint64_t(self->loaded_[slot].reader->voiceCount)<<32)|v);
                 ok=v!=UINT32_MAX && self->Activate(slot,v);
                 reason=ok?0:7;
                 if(ok) {char16_t name[48];hakefi::synths::Wide(info->name,sizeof(info->name),name,48);Put(report,cap,at,name);Put(report,cap,at,u", ");Put(report,cap,at,self->loaded_[slot].reader->voices[v].name);}
@@ -467,7 +526,7 @@ private:
         if(!scanned) {
             efi_guid fsGuid=EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID;efi_simple_file_system_protocol* fs=nullptr;efi_file_protocol* root=nullptr;
             if(!self->volume_ || self->boot_->HandleProtocol(self->volume_,&fsGuid,(void**)&fs)!=EFI_SUCCESS || !fs || fs->OpenVolume(fs,&root)!=EFI_SUCCESS || !root)return false;
-            count=hakefi::synths::Scan(self->boot_,root,list,hakefi::synths::maxSynths);root->Close(root);scanned=true;
+            count=hakefi::synths::ScanAll(self->boot_,self->volume_,root,list,hakefi::synths::maxSynths);root->Close(root);scanned=true;
         }
         if(index>=count)return false;
         if(key)*key=list[index].key;
@@ -480,13 +539,35 @@ private:
         for(size_t i=0;i<self->loadedCount_;++i)if(self->loaded_[i].key==key)return true;
         return false;
     }
+    // r400: the cue the sound card repeats by itself after ExitBootServices:
+    // two soft rising blips in 1.2 s (48 kHz stereo), 50 times = one minute.
+    static bool LingerThunk(void* context) {
+        auto* self=static_cast<VoiceProvider*>(context);
+        constexpr uint32_t frames=57600;static int16_t loop[frames*2];
+        for(uint32_t i=0;i<frames*2;++i)loop[i]=0;
+        auto blip=[&](uint32_t start,double twoCos,double sine,uint32_t length) {
+            // y[n]=2cos(w)y[n-1]-y[n-2]: a sine without the math library.
+            double y1=0,y2=-sine;
+            for(uint32_t n=0;n<length && start+n<frames;++n) {
+                const double y=twoCos*y1-y2;y2=y1;y1=y;
+                const double attack=n<240?double(n)/240.0:1.0,decay=1.0-double(n)/double(length);
+                const int16_t v=int16_t(y*2600.0*attack*decay*decay);
+                loop[(start+n)*2]=v;loop[(start+n)*2+1]=v;
+            }
+        };
+        blip(0,1.9925407529858825,0.08628636579792337,5760);        // 660 Hz, 120 ms
+        blip(12000,1.986745531200793,0.11493715049286661,5760);     // 880 Hz a quarter second later
+        const bool ok=self->device_.Linger(loop,frames,50);
+        charontrace::Value("CHARON linger",ok?1:0);
+        return ok;
+    }
     static void PreloadThunk(void* context) {
         auto* self=static_cast<VoiceProvider*>(context);
-        if(self->preloaded_)return;
+        if(self->preloaded_ || self->loading_)return;   // r402: never inside a load (see SetSynthThunk)
         self->preloaded_=true;
         const uint8_t before=self->activeSynth_==SIZE_MAX?0:self->loaded_[self->activeSynth_].key;const uint32_t beforeVoice=self->activeVoice_;
         uint8_t key=0;bool any=false;
-        for(size_t i=0;i<8 && SynthAtThunk(context,i,&key,nullptr,0);++i)
+        for(size_t i=0;i<hakefi::synths::maxSynths && SynthAtThunk(context,i,&key,nullptr,0);++i)
             if(!LoadedThunk(context,key)) {char16_t report[80];SetSynthThunk(context,key,0,report,80);any=true;}
         if(!any)return;
         // back to the voice in use
@@ -535,16 +616,22 @@ private:
         status=boot_->LoadImage(false,self,nullptr,image,bytes,&driver_);
         charon_pool_free(&pool_,image);
         if(status!=EFI_SUCCESS) {if(driver_)boot_->UnloadImage(driver_);driver_=nullptr;return status;}
+        {efi_guid lg=EFI_LOADED_IMAGE_PROTOCOL_GUID;efi_loaded_image_protocol* li=nullptr;   // r404: where the driver lies (crash addresses)
+         if(boot_->HandleProtocol(driver_,&lg,(void**)&li)==EFI_SUCCESS && li)charontrace::Value("CHARON audio driver base",uint64_t(uintptr_t(li->ImageBase)));
+         li=nullptr;if(boot_->HandleProtocol(self,&lg,(void**)&li)==EFI_SUCCESS && li)charontrace::Value("CHARON image base",uint64_t(uintptr_t(li->ImageBase)));}
         status=boot_->StartImage(driver_,nullptr,nullptr);
+        charontrace::Value("CHARON audio driver started",uint64_t(status));
         if(status!=EFI_SUCCESS) {boot_->UnloadImage(driver_);driver_=nullptr;return status;}
         // A started driver owns its bindings and must stay resident. Never
         // bypass firmware authentication or unload it beneath connected devices.
         if(!connect)return EFI_SUCCESS;
+        charontrace::Value("CHARON audio firmware hda disconnected",uint64_t(DisconnectFirmwareHda(boot_,driver_)));   // r404
         efi_handle* handles=nullptr;size_t count=0;
         status=boot_->LocateHandleBuffer(AllHandles,nullptr,nullptr,&count,&handles);
         if(status!=EFI_SUCCESS)return status;
         if(!handles || count>4096) {if(handles)boot_->FreePool(handles);return EFI_DEVICE_ERROR;}
         for(size_t i=0;i<count;++i)boot_->ConnectController(handles[i],nullptr,nullptr,true);
+        charontrace::Value("CHARON audio connected",uint64_t(count));
         boot_->FreePool(handles);return EFI_SUCCESS;
     }
     Bridge bridge_{};hakefi::AudioEffects effects_{};
@@ -552,7 +639,8 @@ private:
     efi_handle image_=nullptr,volume_=nullptr;
     bool preloaded_=false;   // r396e
     struct LoadedSynth {uint8_t key=0;hakefi::CharonSynthModule* reader=nullptr;hakefi::CharonSynthModule* message=nullptr;};
-    LoadedSynth loaded_[2]={};size_t loadedCount_=0;size_t activeSynth_=SIZE_MAX;uint32_t activeVoice_=0;
+    static constexpr size_t maxLoaded=4;bool loading_=false;   // r402
+    LoadedSynth loaded_[maxLoaded]={};size_t loadedCount_=0;size_t activeSynth_=SIZE_MAX;uint32_t activeVoice_=0;
     Other otherReader_=Other::None,otherMessage_=Other::None;uint32_t otherVoice_=0;
     efi_boot_services* boot_=nullptr;efi_handle driver_=nullptr;
     efi_event preparationDeadline_=nullptr;efi_status deadlineError_=EFI_SUCCESS;
@@ -560,7 +648,7 @@ private:
     CharonPool pool_{};charon::LiveVoice voice_;Device device_;Assets assets_;
     charon::LiveVoice intro_;bool messagesReady_=false;double messageRate_=1.4,messagePitch_=1;   // r389 boot messages
     efi_status assetsStatus_=EFI_NOT_READY;
-    efi_status playbackError_=EFI_SUCCESS;
+    efi_status playbackError_=EFI_SUCCESS;unsigned reopenTick_=0,reconnects_=0;
     bool ready_=false,initialized_=false,sounds_=true,melodiesSet_=false;
     bool traceGenerated_=false;
     hakefi::MenuCue pendingCue_=hakefi::MenuCue::none;  // r385

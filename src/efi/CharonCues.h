@@ -58,6 +58,10 @@ struct AudioEffects {
     // TPL_CALLBACK. PreloadSynths (TPL_APPLICATION) loads every installed
     // add-on once; SynthLoaded says whether switching to key needs no load.
     void (*PreloadSynths)(void*)=nullptr;
+    // r400: after Stop, right before ExitBootServices: leave the sound card
+    // repeating a soft loading cue by itself (HAK stream revision 3 Linger).
+    // False when the audio driver cannot. Optional.
+    bool (*Linger)(void*)=nullptr;
     bool (*SynthLoaded)(void*,uint8_t key)=nullptr;
 };
 // r382: one voice profile (the menu's, or the screen reader's) on the shared mixer.

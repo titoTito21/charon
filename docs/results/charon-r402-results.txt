@@ -1,0 +1,92 @@
+Charon r402 - results of the trials (2026-11-20)
+=================================================
+
+Source: work/charon-src-r395. Builds: charon-win-r402 (application, clean),
+charon-win-r402-drv (voice driver, clean), charon-win-r402r / r402s-drv
+(trace builds used in the trials). Test machines: QEMU 11.1 + OVMF, started by
+work/charon-vm.py; WHPX with 4 processors unless noted. Every trial below was
+driven through Charon's own dialogue with keys sent over QMP; speech was taken
+from the serial trace of the trace build.
+
+1. Synthesizer switching (user's report: eSpeak NG vanishes, silence, hang)
+   Cause: the reader's StartImage hook preloaded every add-on while Charon was
+   in the middle of loading one from its own menu; the nested load overflowed
+   the two-entry table in CharonVoiceProvider.h (count became 3, then 0x20).
+   Fix: loading_ flag, table of four, bound check. Trial (machine syn1): ring
+   TVox -> eSpeak NG -> RHVoice, 20 switches incl. 11 presses 0.3 s apart: no
+   exception, table stays at 2; first speech sample 191-227 ms after the key
+   (work/charon-synth-latency.py); first load after start 0.26 s. PASS.
+
+2. Voice driver at power-on (found on the way; also in released r400/r401)
+   charon-addon-test.py with GRUB: Driver0000 written as Install-CharonAddon
+   writes it (ACTIVE | FORCE_RECONNECT). r400z, r401f, r401k, r401t drivers:
+   #GP/#UD in Device::Write before the boot option starts (firmware reconnects
+   all controllers after driver options; the sound stream bound at load is
+   freed). r402g driver: no exception, greeting heard, GRUB reached. PASS.
+   Also: the audio device now checks its stream by HandleProtocol before every
+   call and reopens it (not needed any more in this trial, kept as a guard).
+
+3. Windows 11 from the network, end to end (machine win11, TCG: Windows guests
+   hang at the boot spinner under WHPX in this QEMU; SATA target disk)
+   - Charon fetched Microsoft's evaluation ISO of Windows 11 Enterprise LTSC
+     2024 (4.9 GB, address from \EFI\HAK\windows-iso-url.txt), wrote its files
+     to a 12 GB stick, split install.wim into .swm parts. PASS.
+   - Questions asked in the detailed mode incl. the new ones (clock, profile);
+     answer file written; Charon copied to the media.
+   - Windows Setup: read the split image, partitioned the empty 64 GB disk,
+     installed, restarted; Charon continued into the installed Windows Boot
+     Manager by itself; desktop of the user from the answer file; Narrator's
+     focus rectangle visible. PASS.
+   - First logon: \EFI\HAK on the new EFI partition (CHARONVOICE.EFI,
+     HAKBOOT.EFI, AudioDxe.efi), "Charon voice" and "Charon" in the firmware
+     variables (checked offline on the disk image and the variable store). PASS.
+   Found and fixed: a stick partition of the GPT type "EFI system" is hidden
+   by Windows ("a media driver is missing") - Charon now refuses such a stick
+   with an explanation; evaluation images hold two systems, Setup stopped at
+   "Select Image" - the answer file now names the image index.
+   NOT tested: Windows 11/10 through Microsoft's link API (refused for this
+   network address: "Sentinel"), Server and the other evaluation images, the
+   RAM-disk way, the profiles Slim/ReviOS/AtlasOS/Script (scripts only parsed
+   and dry-run on the host), the PreventDeviceEncryption value, Charon-MakeRoom
+   on a real Windows.
+
+4. Ready system images
+   - Arch Linux cloud image (qcow2, zlib) onto a whole empty 8 GB disk
+     (machine img1): converted while fetched by range requests, GPT repaired,
+     CIDATA partition added; first start: host name, Polish locale, user,
+     espeakup active, root grown to the disk. PASS. (User had no sudo and the
+     registration script stopped on the automounted /efi: both fixed in the
+     source afterwards, not run again.)
+   - Dual boot (machines img2, img3; disk made by work/make-dual-disk.py: EFI,
+     data, a gap, recovery): Arch image into the gap -> GRUB rescue (its core
+     image names the root partition by number): Arch is now offered for whole
+     disks only. Debian 13 generic image into the gap: old partitions intact,
+     new root + EFI + CIDATA partitions, system starts from its own EFI
+     partition, espeakup active, sudo works, Boot "Charon" (HAKBOOT.EFI on the
+     new EFI partition) first in BootOrder. PASS. (Root did not grow because
+     its EFI partition lay behind it: order changed in the source, not re-run.)
+   NOT tested: Ubuntu and Fedora images, Haiku, 4096-byte-sector disks, a
+   real Windows disk shrunk by Windows as the neighbour.
+
+5. Other new ways
+   - netboot.xyz: fetched into memory and started; its menu is read by the
+     reader after the rescue-timer fix ("menu, 4 pozycje. Distributions: Linux
+     Network Installs (64-bit), 1 z 4"). PASS. Its countdown line is read every
+     second (open).
+   - Text browser: example.com and pl.wikipedia.org/wiki/UEFI (272 lines, 12
+     headings, 207 links, 25 form fields); headings, links, search. PASS.
+     Forms not tried.
+   - CharonDOS: "fetch DOS programs", group games: 3 archives fetched from
+     ibiblio, SHA-256 equal to the catalog, unpacked to C:\APPS; CharonDOS
+     started from the dialogue, ELIZA ran and its lines were read. PASS.
+     Host tests of the emulator 33/33 after the standard-handle change. The 12
+     programs the catalog holds back for that bug were not tested again.
+   NOT tested: Arch from the network, ISO to a stick or RAM disk (Slint,
+   Accessible-Coconut, SystemRescue, GParted, Clonezilla, custom address).
+
+6. Regression of the boot managers: see regression-r402r-tcg.out beside the
+   earlier regression-r401t-tcg.out (one run at the end of the batch).
+
+Host tests written with the new headers (all pass): tests/CharonQcow2Tests.cpp
+(212 checks), CharonZipTests.cpp (117), CharonSeedDiskTests.cpp (164 + Python
+verifier 178), CharonHtmlTextTests.cpp (252, with AddressSanitizer).

@@ -31,6 +31,7 @@ public:
     // r393: nullptr = TVox (built in). Takes effect for the next utterance.
     int SetExternal(const ExternalSynth* synth){if(pumping_)return Busy;CancelSpeech();if(synth&&synth->module&&synth->begin&&synth->render&&synth->cancel){external_=*synth;useExternal_=true;}else useExternal_=false;return 0;}
     bool External()const{return useExternal_;}
+    bool Pumping()const{return pumping_;}
     enum class Language {Polish,English};
     enum Error {Invalid=-1,NoMemory=-2,Busy=-4,UnsupportedLanguage=-10,
         NotInitialized=-11,SinkError=-12,SynthesisError=-13,GenerationExhausted=-14};
@@ -95,7 +96,7 @@ private:
     double* current_=nullptr;double* next_=nullptr;
     size_t nextCount_=0,nextLeading_=0,nextTrailing_=0;
     AudioEngine own_;AudioEngine* engine_=&own_;unsigned channel_=0;
-    char queued_[maximumTextBytes+1]={};size_t queuedBytes_=0;Language queuedLanguage_=Language::Polish;double queuedRate_=1,queuedPitch_=1,queuedVolume_=1;
+    char queued_[maximumTextBytes+1]={};size_t queuedBytes_=0;Language queuedLanguage_=Language::Polish,queuedEndLanguage_=Language::Polish;double queuedRate_=1,queuedPitch_=1,queuedVolume_=1;
     CharonPool* pool_=nullptr;
     void* dsp_=nullptr;
     Stage stage_=Stage::Idle;

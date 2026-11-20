@@ -408,10 +408,11 @@ inline void Limine(const char* text,size_t size,BcdSummary& s) {
     if(s.defaultIndex==SIZE_MAX && s.count)s.defaultIndex=0;
 }
 inline void Syslinux(const char* text,size_t size,BcdSummary& s) {
-    bool menu=false,promptOff=false;
+    bool menu=false,promptOff=false,lastAdded=false;   // lastAdded: the last LABEL made an entry (not dropped as the 9th)
     Lines(text,size,[&](const char* l,const char* e) {
-        if(StartsWith(l,"menu label ")) {if(s.count)--s.count;AddName(s,l+11,e);}   // replaces the LABEL just added
-        else if(StartsWith(l,"label "))AddName(s,l+6,e);
+        if(StartsWith(l,"menu label ")) {const char* a=l+11;const char* b=e;while(a<b && Space(*a))++a;while(b>a && (Space(b[-1]) || b[-1]=='\r'))--b;
+            if(lastAdded && s.count && b>a) {--s.count;AddName(s,l+11,e);}}   // replaces the LABEL just added
+        else if(StartsWith(l,"label ")) {const size_t had=s.count;AddName(s,l+6,e);lastAdded=s.count>had;}
         else if(StartsWith(l,"timeout ")) {bool ok;const long t=Number(l+8,&ok);if(ok)s.timeout=(t+9)/10;}
         else if(StartsWith(l,"ui "))menu=true;
         else if(StartsWith(l,"prompt 0"))promptOff=true;

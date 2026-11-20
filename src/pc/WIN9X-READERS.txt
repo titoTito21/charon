@@ -1,0 +1,435 @@
+WIN9X-READERS.txt - period screen readers for the Charon Windows 95/98/ME guest
+===============================================================================
+
+Source:   https://datajake.braillescreen.net/  (plain nginx directory listing)
+Date:     2026-11-20
+Machine-readable copy: work/win9x-readers-dl/catalog.json (93 entries, 59 hashed)
+Downloads: work/win9x-readers-dl/files/<same path as on the site>
+           work/win9x-readers-dl/files/_x/...   (extracted for inspection only)
+Nothing downloaded was executed. Inspection used Python only: zipfile, py7zr,
+a small MS-CAB (MSZIP) reader, an ISO9660 walker, HTTP range reads of remote
+zip/7z directories, and string scans.
+
+Legend
+  [D]  downloaded and inspected       [R] listed remotely (HTTP range), not downloaded
+  [L]  directory listing only         HW = needs a hardware (serial/ISA) synthesizer
+  SW   = works with software speech through the emulated sound card
+  BNS  = can drive a Braille 'n Speak over a COM port (relevant to src/pc/pc_bns.cpp)
+
+URL rule: https://datajake.braillescreen.net/ + URL-encoded path below.
+"batol:" means a member of  WebsiteScrapes/batol.7z  (370 MB, LZMA solid, a
+Taiwanese FTP mirror of ca. 1998-2004 accessibility software). Several of the
+best Win9x readers exist only there.
+
+-------------------------------------------------------------------------------
+0. Summary
+-------------------------------------------------------------------------------
+* Windows 95/98/ME screen readers found: 13 products in about 35 builds
+  (outSPOKEN, JAWS, Window-Eyes, Hal95/Hal, Supernova, ProTalk32, Simply
+  Talker 98/2000, ASAW, WindowBridge 2.56/2000, Talker95, Wink) plus talking
+  tools (Connect Outloud, Home Page Reader, ZoomText/MAGic speech),
+  plus 9 DOS readers, 5 Windows 3.1x-only readers, and about 12 XP-era or
+  later readers that do not run on 9x.
+* Polish: only outSPOKEN for Windows 2.01 (demo) has a Polish user interface
+  (language code PLK; Disk1/Plk, Disk2/Plk/Strings; the demo text names Harpo in
+  Poznan as distributor). The user's claim is confirmed for outSPOKEN, but the
+  only copy is the Windows 95/98 demo inside batol.7z. The ScreenReaders/
+  folder has only outSPOKEN tutorial tapes (ManualAndTutorialTapes/Outspoken,
+  8 FLAC files).
+  The other part of the claim ("all others are English") is not quite right:
+  outSPOKEN itself is in 12 languages; Hal 4.50/5.11 are in 5/10 languages;
+  Virgo 4.71 is in 7 languages (de/en/fr/it/nl/ro/ru, no Polish); JAWS 3.x and
+  later include Eloquence in several languages (English UI only); Blindows is
+  German. Hal 5.11 contains Polish screen-language data (CHR00048, Orpheus
+  DSO00048, SAMSAPI4 sts00048) but no Polish UI.
+* No hardware synthesizer needed (software speech through the sound card):
+  JAWS 3.31-6.x (Eloquence bundled), Window-Eyes 3.1 and 5.0 (SAPI 4 and the
+  Microsoft engine are on the CD), Hal 4.50/5.11 (Orpheus bundled), outSPOKEN 2.01
+  (MSSAPI driver plus a separate SAPI 4 engine), ProTalk32 (Microsoft Voice,
+  DECtalk software), Hal95 3.03/Supernova demos (SSILSAPI plus a SAPI engine),
+  Window-Eyes 3.0 demo (SAPI), ASAW (MSAPI).
+  Hardware only: Window-Eyes 1.x/2.0 demos, Hal95 1.0x demos, Screen Power,
+  Windows Master, WindowBridge 1.2/2.21, and all DOS readers.
+* Recommended defaults (reasons in section 4):
+    Windows 95 / 98 : JAWS for Windows 3.31.35 (jfw33135.exe, 13.9 MB). It has
+                      the only installer that can be made fully unattended
+                      without recording: plain-text scripts and default.ini.
+    Windows ME      : JAWS 4.02.52 (j40252.exe), but it needs a response file.
+                      Fallback: JAWS 3.31 (it predates ME; untested there).
+    Polish UI       : outSPOKEN 2.01 demo with Languages=PLK and Response.ini.
+                      Limit: about 1000 keystrokes per Windows session.
+    Alternative     : Window-Eyes 3.1 full CD (we31.iso, 12.8 MB). It has a
+                      talking installer, but asks for a serial and may run as
+                      a timed demo.
+* Licences: the site has no freeware or licence statements for these readers,
+  and no serials. Only "JAWS for DOS 2.31 Freeware" is labelled freeware. Do not
+  use: JAWS7.00.135.zip (contains CrackingJAWS7.txt and Jaws KeyGen.exe),
+  TTS/OldSoftwareSynths/KEYNOTE CRACK.zip, TTS/SAPI/Infovox/CKKeyGen.exe,
+  "Hal 7.01 and reset.exe" (the name suggests a trial reset), and
+  JAWS3.31.zip (HJAUTH.EXE/AUTHMAN.EXE, origin unknown).
+* Host note: TTS/EloquenceAndViaVoice/SAPI4/eloq50.exe disappeared from disk
+  right after download. Antivirus quarantine is likely; it was not inspected.
+
+-------------------------------------------------------------------------------
+1. Windows 95 / 98 / ME screen readers
+-------------------------------------------------------------------------------
+
+1.1 outSPOKEN for Windows (ALVA B.V.) 2.01 DEMO - Ensemble/Solo     [D] SW/HW BNS
+    Archive: batol:batol/blind/screenreader/osw2demo.exe  4 633 312 B
+             sha256 f8823aa5477467734ca894b100587871099fe16cb31754af90e234356122963f
+    OS:      Windows 95, 98 (Readme "outSPOKEN Ensemble and Solo for Windows 95
+             and Windows 98, Version 2.01")
+    UI languages (Disk1/Lang.lst): CSY Cestina, DEU, ENU, ESP, FIN, FRA, ITA,
+             NLD, NOR, PLK Polski, PTB, SVE. Manuals: ENU NLD DEU ITA FRA ESP.
+    Speech:  SSIL drivers (Synth.lst), for example Accent, Artic 215, Audapter,
+             Braille 'n Speak (BNS1), DECtalk Express (DTE), DECtalk PC, Dolphin
+             Apollo2/Juno/Europa2/Dolser2, Dolser2 for Polish (DOLS2PL),
+             DoubleTalk LT/PC, Infovox (ROM and 220 software), Keynote GOLD,
+             Kubus (Harpo, Polish), Lektor (Polish, Windows 95: LKT32; Windows
+             3.1x: LKTSSIL), Sound Blaster TextAssist, and "Other synthesizer
+             using Microsoft Speech API" (MSSAPI, SAPI 3/4). The Readme says a
+             SAPI engine must already be installed before you choose MSSAPI.
+             Lektor and Kubus themselves are not on the site.
+    Braille: ALVA ABT 2xx/3/Delphi, Blazie Braille Lite 18, TSI Navigator,
+             PowerBraille, MDV. polish.brl is included.
+    Demo:    Full-featured. It stops after about 1000 keystrokes, then Windows
+             must be restarted (unlimited reruns). See the Guiacces.dll and
+             Guiacces.plk strings. The demo does not allow StartupMethod=SERVICE.
+    Installer: InstallShield 3 (SETUP.EXE, SETUP.INS, _inst32i.ex_,
+             _setup95.lib) inside a WinZip 32-bit SFX. Folders Disk1..Disk7.
+    Unattended: semi-automatic, documented by the vendor. Disk1/Response.ini
+             plus  SETUP.EXE <path>\RESPONSE.INI  skips every dialogue. The
+             installer then beeps N times when it wants disk N, and once when
+             finished. Untested: whether it finds Disk2..7 on its own when the
+             tree is copied to the hard disk.
+    Recipe (Polish, software speech):
+      1. Unpack osw2demo.exe on the host (it is a zip) to C:\CHARON\OSW\Disk1..7.
+      2. Install the SAPI 4 runtime (spchapi.exe /Q:A /R:N) and a SAPI 4
+         engine. No free Polish SAPI 4 engine was verified on the site (see
+         3.3). With an English engine the prompts are Polish text read in
+         English.
+      3. Edit Disk1\Response.ini:
+           Installation Language=PLK
+           Destination=C:\Osw
+           Synthesizer=MSSAPI         (or NO_SPEECH, LKT32, KUBSSIL1, BNS1...)
+           SpeechPort=COM1            (only for serial synths; BNS1 -> COM1)
+           BrailleDisplay=NO_BRAILLE
+           StartupMethod=AUTOMATIC    (adds load= to SYSTEM.INI)
+           Languages=PLK, ENU
+           RestartWindows=YES
+      4. Run once: C:\CHARON\OSW\Disk1\SETUP.EXE C:\CHARON\OSW\Disk1\RESPONSE.INI
+      5. If it stops at a disk prompt, a sighted step or an emulated floppy
+         swap is needed (Charon can mount DiskN as A:).
+    Charon note: BNS1 or DTE over the emulated COM1 makes outSPOKEN speak with
+             no guest sound driver at all.
+
+1.2 JAWS for Windows (Henter-Joyce / Freedom Scientific)              [D] SW HW BNS
+    Path ScreenReaders/JAWS/OlderDownloads/ :
+      file               size        version  OS (source)                    installer
+      jfw33026.exe       13M  [L]    3.30.26  95/98/NT4                      HJ script
+      jfw33135.exe       13 922 304  3.31.35  95/98/NT4 (synth.ini)          HJ script, WinZip SFX
+      j35037.exe         16 847 771  3.50.37  95/98/NT4/2000                 PFTW SFX -> CAB -> HJ script
+      j37087.exe         17M  [L]    3.70.87  95/98/ME/NT/2000 (inferred)    IS6
+      jaws37136.exe      17 588 224  3.71.36  95/98/ME/NT/2000 (inferred)    SFX -> CAB -> IS6
+      j40252.exe         21 778 399  4.02.52  95/98/ME/NT/2000/XP (inferred) SFX -> CAB -> \Disk1 IS6
+      j450138.exe        27M  [L]    4.50.138 98/ME/NT/2000/XP (inferred)    IS6
+      j451119.exe        28 387 997  4.51.119 98/ME/NT/2000/XP (inferred)    IS6
+      j500621.exe        33M  [L]    5.00.621 98/ME/2000/XP (inferred)       IS6
+      j500844.exe        35 029 601  5.00.844 98/ME/2000/XP (inferred)       IS6 (+MSSAPI.JLS)
+      j510383q.exe       33 767 127  5.10.383 98/ME/2000/XP (inferred)       IS6 (+AutoDetection)
+      j600410ILM.exe     41 691 321  6.00.410 98/ME?/2000/XP                 IS6, ILM/dongle auth, SAPI 5
+      j6101005a_ILM.exe  46M  [L]    6.10     probably 2000/XP+               IS6
+      J6.20 / J7.x / J8 / J9  [L]    not 9x
+    The 3.7+ OS lists are inferred from the bundled Runtime\MSAA\9X files
+    (oleacc, user/gdi updates) and release dates. They are not vendor
+    statements; the IS6 setup.inx files hold no readable OS list.
+    sha256 of every downloaded file is in catalog.json.
+    Speech:  Eloquence for JFW bundled (SW; Eloquence languages: US/UK English,
+             German, Spanish (2), French, Italian, Portuguese, Finnish). The
+             3.31 synth.ini also lists Accent PC/SA, Apollo 2, Artic 215,
+             Audapter, Braille 'n Speak, DECtalk Access32/Express/PC,
+             DoubleTalk LT/PC, FlexTalk, Infovox, Keynote MM/hardware, Reading
+             Edge, "Microsoft Text-to-Speech Engine" (SAPI 4), Multi Voice,
+             TextAssist, Sounding Board.
+    UI:      English only.
+    Demo:    No authorization on the site. Unauthorized JAWS runs a timed demo
+             (vendor behaviour, commonly 40 minutes, then restart Windows; not
+             verified from these files).
+    a) JAWS 3.31 / 3.30 / 3.50: Henter-Joyce script installer. setup.exe
+       interprets plain-text install.dat, commproc.inc, custom.inc,
+       standard.inc, install.inc, question.inc and makedef.inc from the
+       startup directory.
+       - If default.ini is present (it ships in jfw33135), setup offers
+         "Automatic Install": Eloquence, American English, no braille, no
+         merge. That is a "FORCED" install driven entirely by default.ini:
+           @JFWDrive = C  @JFWDir = "\\JFW32"  @PrimarySynthShort = "eloq"
+           @PrimarySynthDriver = "eloq"  @NumBraille = 0 ...
+       - What is still interactive: the "Automatic/Custom" option box
+         (commproc.inc, @GetOption ... @Option 500) and @Display/@Pause
+         message screens (install.inc and others). These are plain text in
+         Charon's own copy of the installer, so they can be removed: set
+         @SetOption(104) / @InstallType="FORCED" directly and delete the
+         @Pause lines. The Henter-Joyce script language is undocumented
+         here, so test the patch once in Bochs.
+       - makedef.ini in the startup directory switches setup into
+         "Make Defaults" mode. You can use it to produce a different
+         default.ini, for example with Braille 'n Speak on COM1 instead of
+         Eloquence (synth item "Braille 'n Speak (Win NT or 95/98)").
+       - msaardk.exe (MSAA RDK, 1 312 728 B) is inside jfw33135. Run it first on
+         Windows 95: msaardk.exe /Q:A /R:N, then reboot.
+       - j35037.exe is a PackageForTheWeb SFX. Its MSZIP CAB holds the same
+         script installer and can be unpacked on the host with the CAB reader
+         used for this survey.
+    b) JAWS 3.7 to 6.x: InstallShield 6 (setup.inx, ikernel.ex_, data1.hdr,
+       data1.cab). The script contains "InstallShield Silent" handling, so
+       setup.exe -s -f1C:\path\setup.iss -f2C:\jaws.log works with a response
+       file. No .iss ships, and the dialogue set includes custom steps
+       (AskRunJAWSFirst, "Speech Synthesizers"/Eloquence components, serial).
+       Writing an .iss by hand is guesswork; a one-time recording
+       (setup.exe -r) by a sighted operator in the guest is the reliable way.
+       Until then: manual dialogue.
+
+1.3 Window-Eyes (GW Micro)                                             [D] SW HW BNS
+    we31.iso  ScreenReaders/WindowEyes/we31.iso  12 795 904 B  "full version" 3.1
+       sha256 06e9dc568a42b44a3cdfb8ea22f0c1dd8af9d4cba4e8b1d9a8438db99890e9c8
+       OS:  Windows 3.1x, 95, 98 (SE tested per README), NT 4.0 (WINDOWS/OS.DAT)
+       Speech: SAPI 3/4 with the Microsoft engine on the CD (WINDOWS/SPCHAPI.EXE
+            847 096 B, WINDOWS/MSTTS.EXE 5 374 200 B), DECtalk Access32,
+            Eloquence, TruVoice, plus hardware (webns.dll Braille 'n Speak,
+            wedtexp.dll DECtalk Express, DoubleTalk LT, Accent, Apollo, Artic,
+            Audapter, Sounding Board, Speak-Out ...)
+       Installer: InstallShield 5 (WINDOWS/SETUP.EXE, SETUP.INS, DATA1.CAB,
+            _SYS1.CAB), autorun -> windows\Setup.exe. On 9x with a sound card it
+            loads SAPI and a temporary Window-Eyes, so the installation speaks
+            (README). Includes WINDOWS/MSAARDK.EXE (1 124 104 B).
+       Unattended: IS5 supports setup.exe -s with setup.iss, but none ships.
+            The dialogues include serial-number registration
+            (SdConfirmRegistration, szSerial). No serial on the site.
+            wetool.dll contains "your demonstration time has expired", so
+            running without a serial probably gives a timed demo (unverified).
+       Recipe: copy the ISO to the guest as a CD (Bochs ATAPI). The reader
+            runs D:\WINDOWS\SETUP.EXE manually and the installer speaks on its
+            own. This is the best fully talking install for a blind user who
+            sits at the guest, but it is not unattended.
+       Windows 98: Window-Eyes manual section 1.8 lists required settings.
+    wedemo.zip (batol, 2 790 052 B) Window-Eyes 3.0 DEMO: runs 30 minutes, then
+       locks (35 min); restart Windows. DOS INSTALL program. Includes MSAARDK.
+    WindowEyes 1.05 / 1.1 / 2.0 Demo (vintage-access/screen readers/GW Micro/):
+       Windows 3.1x (2.0 also 95). DOS INSTALL.EXE, hardware synths and Sound
+       Blaster (SB.COM), 30-minute demo. HW BNS.
+    we5.0full.zip [R] 479 MB: IS6 Window-Eyes Professional 5.0. Includes
+       MSAARDK.EXE, SPCHAPI.EXE, dcmsetup.exe (DCOM98), getsapi.exe, an IE6
+       setup tree and Eloquence sub-installers SYNTHS/<lang>/ with a ready
+       INSTALL.ISS (silent: SdWelcome, SdFinish). The wineyes/ folder alone is
+       about 62 MB; it can be fetched member by member with HTTP range
+       requests instead of the full 479 MB. OS 98/ME/2000/XP (inferred).
+    we55upgrade.exe (9 MB, upgrade only). 6.0, 7.0 ISO, 7.11, 7.5, 8.0 and the
+       8.4-9.5.4 evaluation set are 2000/XP-era and large; not downloaded.
+    WebsiteScrapes/ftp.gwmicro.com.7z (56 MB) [R]: WE 6.1 betas, DECtalk PC/
+       Express driver disks, Vocal-Eyes, set files.
+
+1.4 Dolphin: Hal95 / Hal / Supernova                                   [D] SW HW BNS
+    batol hal95.zip      Hal95 3.03 DEMO, UK English, 1 954 701 B. SAM SSIL
+                         drivers including BNS, DECtalk, DTE, Keynote, and
+                         SSILSAPI (SAPI 4 engine needed).
+    batol sno9demo.zip   Supernova DEMO for 95/98 (magnifier + speech), same SAM layer.
+    Hal95 Demo 1.01.zip / 1.03.exe (vintage-access/.../Dolphin Computer Access):
+                         Windows 95, Dolphin hardware synths (DOLSER2, Apollo).
+    ScreenReaders/Dolphin/hal95.7z  Hal95 4.50 CD image (Hal95V450.7z) +
+                         hal95.reg (HKLM RunServices "hal95"). Languages
+                         00001/00031/00044/00046/00049 (US, NL, UK, SE, DE).
+                         ORPHEUS software synth bundled. The inner 7z uses
+                         BCJ2, which py7zr cannot unpack; 7-Zip can.
+    ScreenReaders/Dolphin/hal511.7z  Hal 5.11, SETUP.MSI + Dolphin ins*.ini,
+                         Orpheus, MSAA. UI: US, NL, FR, 38 (sr/hr), IT, CZ, UK,
+                         SE, NO, DE. Polish screen-language data only.
+    Installer: Dolphin talking installer (setup.exe + insNNNNN.ini prompt file).
+             It offers "Automatic installation" / "Custom installation" and
+             reads its prompts aloud. Not silent; the dialogues are keyboard-only
+             and short. Hal 5.11's SETUP.MSI might accept msiexec /qn (untested).
+    Not 9x: Hal 7.01 (contains a "reset"; excluded), Supernova 6.53 beta,
+             PocketHAL.
+
+1.5 ProTalk32 for Windows 95/98 DEMO (Biolink)        batol:pt98demo.exe [D] SW HW
+    6 288 384 B, WinZip SFX. DEVICES.LST: "Microsoft Voice" (SAPI), "DecTalk
+    software", Sound Blaster TextAssist, Keynote software/VoiceCard, DECtalk
+    Express, Apollo 2, Infovox, ALVA/Navigator braille. NEWKEYS.LST
+    SerialNumber=DemoCopy. Includes MSAARDK.EXE. ptntdemo.exe/pvntdemo.exe are
+    NT builds (ProTalk32/ProVision32).
+
+1.6 Other 9x-era readers (inspected less deeply)
+    Simply Talker 98 2.0 DEMO       batol:setup.exe   5 552 213 B  95/98/NT (index)
+    Simply Talker 2000 (English)    batol:stkr2000.exe 5 005 720 B
+    ASAW (MicroTalk "ASAP for Windows") DEMO for Win95 and beta for Win98
+                                    batol:asawdemo.exe / asawbeta.exe. DOS-format
+                                    zip SFX with ASAWINST.BAT, MSAPI (SAPI)
+                                    driver plus BNS, DECtalk, DoubleTalk, Accent,
+                                    Artic, Audapter, Echo. Batch-driven install:
+                                    a good candidate for scripting (untested).
+    WindowBridge 2.56 DEMO          vintage-access/.../SlimWare Window Bridge 2.56 Demo.exe
+                                    (= batol swb256.exe, same sha256). Win 3.1x/95,
+                                    DOS SFX, DEMOTSR, MSAPI overlay, hardware synths.
+    WindowBridge 2000               batol:wb2k2_01.exe 22 449 059 B, WinZip SFX -> IS.
+    Connect Outloud 1.00.49 (FS)    batol:connect10049.exe. Talking web/mail tool
+                                    built on JAWS, Eloquence, IS6, MSAA 9X runtime.
+    IBM Home Page Reader 3.02 trial batol:hprtrial302.exe 42 MB (talking browser, 30 days).
+    Talker95, Wink 3.96             batol: speech interfaces for Win95 (language
+                                    unverified, probably Chinese).
+    Magnifiers with speech: ZoomText Xtra 7 trial (batol:zx7trl_i.exe, IS5,
+                                    SSIL/SSILSAPI), MAGic 8.05 (batol:magic8053.exe),
+                                    Lunar/Supernova demos.
+
+1.7 Windows 3.1x-only readers (they run on 9x only as 16-bit programs; not recommended)
+    outSPOKEN for Windows 1.21 DEMO  batol:osw121d.exe (IS3, 16-bit, SSIL)
+    Screen Power for Windows 1.1A DEMO (TeleSensory, 3 disks), Screen Power
+        Speech drivers (DECtalk PC/PC2/Express, Pulse Data, various)
+    Windows Master (Blazie, wm.zip / Windows Master.zip, DOS INSTALL.BAT, BNS)
+    Slimware Window Bridge 1.20 / 2.21 demo floppy sets
+    JAWS for Windows 1.21.23 upgrade (4 disks), JFW 2.00.08 manual, patch 2.08
+
+1.8 Not for 9x (listed for completeness)
+    Virgo 4.0 (batol, NT/2000/XP) and Virgo 4.71 demo intl (75 MB, WISE+RAR,
+    no Polish); ROAR (NT 3.51 special build / NT 4.0+, DECtalk 4.2 API, own
+    code); NVDA 2013 + speechPlayer (XP+); Thunder (XP+); Narrator SAPI5 (XP);
+    Cobra (655 MB); OpenBook 7.02 (505 MB); Blindows 4.12 (German, Inno, OS
+    unverified); JAWS 6.20+; Window-Eyes 6+.
+
+-------------------------------------------------------------------------------
+2. DOS screen readers (for a DOS box or pure DOS under Charon; all HW, most BNS)
+-------------------------------------------------------------------------------
+    JAWS for DOS 2.31 FREEWARE  vintage-access/screen readers/Henterjoyce/Jaws For Dos 2.31 Freeware.exe
+                                (= batol jdosfree.exe). Freeware according to its .txt.
+                                DOS SFX -> INSTALL.EXE; SYNTH1-3.RED drivers.
+                                JAWS For Dos Additional Synthesizer Drivers.zip.
+    JAWS for DOS 2.31 DEMO
+    Vocal-Eyes 3.0 (1995 / 1997 zips, batol ve.zip demo), set files, utilities
+    ASAP (MicroTalk) demos 1992-2002, set files, utilities
+    ProVox 6.71B / 7.0 (Kansys; 7.0 zip is assembler source + docs), batol provox66
+    TinyTalk 1.67 (docs and configs on vintage-access; program batol tt167.zip)
+    SlimWare for DOS 2.00 demo (disks 2-4 only)
+    Screen Power for DOS (batol spb-pgm / spi-pgm1/2 + manuals)
+    Hal Lite for DOS (batol hl.exe), Hal16 1.00 (MTR, uses Implode compression)
+    IBM Screen Reader DOS: tutorial tapes only (ManualAndTutorialTapes/IBMScreenReaderDOS)
+
+-------------------------------------------------------------------------------
+3. Speech engines, drivers and prerequisites for Win9x
+-------------------------------------------------------------------------------
+3.1 SAPI 4 stack (SW). All are Microsoft IExpress packages (advpack/wextract).
+    Silent switches /Q:A /R:N are standard IExpress; not tested here.
+    TTS/SAPI/Microsoft/Tools/spchapi.exe    844 448 B  SAPI 4.0 runtime
+        sha256 8955ee03217bc2539e2f80e58f51d30aa97e7512d96592f098133c8036e363dd
+    TTS/SAPI/Microsoft/Tools/spchapi3.exe   494 816 B  SAPI 3.0 runtime
+    TTS/SAPI/Microsoft/Voices/msttsl.exe  7 674 104 B  Microsoft TTS engine (SAPI 4)
+    TTS/SAPI/Microsoft/Voices/mstts.exe  10 102 272 B  Microsoft TTS engine package
+    TTS/SAPI/L&H/tv_enua.exe              1 021 232 B  L&H TruVoice US English (Agent)
+    TTS/SAPI/L&H/lhtts<lang>.exe   2-3 MB  L&H TTS3000 for Agent: dun eng enu frf
+        ged iti jpj kok ptb rur spe. There is NO Polish TTS3000 package.
+    TTS/SAPI/Various/Engines/TruVoice.exe, "TruVoice from text assist.exe"
+    OtherSoftware/Various/MSagent.exe  Microsoft Agent core (IExpress)
+3.2 Other software synths
+    DECtalk Access32 4.6 (TTS/DECtalk/Other/DECTalk access32 v4.6.zip, 6 772 256 B).
+        Setup.ini [SupportOS] Win95/98/ME/NT4/2K. MSI with instmsia.exe. The
+        readme says it comes from Kurzweil 1000 v8 and that on Win9x the floppy
+        key disk ("dectalk keydisc.exe") is required. msiexec /qn is possible,
+        but the authorization is not.
+    ETI-Eloquence SAPI4: eloq30/33/40/50/61 (eloq61.exe 7 531 460 B is an Inno
+        Setup 5.4.2 repack; try /VERYSILENT /SUPPRESSMSGBOXES /NORESTART; it is
+        not certain that Inno 5.4 runs on Windows 95). jfw32eloq/jfw33eloq.zip,
+        eloq5.zip (Eloquence data for JAWS).
+    IBM ViaVoice TTS SAPI4 (36 MB zip), viavoice4/5.exe.
+    Sound Blaster TextAssist / "creative labs tts.exe" / sb16_tts.exe (7z SFX repacks).
+    Keynote GOLD Multimedia demo (batol kng_eng.exe, 15-minute software synth for Win95).
+3.3 Polish voices on the site
+    TTS/SAPI/RealSpeak/PolishSAPI4RealSpeak.7z  141 MB [R]: multi-part RAR
+        "realspeak/dualspeaker.partNNN.rar", a Polish RealSpeak for SAPI 4
+        (commercial product, no licence statement). This is the only
+        explicitly SAPI 4 Polish voice found. Whether it runs on 98/ME is
+        unverified.
+    TTS/SAPI/Various/Engines/Rozmowy121.exe  4 769 104 B [D]: NSIS 1.0h,
+        uninstall key "System syntezy mowy". A Polish TTS from about 2001. SAPI
+        level and 9x support are unverified (payload not decoded).
+    TTS/SAPI/Various/Engines/syntalk_20.zip  13 MB [D]: SynTalk 2.0 SAPI 5
+        (pl-kasia, pl-bodek, 2008). Probably XP+.
+    Spiker_Rehab-3.0.2_Install.exe [L], RealSpeak "Voice Agata Polish 22khz.exe"
+        (SAPI 5) [L].
+    outSPOKEN alternatives for Polish speech: Lektor (LKT32) and Kubus (Harpo)
+        drivers are in outSPOKEN, but those synthesizers are not on the site.
+3.4 Accessibility and OS prerequisites
+    MSAA (Active Accessibility) RDK: needed on Windows 95 and on 98 for older
+        readers. Copies: we31.iso WINDOWS/MSAARDK.EXE, jfw33135.exe msaardk.exe,
+        batol wedemo.zip and pt98demo.exe. JAWS 3.7+ ships Runtime\MSAA\9X.
+        Command: MSAARDK.EXE /Q:A /R:N, then reboot.
+    DCOM98: wineyes/dcmsetup.exe inside we5.0full.zip (fetch by range).
+        DCOM95 was not found on the site.
+    Windows Installer for 9x: instmsia.exe inside the DECtalk Access32 zip.
+    KernelEx 4.5.2 (98/ME, NSIS) - only needed for later software.
+    IE: Window-Eyes 5.0 CD has an IE6 tree. OtherSoftware/Various/
+        "Internet Explorer.exe" (8 MB) is of unknown version. No DirectX runtime
+        was found.
+
+-------------------------------------------------------------------------------
+4. Scripted installation in the Charon Windows 9x guest
+-------------------------------------------------------------------------------
+4.1 Getting control after the first boot. Every method below writes plain
+    files on the FAT volume from outside, which Charon can do before booting
+    Bochs.
+    a) WIN.INI  [windows]  run=C:\CHARON\RINST.BAT   (or load=). Language
+       independent: works on Polish Windows, where the StartUp folder is
+       "Menu Start\Programy\Autostart". RINST.BAT removes the run= line
+       when it is done. Best first choice.
+    b) StartUp folder: C:\WINDOWS\Start Menu\Programs\StartUp\RINST.BAT (or the
+       localized path). Simple, but the path depends on the language.
+    c) AUTOEXEC.BAT (real mode, before Windows):
+         C:\WINDOWS\REGEDIT.EXE /L:C:\WINDOWS\SYSTEM.DAT /R:C:\WINDOWS\USER.DAT C:\CHARON\RUNONCE.REG
+       RUNONCE.REG:
+         REGEDIT4
+         [HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce]
+         "CharonReader"="C:\\CHARON\\RINST.BAT"
+       RunOnce entries run once per boot cycle and are removed by Windows, which
+       is convenient for the "install, reboot, install next" chains below.
+       On Windows ME, AUTOEXEC.BAT is largely ignored and real-mode DOS is
+       hidden; use a) or b) there.
+    d) Windows 98/ME also accept  REGEDIT /S file.reg  from a batch file
+       inside Windows.
+4.2 Chain for software speech (95/98), one reboot per step:
+       step 1  MSAARDK.EXE /Q:A /R:N                      (Windows 95, 98 FE)
+       step 2  SPCHAPI.EXE /Q:A /R:N + MSTTSL.EXE /Q:A /R:N  (only for SAPI readers)
+       step 3  the reader:
+               JAWS 3.31: patched script installer in C:\CHARON\JFW331 (default.ini,
+                          prompts removed) -> SETUP.EXE ; then reboot
+               outSPOKEN: SETUP.EXE C:\CHARON\OSW\Disk1\RESPONSE.INI
+               JAWS 3.7-6 / WE 3.1 / WE 5.0: SETUP.EXE -s -f1C:\CHARON\x.iss once
+                          an .iss has been recorded; otherwise a manual dialogue
+               Dolphin / ProTalk / Window-Eyes demos: manual dialogue
+       Each step adds the next RunOnce entry before it exits.
+4.3 Sound. All SW options need a working sound card driver in the guest
+    (SB16 in Bochs; Windows 95 and 98 include a Sound Blaster 16 driver). The
+    reader cannot speak during the Windows setup itself.
+4.4 HW speech with no guest sound driver: Charon can emulate a serial
+    synthesizer on COM1 and speak the text itself (see src/pc/pc_bns.cpp).
+    Readers in this catalogue that drive a Braille 'n Speak: JAWS 3.31
+    (BNS.RED), Window-Eyes 1.x-3.1 (webns.dll), outSPOKEN 2.01 (BNS1), Hal95
+    SAM (Sam/samssil/BNS), ASAW (BNS1.SY_), Windows Master, and the DOS readers
+    JAWS DOS, Vocal-Eyes (BNSPEAK.COM) and ASAP. DECtalk Express (DTE) is the
+    second most widely supported protocol (JAWS, WE wedtexp.dll, outSPOKEN DTE,
+    Hal DTE, ProTalk PTDTXPRS).
+4.5 Defaults to offer in the Charon menu:
+      Windows 95 / 98 : JAWS 3.31.35 + Eloquence (scripted). Alternatives:
+                        Window-Eyes 3.1 (talking manual install), outSPOKEN 2.01
+                        demo (Polish UI), Hal95 4.50 (Orpheus).
+      Windows ME      : JAWS 4.02.52 (needs an .iss, else manual). Alternatives:
+                        JAWS 5.00.844, Window-Eyes 5.0, Hal 5.11.
+      Any, no sound   : any BNS-capable reader above, with BNS1 on COM1.
+    Licence: none of these Windows readers is marked freeware on the site, and
+    their demo or authorization limits apply.
+
+-------------------------------------------------------------------------------
+5. Ready-made 9x guests on the site (testing only; the target is the user's own media)
+-------------------------------------------------------------------------------
+    VirtualMachines/VMs/WinWorldVMs/Microsoft Windows 95 [VMware VM].7z 382M,
+    ... Windows 98 Second Edition [VMware VM].7z 406M, ... Windows Me [VMware VM].7z 446M,
+    VirtualMachines/VMs/OtherVMs/win98_vpc_img.7z 76M,
+    OtherSoftware/Emulators/win9x_images.7z 687M (w95.img 2.1 GB, w98.img 493 MB),
+    OtherSoftware/Emulators/talking dosbox-win95.exe 547M.
+    ManualAndTutorialTapes/Windows95RemovingTheScreen (7 FLAC) - a 1990s
+    audio course on using Windows 95 without a screen.

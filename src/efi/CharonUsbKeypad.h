@@ -64,13 +64,19 @@ public:
         size_t count=0;efi_handle* handles=nullptr;
         if(boot->LocateHandleBuffer(ByProtocol,&guid,nullptr,&count,&handles)!=EFI_SUCCESS || !handles)return false;
         bool added=false;
-        for(size_t i=0;i<count && used_<maxKeyboards;++i) {
+        // An unplugged keyboard's UsbIo is freed by the bus driver: forget its
+        // slot (never touched again; slots are not moved, Report holds their address).
+        for(size_t i=0;i<used_;++i)if(slots_[i].io && !Live(boot,slots_[i]))slots_[i]={};
+        for(size_t i=0;i<count;++i) {
             UsbIo* io=nullptr;
             if(boot->HandleProtocol(handles[i],&guid,(void**)&io)!=EFI_SUCCESS || !io || !io->GetInterfaceDescriptor || !io->AsyncInterruptTransfer)continue;
             if(io->AsyncInterruptTransfer==HookAsync)continue;
             UsbInterfaceDescriptor d{};
             if(io->GetInterfaceDescriptor(io,&d)!=EFI_SUCCESS || d.interfaceClass!=3 || d.subClass!=1 || d.protocol!=1)continue;
-            Slot& s=slots_[used_++];s={};s.io=io;s.handle=handles[i];s.original=io->AsyncInterruptTransfer;
+            size_t at=0;while(at<used_ && slots_[at].io)++at;   // a freed slot first
+            if(at>=maxKeyboards)break;
+            if(at==used_)++used_;
+            Slot& s=slots_[at];s={};s.io=io;s.handle=handles[i];s.original=io->AsyncInterruptTransfer;
             io->AsyncInterruptTransfer=HookAsync;
             // The firmware driver registered its callback before the hook:
             // restart it on this interface so it registers through the hook.
@@ -85,7 +91,7 @@ public:
     void Unhook(efi_boot_services* boot) {
         for(size_t i=0;i<used_;++i) {
             Slot& s=slots_[i];
-            if(s.io && s.io->AsyncInterruptTransfer==HookAsync) {
+            if(s.io && (!boot || Live(boot,s)) && s.io->AsyncInterruptTransfer==HookAsync) {
                 s.io->AsyncInterruptTransfer=s.original;
                 if(boot) {boot->DisconnectController(s.handle,nullptr,nullptr);boot->ConnectController(s.handle,nullptr,nullptr,true);}
             }
@@ -110,6 +116,11 @@ public:
     }
 private:
     struct Slot {UsbIo* io;efi_handle handle;decltype(UsbIo::AsyncInterruptTransfer) original;UsbAsyncCallback callback;void* context;};
+    // The slot's handle still carries the UsbIo instance that was hooked.
+    static bool Live(efi_boot_services* boot,const Slot& s) {
+        efi_guid guid={0x2b2f68d6,0x0cd2,0x44cf,{0x8e,0x8b,0xbb,0xa2,0x0b,0x1b,0x5b,0x75}};void* now=nullptr;
+        return boot && boot->HandleProtocol && s.handle && boot->HandleProtocol(s.handle,&guid,&now)==EFI_SUCCESS && now==static_cast<void*>(s.io);
+    }
     static inline UsbKeypad* self_=nullptr;
     static efi_status EFIAPI HookAsync(UsbIo* io,uint8_t endpoint,uint8_t isNew,size_t interval,size_t length,UsbAsyncCallback callback,void* context) {
         UsbKeypad* k=self_;

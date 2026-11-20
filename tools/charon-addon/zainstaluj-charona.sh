@@ -132,6 +132,9 @@ for f in CHARONVOICE.EFI AudioDxe.efi; do copy "$src/$f" "$hak/$f"; done
 [ -f "$src/CharonShell.efi" ] && copy "$src/CharonShell.efi" "$hak/CharonShell.efi"
 if [ "$mode" != reader ]; then copy "$src/HAKBOOT.EFI" "$hak/HAKBOOT.EFI"; fi
 for f in "$src"/audio/*.pcm; do [ -f "$f" ] && run cp "$f" "$hak/audio/"; done
+# r400: optional parts travel with the boot manager when the package has them:
+# built-in tools, network drivers, packages (CharonDOS), the installers themselves.
+if [ "$mode" != reader ]; then for d in tools drivers packages addon; do [ -d "$src/$d" ] && run cp -r "$src/$d" "$hak/"; done; fi
 [ -f "$hak/audio-language" ] || { case "${CHARON_LANGUAGE:-en}" in pl) l=pl;; *) l=en;; esac;[ $dry = 1 ] || printf %s $l > "$hak/audio-language"; }
 if [ "$mode" = shim ]; then [ $dry = 1 ] || printf 'reader-only\r\n' > "$hak/reader-only"; else run rm -f "$hak/reader-only"; fi
 [ $dry = 1 ] || printf 'Charon r391; installed by zainstaluj-charona.sh, mode %s\r\n' "$mode" > "$hak/installed-by.txt"

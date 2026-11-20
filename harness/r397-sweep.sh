@@ -19,7 +19,7 @@ run sclo    WAIT=60 KEYS="f1 esc o down down ret esc esc spc down esc" $P sclo C
 run swed    CHARON_WINBOOT_BCD=bcd-edit/BCD WAIT=20 KEYS="f10 spc,a backspace esc f8 down esc" $P swed "(Windows" --winboot
 run swmd    CHARON_WINBOOT_BCD=bcd-menu/BCD WAIT=20 STEP=6 KEYS="tab ret f1 tab down tab esc" $P swmd "(Windows" --winboot
 # UEFI Shell: help, paged output, line edit
-run sshell  WAIT=12 KEYS="h,e,l,p,spc,minus,b,ret spc q h,e,l,p,spc,e,d,i,t,ret c,l,s,ret" $P sshell "Shell"
+run sshell  WAIT=${SHELLWAIT:-12} KEYS="h,e,l,p,spc,minus,b,ret spc q h,e,l,p,spc,e,d,i,t,ret c,l,s,ret" $P sshell "Shell"
 # Syslinux: edit command line, help
 run ssys    CHARON_USB=$W/app-sticks/syslinux.img WAIT=10 KEYS="tab a backspace esc f1 esc" $P ssys "Syslinux|USB" --usb
 # iPXE: command line and config UI

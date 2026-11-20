@@ -64,9 +64,9 @@ public:
         // Caller must have checked 44.1kHz and 48kHz support on every output.
         if(resetOutputs) {
             if(!audio->setup)return EFI_UNSUPPORTED;
-            status=audio->setup(audio,resetOutputs,-12,32,2,2,0);
+            status=audio->setup(audio,resetOutputs,127,32,2,2,0);
             if(status!=EFI_SUCCESS)return status;
-            status=audio->setup(audio,resetOutputs,-12,64,2,2,0);
+            status=audio->setup(audio,resetOutputs,127,64,2,2,0);
             if(status!=EFI_SUCCESS)return status;
         }
         if(completion)completion->done=false;

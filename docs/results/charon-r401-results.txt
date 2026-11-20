@@ -1,0 +1,62 @@
+Charon r401 - wyniki prób (2026-11-20)
+======================================
+
+Buildy: work/charon-win-r401 (aplikacja, czysty), charon-win-r401-drv (sterownik czytnika, czysty),
+charon-win-r401k (aplikacja ze śladem), charon-win-r401k-drv / r401f-drv (sterownik ze śladem).
+Maszyna: QEMU 11.1, OVMF, od r401 hiperwizor Windows (accel=whpx, 4 procesory; CHARON_ACCEL=tcg wraca
+do emulacji). Czasy z r401 nie są porównywalne z wcześniejszymi (tcg).
+
+1. Nośnik Windows z samym menedżerem rozruchu (bez obrazu systemu) - ZALICZONE
+   Pendrive work/winmedia-r401/win-usb.img (bootmgfw, BCD, boot.wim, bez sources\install.*).
+   Charon: "Nośnik GRUBTEST ma tylko menedżer rozruchu Windows, bez obrazu systemu ... Charon nic na nim
+   nie zapisał i go nie uruchomi." SHA-256 obrazu pendrive'a przed i po: identyczny (84cd772e2b0b4e8d...).
+   Warunek nośnika: sources\install.wim | .esd | .swm z sygnaturą MSWIM i rozmiarem >= 256 MB.
+
+2. Paski postępu - ZALICZONE
+   Jeden kod (src/efi/CharonProgress.h) dla czytnika i dla zadań Charona (pobieranie, wczytywanie).
+   Ton 110 Hz * 2^(procent/25), 40 ms; mowa co 10%; ustawienie "Paski postępu" (0-3) obowiązuje wszędzie.
+   Pobieranie jądra Debiana przy ustawieniu "sygnały": pasek na ekranie, tony w nagraniu, bez mowy.
+
+3. Dialog instalatora na ekranie + skróty czytnika na każdym ekranie Charona - ZALICZONE
+   Wszystko, co Charon mówi w dialogu, jest wypisane (zrzut work/rev5/s1.png, ubu6/b.png, win3/a.png).
+   Ctrl+Alt+I/U/O oraz Alt+góra/dół/prawo czytają wiersze i znaki w menu głównym, w workspace i w dialogu
+   (czytnik działa obok Charona w trybie reviewOnly; jego praca jest wykonywana z odpytywania klawiszy).
+   Uruchomienie programu z menu (UEFI Shell) i z workspace (drugi Charon) oraz powrót: bez awarii.
+   Uwaga: sterownik i aplikacja muszą być z tego samego wydania (charonRelease 401).
+
+4. Formatowanie głosem w listach i pytaniach workspace/instalatora - ZALICZONE (znacznik w śladzie)
+   "Który system? ESC f mmm0-aqmm0-- Debian (stabilny), 1 z 3" - ten sam znacznik pozycji co w menu
+   boot managera (CharonMenuVoiceMark.h), tylko gdy formatowanie głosem jest włączone.
+   Ikony dźwiękowe: kod wspólny (IconTone), nie mierzone osobno w nagraniu.
+
+5. Ubuntu 26.04.1 z sieci, bez pulpitu, z mową - ZALICZONE (maszyna ubu6, 8 GB RAM)
+   Dialog -> jądro i instalator do pamięci -> instalator sam pobrał obraz (2,8 GB) -> instalacja ok. 7,5 min.
+   Mowa w instalatorze: od startu wczesnych poleceń nagranie ma ciągły sygnał (RMS 3000-4500, wcześniej ~200).
+   Zainstalowany system: logowanie działa; speakup + speakup_soft załadowane, espeakup "active",
+   charon-goodbye "active"; efibootmgr -r: Driver0000 "Charon voice" -> \EFI\HAK\CHARONVOICE.EFI;
+   partycja EFI: BOOT, HAK (61 plików), ubuntu; /var/lib/charon: skrypty i instalator Charona.
+   Nie sprawdzono: wpis rozruchowy "Charon" (OVMF z bootindex kasuje wpisy spoza swojej listy - cecha
+   maszyny testowej, jak przy Debianie w r400); treści mowy nie da się potwierdzić z nagrania, tylko jej obecność.
+   Pod whpx restart gościa zatrzymuje QEMU ("WHPX: Unexpected VP exit code 4"): po instalacji trzeba
+   maszynę uruchomić ponownie poleceniem charon-vm.py restart.
+
+6. Windows 11: Charon sam robi nośnik instalacyjny na pendrivie - ZALICZONE NA OBRAZIE TESTOWYM
+   Obraz testowy (work/make-wintest-r401.py): UDF 1.02 z plikami rozruchowymi hosta i prawdziwym WIM 1 GB
+   jako sources\install.wim, serwowany lokalnie (work/range-http.py), adres z \EFI\HAK\windows-iso-url.txt,
+   podział co 300 MB. Wynik na pendrivie: install.swm 314551687, install2.swm 312703135,
+   install3.swm 314077272, install4.swm 49528964 bajtów (identycznie jak w teście na hoście);
+   "wimlib-imagex verify install.swm --ref=install*.swm": successfully verified, część 1/4.
+   Dalej: pytania -> Autounattend.xml i \charon na nośniku -> menedżer rozruchu Windows wystartował
+   z \EFI\Microsoft\Boot\bootmgfw.efi i wczytał boot.wim.
+   Wybór "pobierz na nośnik USB" / "pobierz do RAM-dysku" z oceną komputera: działa (za mało RAM -> USB pierwszy).
+   NIE SPRAWDZONO: prawdziwy obraz Microsoftu (ok. 8 GB; adres od Microsoftu był odmawiany, a obrazu nie ma
+   lokalnie), czyli sam Instalator Windows na takim nośniku; ścieżka RAM-dysk (czy Instalator znajdzie
+   nośnik w pamięci po starcie WinPE) - według źródeł wątpliwa, bez własnej próby.
+   Testy hosta: tests/CharonUdfTests.cpp, tests/CharonWimSplitTests.cpp (obrazy IMAPI2 UDF 1.02-2.50,
+   porównanie z "wimlib-imagex split").
+
+7. Otwarte
+   - Awaria #GP (RIP=AFAF...) przy starcie instalatora Ubuntu w jednej próbie pod emulacją tcg, tuż po
+     "audio recovered" (odtworzenie urządzenia dźwięku); pod whpx nie wystąpiła. Przyczyna nieustalona.
+   - Konsola OVMF nie ma polskich liter (na ekranie "Jzyk", "Haso"); mowa jest poprawna.
+   - Pytanie "Język Windows" pada drugi raz po przygotowaniu nośnika.

@@ -1,0 +1,148 @@
+Charon workspace (r400)
+=======================
+
+Main menu -> "Charon workspace: programs, files, editor". A small speaking
+environment in the spirit of Emacs with Emacspeak, inside the boot manager.
+Everything is spoken; tones mark events (opening, closing, edges, marks,
+saving, errors) and the indentation of a line. Voices change with the kind of
+text ("voice lock"): comments soft and light, headings low and slow, keys
+firm, strings smooth, numbers flat, keywords lively, CAPITALS higher.
+
+Keys work in two styles at once: plain keys (arrows, Enter, Escape, F-keys)
+and Emacs chords (C-f C-b C-n C-p, C-x C-s, C-s, M-x ...). F1 lists them.
+
+Everywhere
+  Alt+X or F10      command palette: type part of a command's name, arrows
+                    choose among the matches, Enter runs it
+  F1                key help            Escape     back
+  C-x b             buffers             C-x C-c    leave the workspace
+
+Start page
+  UEFI programs, Files, Packages and add-ons, Network, New text file, Notes,
+  Calculator, Buffers, Commands, Clock, Help, Back to Charon's menu.
+
+UEFI programs (launcher)
+  Every *.efi on every FAT volume, named when known (GRUB, Windows Boot
+  Manager, UEFI Shell, Memtest86+ ...). Favourites first, then the most
+  recently started. Enter starts (the screen reader stays on inside the
+  program; when it exits you are back here and hear how it ended), F2 sets
+  arguments (remembered), F3 or + toggles favourite, Space reads details,
+  F5 scans again. Choices are kept in \EFI\HAK\programs.txt.
+
+Files (Dired style)
+  Enter opens a folder, starts a program or opens a file in the editor (hex
+  viewer for binary data); Backspace goes up. M mark, C copy, P paste here
+  (folders are copied with their contents), R rename, D or Delete delete (asks
+  first), + new folder, N new file, E edit, H hex view, G refresh, Space
+  details. Typing a letter jumps to a name.
+
+Editor
+  Buffers of text (UTF-8, or UTF-16 with a byte order mark; line ends kept).
+  Moving speaks the character, word or line reached. Typing echoes characters
+  and finished words. C-k kill line, F8 mark, C-w kill region, M-w copy, C-y
+  yank, F9 / C-z undo, C-s search, F3 again, M-% replace all, F4 go to line,
+  F2 / C-x C-s save, C-x C-w write as, C-x C-f find file, C-x k kill buffer.
+  Speech commands (Emacspeak's C-e prefix): l line, w word, c character
+  (with its phonetic name), b buffer, n rest, r region, m mode line, i indent,
+  v voice lock on/off, s silence, e end of line. F6 reads the mode line.
+
+Packages and add-ons
+  A package is a folder \EFI\HAK\packages\<name> or \charon-packages\<name>
+  on ANY FAT volume - large ones need not live on the EFI system partition.
+  Optional package.txt: name=, name.pl=, description=, description.pl=,
+  program=, arguments=. Enter starts a package's program where it lies; C
+  copies the package to another volume; D removes it. Speech synthesizer
+  add-ons (\EFI\HAK\synths on any volume) are listed too and are usable from
+  whatever volume they are on.
+
+Network
+  Lists the adapters the firmware drives. Enter on Ethernet gets an address by
+  DHCP; on Wi-Fi it scans, lists the networks by signal and joins one (WPA2
+  password). D downloads a file from an http:// address into the folder open
+  in Files (or \EFI\HAK\downloads). L loads extra drivers.
+  Extra drivers: \EFI\HAK\drivers\*.efi on any volume. nic-*.efi and
+  wifi-*.efi (adapter drivers) are loaded only when the firmware drives no
+  adapter, net-*.efi (the IPv4 stack, in name order) only when adapters have
+  no IPv4 service. tools/make-charon-netdrivers.py builds the pack from files
+  QEMU ships (edk2 network stack, BSD-2-Clause-Patent; iPXE card drivers for
+  Intel, Realtek, virtio, PCnet and eepro100, GPL-2.0-or-later).
+  Limits: HTTP only unless the firmware has TLS and certificates; a server
+  must send Content-Length. Wi-Fi is written to the UEFI specification but
+  could not be tested (QEMU has no Wi-Fi adapter) and needs a UEFI Wi-Fi
+  driver for the card, which few makers publish.
+
+Calculator
+  Expressions with + - * / % ( ), bit operations & | ^ ~ << >>, hex (0x1F),
+  binary (0b101), sizes (4g/512). The result is spoken and kept in a list.
+
+Sound after the system takes over
+  Screen reader settings -> "Loading sound after the system takes over".
+  Firmware code cannot run after ExitBootServices, so the sound card itself is
+  left repeating a soft two-note cue from reserved memory (HAK audio stream
+  revision 3, Linger): about a minute of cues, then some twenty minutes of
+  silence, so it can never sound without end. It stops when the operating
+  system's audio driver takes the card. Not used for test tools (Memtest86+).
+
+Pictures
+  A screen with pictures only is described: the computer maker's logo (found
+  through the firmware's BGRT table), the Windows logo while Windows loads, a
+  progress indicator under a logo, and for icons their number, which one is
+  highlighted, and each one's colour and shape. The same is said at the
+  moment the system takes over.
+
+CharonDOS
+  An optional package (\charon-packages\CharonDOS: CHARONDOS.EFI and
+  package.txt; sources src/dos, built by tools/build-charondos.py). A small
+  DOS environment that runs as an ordinary UEFI program: an interpreter of
+  the 8086/80186 processor in real mode, enough BIOS and DOS services for
+  text-mode programs, and a built-in command prompt. It is not MS-DOS or
+  FreeDOS and boots no DOS kernel; COMMAND.COM is part of the program.
+  Screen: DOS and BIOS teletype output is passed to the firmware console as
+  running text, so the resident screen reader speaks it as it appears;
+  programs that write the 80x25 text memory (B800h) directly are mirrored
+  row by row. Ctrl+Alt chords, Alt+arrows and Alt+\ stay with the reader.
+  Drives: C: is the folder "C" next to CHARONDOS.EFI when there is one,
+  otherwise the root of the volume it was started from; D: and up are the
+  other volumes with a file system the firmware can read. Long names get
+  8.3 aliases computed from the folder contents (STEM~N.EXT); the number can
+  change when files with the same stem come or go. C:\AUTOEXEC.BAT runs at
+  start. Messages are English; arguments=pl in package.txt makes them Polish.
+  Prompt: DIR (/W /P /B), CD, MD, RD, TYPE, COPY, DEL, REN, drive letters,
+  CLS, VER, MEM, DATE, TIME (shown, not set), SET, PATH, PROMPT, ECHO, HELP,
+  EXIT (back to Charon); name.COM / name.EXE / name.BAT with a PATH search;
+  > >> < redirection; batch files with %0-%9, %NAME%, REM, PAUSE, GOTO, IF
+  [NOT] EXIST / ERRORLEVEL / a==b, CALL, SHIFT, @ and ECHO OFF. Line editing
+  with arrows, Home, End, Delete and a history (Up, Down). Ctrl+C or Break
+  stops a program.
+  Processor: every documented 8086 instruction and the 80186 additions (PUSHA,
+  POPA, PUSH immediate, IMUL immediate, shifts by a count, ENTER, LEAVE, INS,
+  OUTS), segment overrides, REP, software and timer interrupts with vectors a
+  program may hook. Not emulated: anything from the 80286 on (protected mode,
+  0F-prefixed opcodes, 32-bit registers, FS and GS) - such a program is
+  ended with "Illegal instruction"; the 8087 (floating point opcodes are
+  skipped, the equipment word says there is none); single stepping (trap
+  flag); BOUND does not check; speed is not that of any real machine.
+  Machine: 1 MiB of address space, 640 KiB conventional memory; no EMS, XMS,
+  HMA or DPMI. Text mode 80x25 only - no graphics modes, fonts or blinking.
+  Keyboard through INT 16h and the BIOS buffer only: no INT 9 and no scan
+  codes on port 60h, no key releases, so programs with their own keyboard
+  handler get nothing. Timer tick (INT 8 / 1Ch) at 18.2 Hz, clock and date
+  from the firmware. No sound, mouse, serial or parallel ports, joystick, and
+  no sector access (INT 13h, 25h, 26h report an error).
+  DOS calls (INT 21h, reported version 5.0): console 01-0Ch, drives 0Eh 19h,
+  DTA 1Ah 2Fh, vectors 25h 35h, 29h, date and time 2Ah 2Ch (reading), 30h,
+  31h (stay resident), 33h, 34h, 36h, 37h, 38h, directories 39h-3Bh 47h,
+  handles 3Ch-46h (create, open, close, read, write, delete, seek,
+  attributes, IOCTL 0 1 6 7 8 9 0Ah 0Eh, duplicate), memory 48h-4Ah, EXEC
+  4B00h and overlay 4B03h, 4Ch, 4Dh, find 4Eh 4Fh, PSP 50h 51h 62h, rename
+  56h, file time 57h, 58h, 59h, 5Ah, 5Bh, 60h, 65h, 66h, 6Ch; INT 20h, 27h,
+  28h, 29h and 2Fh/1680h. Devices CON, NUL (AUX, PRN, COMn, LPTn swallow
+  output). Not provided: the FCB file functions (0Fh-17h, 21h-24h, 27h, 28h),
+  drive parameter tables (1Bh 1Ch 1Fh 32h), setting the clock, 4B01h, long
+  file names (71h), networking (5Eh 5Fh), sharing and locks, volume labels,
+  critical errors (INT 24h is never raised), CONFIG.SYS, device drivers.
+  Shell limits: no pipes (|), no FOR, no wildcards in the target of COPY or in
+  REN, no "+" joining, no confirmation before DEL *.*; files up to 4 GiB.
+  Verification: tests/CharonDosTests.py runs hand-assembled .COM and .EXE
+  programs and the prompt's commands against a host build of the same
+  emulator code; the UEFI side (console, keyboard, volumes) is outside it.

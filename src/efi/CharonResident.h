@@ -39,6 +39,7 @@
 #include "CharonKeyHelp.h"
 #include "CharonBraille.h"
 #include "CharonFormatting.h"
+#include "CharonProgress.h"
 #include "CharonManagerProbe.h"
 #include <efi/protocol/simple-file-system.h>
 #include <efi/protocol/file.h>
@@ -68,7 +69,7 @@ struct ResidentOptions {
     // r393 (settings V10 bytes 40-41): text formatting (formatting::flag*),
     // braille attribute dots, boot-manager handling (bits 0-1 hidden menu: 0 off,
     // 1 announce and wait 2 s, 2 always reveal; bit 2 stop countdowns).
-    uint8_t formatFlags=formatting::flagsDefault;bool brailleAttributes=true,dictionary=true;uint8_t managerFlags=1;
+    uint8_t formatFlags=formatting::flagsDefault;bool brailleAttributes=true,dictionary=true;uint8_t managerFlags=1;bool linger=true;bool reviewOnly=false;   // r401 reviewOnly: Charon itself speaks (its installer dialogue); the reader only serves the review keys. r400: loading cue left playing after ExitBootServices
     uint8_t stereo=0;   // r397: 0 off, 1 sound icons placed by screen column, 2 speech and icons
 };
 class ResidentReader {
@@ -84,7 +85,9 @@ public:
         marker_=charonImageMarker;  // keeps the marker in this image (see CharonBootManagers.h)
         stopped_=false;handedOff_=false;failed_=false;suspended_=false;tick_=lastOutput_=0;lastBlt_=0;pollWidth_=pollHeight_=0;geoWidth_=geoModeWidth_=geoModeHeight_=0;geoBase_=geoRetry_=0;geoPages_=1;geoPage_=0;sampleDue_=false;dispi_=nullptr;dispiSearched_=false;sampleOffset_=0;dispiActive_=inFont_=false;aaRead_=false;
         ResetShadow();QueryDimensions();ApplyVoice();ApplyFlags();
-        auto status=boot->CreateEvent(EVT_TIMER|EVT_NOTIFY_SIGNAL,TPL_CALLBACK,TimerNotify,this,&timer_);
+        // r401: the reader is installed more than once in a session (beside Charon, then for a program): no key or countdown state is carried over.
+        keyPending_=false;keyTick_=0;keyScan_=0;keyChar_=0;command_=0;countdownSeen_=0;quietTick_=0;heldMenu_[0]=0;heldInfo_[0]=0;serviceDue_=0;servicing_=false;
+        auto status=boot->CreateEvent(EVT_TIMER|EVT_NOTIFY_SIGNAL,TPL_CALLBACK,TimerEntry,this,&timer_);
         if(status!=EFI_SUCCESS) {timer_=nullptr;return status;}
         status=boot->CreateEvent(EVT_SIGNAL_EXIT_BOOT_SERVICES,TPL_CALLBACK,ExitNotify,this,&exitEvent_);
         if(status!=EFI_SUCCESS) {exitEvent_=nullptr;boot->CloseEvent(timer_);timer_=nullptr;return status;}
@@ -93,18 +96,33 @@ public:
         // that pointer against the console handle (EDK2 BDS replaces any
         // foreign pointer), so a swapped pointer would be silently dropped.
         // Every caller keeps the same interface and reaches the hooks.
+        // A wrapper another program left on top of our proxies at the last
+        // Uninstall still calls them: it stays on top and the originals below
+        // are kept (hooking over it again would make the two call each other).
+        const efi_simple_text_output_protocol below=saved_;const bool again=leftAt_==real_ && leftMask_;
         saved_=*real_;
         attribute_=real_->Mode?size_t(real_->Mode->Attribute):7;baseAttribute_=attribute_;
         if(real_->Mode && real_->Mode->CursorColumn>=0 && real_->Mode->CursorRow>=0) {
             column_=size_t(real_->Mode->CursorColumn);row_=size_t(real_->Mode->CursorRow);
+            // A console larger than the shadow (more than 64 rows): never outside it.
+            if(column_>=columns_)column_=0;
+            if(row_>=rows_)row_=rows_-1;
         }
         originalExit_=boot->ExitBootServices;
         active_=this;
         const efi_tpl old=boot->RaiseTPL(TPL_NOTIFY);
-        real_->Reset=ProxyReset;real_->OutputString=ProxyOutput;
-        real_->SetMode=ProxySetMode;real_->SetAttribute=ProxyAttribute;
-        real_->ClearScreen=ProxyClear;real_->SetCursorPosition=ProxyCursor;
+        if(again && (leftMask_&1) && real_->Reset==left_.Reset)saved_.Reset=below.Reset;else real_->Reset=ProxyReset;
+        if(again && (leftMask_&2) && real_->OutputString==left_.OutputString)saved_.OutputString=below.OutputString;else real_->OutputString=ProxyOutput;
+        if(again && (leftMask_&4) && real_->SetMode==left_.SetMode)saved_.SetMode=below.SetMode;else real_->SetMode=ProxySetMode;
+        if(again && (leftMask_&8) && real_->SetAttribute==left_.SetAttribute)saved_.SetAttribute=below.SetAttribute;else real_->SetAttribute=ProxyAttribute;
+        if(again && (leftMask_&16) && real_->ClearScreen==left_.ClearScreen)saved_.ClearScreen=below.ClearScreen;else real_->ClearScreen=ProxyClear;
+        if(again && (leftMask_&32) && real_->SetCursorPosition==left_.SetCursorPosition)saved_.SetCursorPosition=below.SetCursorPosition;else real_->SetCursorPosition=ProxyCursor;
         boot->ExitBootServices=HookExit;
+        // r400 (user): a shutdown or restart asked for while firmware services
+        // still run (a boot manager's "halt", firmware setup's exit) is told.
+        if(table->RuntimeServices && table->RuntimeServices->ResetSystem && table->RuntimeServices->ResetSystem!=HookReset) {
+            originalReset_=table->RuntimeServices->ResetSystem;table->RuntimeServices->ResetSystem=HookReset;RecrcRuntime();
+        }
         // r361: images started later (other boot managers) are recognized.
         originalStart_=boot->StartImage;boot->StartImage=HookStart;
         // r390: Alt+\ pauses the boot: a program waiting (Stall) or printing waits too.
@@ -142,6 +160,13 @@ public:
 #endif
         status=boot->SetTimer(timer_,TimerPeriodic,100000);
         if(status!=EFI_SUCCESS) {Uninstall();return status;}
+        // r402: a program that stays at TPL_CALLBACK (iPXE and so netboot.xyz) starves the timer above:
+        // the reader was deaf and mute in its menus. A second timer one level higher takes over while
+        // the first has not ticked for half a second, and only then.
+        rescueSeen_=tick_;rescueIdle_=0;rescuing_=false;
+        if(boot->CreateEvent(EVT_TIMER|EVT_NOTIFY_SIGNAL,TPL_NOTIFY,RescueNotify,this,&rescue_)==EFI_SUCCESS && rescue_) {
+            if(boot->SetTimer(rescue_,TimerPeriodic,200000)!=EFI_SUCCESS) {boot->CloseEvent(rescue_);rescue_=nullptr;}
+        } else rescue_=nullptr;
         InstallAccessibility();   // r396
         return EFI_SUCCESS;
     }
@@ -149,6 +174,7 @@ public:
     efi_status Uninstall() {
         if(!installed_)return EFI_SUCCESS;
         if(timer_)boot_->SetTimer(timer_,TimerCancel,0);
+        if(rescue_) {boot_->SetTimer(rescue_,TimerCancel,0);boot_->CloseEvent(rescue_);rescue_=nullptr;}
         RemoveHooks();
         if(timer_) {boot_->CloseEvent(timer_);timer_=nullptr;}
         if(exitEvent_) {boot_->CloseEvent(exitEvent_);exitEvent_=nullptr;}
@@ -156,13 +182,41 @@ public:
         if(imageNotify_) {boot_->CloseEvent(imageNotify_);imageNotify_=nullptr;}
         keypad_.Unhook(boot_);   // r390: the image may be unloaded after this
         UninstallAccessibility();   // r396
-        installed_=false;active_=nullptr;
+        // active_ stays: a hook another program wrapped (and so could not be
+        // restored) still reaches this static object and forwards to the
+        // saved original (every hook checks installed_).
+        installed_=false;
         return foreignConOut_?EFI_ACCESS_DENIED:EFI_SUCCESS;
     }
     // Resident driver mode (r356): the Charon menu speaks for itself, so the
     // reader pauses (no capture, no pumping: the menu owns the voice) and
     // resumes, with the menu's current language and levels, before Charon
     // starts another program or returns to firmware.
+    // The ordinary timer's entry: while it works, the rescue timer (one priority
+    // level higher) must not come in on top of it. On a slow machine one round of
+    // screen recognition takes longer than the rescue timer's patience, and the
+    // first r402 regression showed menus read twice and as loose messages.
+    static void EFIAPI TimerEntry(efi_event e,void* context) {
+        auto& self=*static_cast<ResidentReader*>(context);
+        self.working_=true;TimerNotify(e,context);self.working_=false;
+    }
+    static void EFIAPI RescueNotify(efi_event,void* context) {
+        auto& self=*static_cast<ResidentReader*>(context);
+        if(self.stopped_ || self.suspended_ || !self.installed_ || self.options_.reviewOnly || self.rescuing_)return;
+        if(self.working_ || self.servicing_ || GuardDepth()>0) {self.rescueIdle_=0;return;}
+        if(self.tick_!=self.rescueSeen_) {self.rescueSeen_=self.tick_;self.rescueIdle_=0;return;}
+        if(++self.rescueIdle_<25)return;   // half a second without a tick
+        if(self.rescueIdle_==25)charontrace::Value("reader rescue timer",self.tick_);
+        self.rescuing_=true;++self.tick_;TimerNotify(nullptr,&self);self.rescueSeen_=self.tick_;self.rescuing_=false;
+    }
+    // r401: the timer's work for Charon's own screens, run from the key hooks.
+    void Service() {
+        if(!options_.reviewOnly || !serviceDue_ || servicing_ || stopped_ || suspended_)return;
+        Guard guard(boot_);
+        const unsigned due=serviceDue_;serviceDue_=0;
+        if(due>1)tick_+=due-1;
+        servicing_=true;TimerNotify(nullptr,this);servicing_=false;
+    }
     efi_status Suspend() {
         if(!installed_ || stopped_)return EFI_NOT_STARTED;
         suspended_=true;return boot_->SetTimer(timer_,TimerCancel,0);
@@ -173,8 +227,8 @@ public:
             options_.language[0]=update->language[0];options_.language[1]=update->language[1];
             options_.polish=update->polish;options_.progress=update->progress;options_.explicitMessages=update->explicitMessages;options_.positions=update->positions;options_.timers=update->timers;
             options_.punctuation=update->punctuation;options_.capitals=update->capitals;options_.screenLanguage=update->screenLanguage;
-            options_.readerFlags=update->readerFlags;ApplyFlags();
-            options_.formatFlags=update->formatFlags;options_.stereo=update->stereo;options_.brailleAttributes=update->brailleAttributes;options_.dictionary=update->dictionary;options_.managerFlags=update->managerFlags;   // r393
+            options_.readerFlags=update->readerFlags;options_.reviewOnly=update->reviewOnly;serviceDue_=0;ApplyFlags();
+            options_.formatFlags=update->formatFlags;options_.stereo=update->stereo;options_.brailleAttributes=update->brailleAttributes;options_.dictionary=update->dictionary;options_.managerFlags=update->managerFlags;options_.linger=update->linger;   // r393
             if(update->verbosity)options_.verbosity=update->verbosity;
             if(update->rate) {options_.rate=update->rate;options_.pitch=update->pitch;options_.volume=update->volume;options_.effectsVolume=update->effectsVolume;}
         }
@@ -186,7 +240,7 @@ public:
     // r390: settings that are reader state.
     void ApplyFlags() {
         options_.messageVoice=(options_.readerFlags&readerFlagMessages)!=0;
-        quiet_=(options_.readerFlags&readerFlagAutoRead)==0;
+        quiet_=(options_.readerFlags&readerFlagAutoRead)==0 || options_.reviewOnly;
     }
     // r382: the reader speaks with its own rate, pitch and volume.
     void ApplyVoice() {
@@ -218,17 +272,28 @@ private:
         if(real_->SetAttribute==ProxyAttribute)real_->SetAttribute=saved_.SetAttribute;
         if(real_->ClearScreen==ProxyClear)real_->ClearScreen=saved_.ClearScreen;
         if(real_->SetCursorPosition==ProxyCursor)real_->SetCursorPosition=saved_.SetCursorPosition;
+        // What could not be restored (a wrapper on top of a proxy), for the next Install.
+        leftAt_=real_;left_=*real_;
+        leftMask_=uint8_t((real_->Reset!=saved_.Reset?1:0)|(real_->OutputString!=saved_.OutputString?2:0)|(real_->SetMode!=saved_.SetMode?4:0)
+            |(real_->SetAttribute!=saved_.SetAttribute?8:0)|(real_->ClearScreen!=saved_.ClearScreen?16:0)|(real_->SetCursorPosition!=saved_.SetCursorPosition?32:0));
         if(boot_->ExitBootServices==HookExit)boot_->ExitBootServices=originalExit_;
+        if(table_->RuntimeServices && table_->RuntimeServices->ResetSystem==HookReset) {table_->RuntimeServices->ResetSystem=originalReset_;RecrcRuntime();}
         if(boot_->StartImage==HookStart)boot_->StartImage=originalStart_;
         if(boot_->Stall==HookStall)boot_->Stall=originalStall_;
         if(boot_->WaitForEvent==HookWait)boot_->WaitForEvent=originalWait_;
-        reviewPause_=false;
+        reviewPause_=false;helpOpen_=false;historyOpen_=false;inputHelp_=false;   // nothing stays paused or in input help for the next program
         UnhookReads();
         PruneGops();
+        // The entries stay (HookGraphics uses them again at the next Install; a
+        // copy of a hooked instance still finds its original by Mode).
         for(size_t i=0;i<gopCount_;++i)if(gops_[i].gop && gops_[i].gop->Blt==HookBlt)gops_[i].gop->Blt=gops_[i].original;
         if(font_) {
-            if(font_->StringToImage==HookStringToImage)font_->StringToImage=fontOriginal_;
-            if(font_->StringIdToImage==HookStringIdToImage)font_->StringIdToImage=fontIdOriginal_;
+            // The originals stay for a wrapper that still calls our hooks; font_
+            // is forgotten only when both were restored, so the next Install hooks again.
+            bool restored=true;
+            if(font_->StringToImage==HookStringToImage)font_->StringToImage=fontOriginal_;else restored=false;
+            if(font_->StringIdToImage==HookStringIdToImage)font_->StringIdToImage=fontIdOriginal_;else if(fontIdOriginal_)restored=false;
+            if(restored)font_=nullptr;
         }
         Recrc();
         boot_->RestoreTPL(old);
@@ -237,7 +302,7 @@ private:
     // ---- shadow screen -------------------------------------------------
     void ResetShadow() {
         for(size_t r=0;r<maxRows;++r) {for(size_t c=0;c<maxColumns;++c) {text_[r][c]=u' ';attr_[r][c]=0;cellFont_[r][c]=0;}dirty_[r]=false;}
-        column_=row_=0;highlight_=SIZE_MAX;anyDirty_=false;hooksRemoved_=false;foreignConOut_=false;lastPercent_=-1;menuAnnounced_=false;
+        column_=row_=0;highlight_=SIZE_MAX;anyDirty_=false;hooksRemoved_=false;foreignConOut_=false;lastPercent_=-1;menuAnnounced_=false;everKey_=false;quietMenu_=0;rereadAfterKey_=false;menuIntro_=false;
         spoken_[0]=0;
         for(size_t r=0;r<maxRows;++r)for(size_t c=0;c<maxColumns;++c)prevRaw_[r][c]=0;
     }
@@ -375,6 +440,7 @@ private:
             if(ch==u'\n') {NewLine();continue;}
             if(ch==u'\b') {if(column_)--column_;continue;}
             if(ch<32 || ch==127)continue;
+            if(row_>=rows_)row_=rows_-1;   // never outside the shadow (rows_ is at least 1)
             if(column_>=columns_) {column_=0;NewLine();}
             text_[row_][column_]=ch;attr_[row_][column_]=uint8_t(0x80|(attribute_&0x7f));cellFont_[row_][column_]=0;
             if(!anyDirty_)firstDirty_=tick_;
@@ -392,8 +458,11 @@ private:
             for(size_t i=0;i<count;++i) {
                 Gop* gop=nullptr;
                 if(boot_->HandleProtocol(handles[i],&gopGuid,(void**)&gop)!=EFI_SUCCESS || !gop || !gop->Blt || gop->Blt==HookBlt)continue;
-                if(gopCount_>=sizeof(gops_)/sizeof(gops_[0]))break;
-                gops_[gopCount_++]={gop,gop->Blt,table_ && handles[i]==table_->ConsoleOutHandle,gop->Mode};gop->Blt=HookBlt;
+                // An instance hooked by an earlier Install keeps its entry (no duplicates
+                // that fill the table after a few programs).
+                size_t at=0;while(at<gopCount_ && gops_[at].gop!=gop)++at;
+                if(at==gopCount_) {if(gopCount_>=sizeof(gops_)/sizeof(gops_[0]))continue;++gopCount_;}
+                gops_[at]={gop,gop->Blt,table_ && handles[i]==table_->ConsoleOutHandle,gop->Mode};gop->Blt=HookBlt;
             }
             boot_->FreePool(handles);
         }
@@ -464,7 +533,7 @@ private:
         auto* r=active_;
         if(!r || !r->fontOriginal_)return EFI_DEVICE_ERROR;
         r->inFont_=true;const auto status=r->fontOriginal_(self,flags,string,info,blt,x,y,rowInfo,rowCount,columnInfo);r->inFont_=false;
-        if(status==EFI_SUCCESS && string && !r->inConOut_ && !r->stopped_ && !r->suspended_) {Guard guard(r->boot_);r->CaptureGraphic(x,y,string,info);}
+        if(status==EFI_SUCCESS && string && r->installed_ && !r->inConOut_ && !r->stopped_ && !r->suspended_) {Guard guard(r->boot_);r->CaptureGraphic(x,y,string,info);}
         return status;
     }
     static efi_status EFIAPI HookStringIdToImage(HiiFont* self,uint32_t flags,void* packageList,uint16_t stringId,const char* language,
@@ -472,7 +541,7 @@ private:
         auto* r=active_;
         if(!r || !r->fontIdOriginal_)return EFI_DEVICE_ERROR;
         r->inFont_=true;const auto status=r->fontIdOriginal_(self,flags,packageList,stringId,language,info,blt,x,y,rowInfo,rowCount,columnInfo);r->inFont_=false;
-        if(status==EFI_SUCCESS && r->strings_ && r->strings_->GetString && !r->inConOut_ && !r->stopped_ && !r->suspended_) {
+        if(status==EFI_SUCCESS && r->installed_ && r->strings_ && r->strings_->GetString && !r->inConOut_ && !r->stopped_ && !r->suspended_) {
             Guard guard(r->boot_);
             size_t size=sizeof(r->stringBuffer_)-2;
             if(r->strings_->GetString(r->strings_,language?language:"en-US",packageList,stringId,r->stringBuffer_,&size,nullptr)==EFI_SUCCESS) {
@@ -488,7 +557,7 @@ private:
         if(!original)return EFI_DEVICE_ERROR;
         r->ApplyPendingSynth();   // r396e: graphical pickers draw without reading ConIn
         const auto status=original(self,buffer,operation,sourceX,sourceY,x,y,width,height,delta);
-        if(status!=EFI_SUCCESS || r->stopped_ || !self->Mode || !self->Mode->info || operation==bltVideoToBuffer)return status;
+        if(status!=EFI_SUCCESS || !r->installed_ || r->stopped_ || !self->Mode || !self->Mode->info || operation==bltVideoToBuffer)return status;
         Guard guard(r->boot_);
         // Console and HII font text is read from the text hooks: its pixels
         // become the new baseline at once (also while Charon's own menu has
@@ -639,6 +708,7 @@ private:
     // poll once drawing pauses, so arrows in a graphical menu are read
     // within about 0.2 s instead of at the next one-second poll.
     void SampleFrameBuffer() {
+        if(options_.reviewOnly) {pixelDirty_=false;return;}   // r401: Charon's own screens are console text; no frame-buffer work beside Charon
         Gop* gop=DeviceGop();
         if(!gop)return;
         FrameGeometry g{};size_t pages=1;bool exact=false;
@@ -758,7 +828,7 @@ private:
         const bool rgb=info->pixelFormat==0;
         auto at=[&](size_t x,size_t y)->uint32_t {uint32_t raw=frame[y*pitch+x]&0xffffff;return rgb?((raw&0xff)<<16)|(raw&0xff00)|(raw>>16):raw;};
         constexpr size_t GX=24,GY=16;
-        static uint8_t cell[GY][GX];static uint8_t bright[GY][GX];
+        static uint8_t cell[GY][GX];static uint8_t bright[GY][GX];static uint32_t colour[GY][GX];
         const uint32_t bg=at(2,2);   // the corner colour (a splash's field)
         auto lum=[&](uint32_t c)->unsigned {return (((c>>16)&0xff)*3+((c>>8)&0xff)*6+(c&0xff))/10;};
         auto diff=[&](uint32_t c)->unsigned {
@@ -768,24 +838,26 @@ private:
         size_t inked=0,minx=GX,maxx=0,miny=GY,maxy=0;
         for(size_t gy=0;gy<GY;++gy)for(size_t gx=0;gx<GX;++gx) {
             const uint32_t c=at(gx*W/GX+W/(2*GX),gy*H/GY+H/(2*GY));
-            const bool ink=diff(c)>96;cell[gy][gx]=ink;bright[gy][gx]=uint8_t(lum(c));
+            const bool ink=diff(c)>96;cell[gy][gx]=ink;bright[gy][gx]=uint8_t(lum(c));colour[gy][gx]=c;
             if(ink) {++inked;if(gx<minx)minx=gx;if(gx>maxx)maxx=gx;if(gy<miny)miny=gy;if(gy>maxy)maxy=gy;}
         }
         if(!inked)return false;   // nothing drawn: the blank/BSOD path owns this
         // Separate graphical regions: flood fill the occupancy grid (4-neighbour),
         // recording each region's reading-order key, size and average brightness.
         static uint8_t seen[GY][GX];for(size_t y=0;y<GY;++y)for(size_t x=0;x<GX;++x)seen[y][x]=0;
-        struct Region {uint16_t key;uint16_t cells;uint32_t lumSum;};
+        struct Region {uint16_t key;uint16_t cells;uint32_t lumSum;uint32_t r,g,b;uint8_t x0,y0,x1,y1;};
         static Region reg[48];size_t regions=0;static uint8_t sx[GX*GY],sy[GX*GY];
         for(size_t y=0;y<GY;++y)for(size_t x=0;x<GX;++x)if(cell[y][x] && !seen[y][x]) {
             size_t top=0;sx[top]=uint8_t(x);sy[top]=uint8_t(y);++top;seen[y][x]=1;
-            uint16_t rminx=uint16_t(x),rminy=uint16_t(y),cells=0;uint32_t lumSum=0;
+            uint16_t rminx=uint16_t(x),rminy=uint16_t(y),rmaxx=uint16_t(x),rmaxy=uint16_t(y),cells=0;uint32_t lumSum=0,rs=0,gs=0,bs=0;
             while(top) {const size_t cx=sx[--top],cy=sy[top];++cells;lumSum+=bright[cy][cx];
+                rs+=(colour[cy][cx]>>16)&0xff;gs+=(colour[cy][cx]>>8)&0xff;bs+=colour[cy][cx]&0xff;
+                if(cx>rmaxx)rmaxx=uint16_t(cx);if(cy>rmaxy)rmaxy=uint16_t(cy);
                 if(cx<rminx)rminx=uint16_t(cx);if(cy<rminy)rminy=uint16_t(cy);
                 const int nb[4][2]={{1,0},{-1,0},{0,1},{0,-1}};
                 for(auto& d:nb) {const int ux=int(cx)+d[0],uy=int(cy)+d[1];
                     if(ux>=0 && ux<int(GX) && uy>=0 && uy<int(GY) && cell[uy][ux] && !seen[uy][ux]) {seen[uy][ux]=1;sx[top]=uint8_t(ux);sy[top]=uint8_t(uy);++top;}}}
-            if(regions<48)reg[regions++]={uint16_t((rminy/2)*GX+rminx),cells,lumSum};   // reading order: rows (of 2 cells) then columns
+            if(regions<48)reg[regions++]={uint16_t((rminy/2)*GX+rminx),cells,lumSum,rs/cells,gs/cells,bs/cells,uint8_t(rminx),uint8_t(rminy),uint8_t(rmaxx),uint8_t(rmaxy)};   // reading order: rows (of 2 cells) then columns
         }
         // Reading order so "N of M" is stable as a highlight moves.
         for(size_t i=1;i<regions;++i) {Region r=reg[i];size_t j=i;while(j && reg[j-1].key>r.key) {reg[j]=reg[j-1];--j;}reg[j]=r;}
@@ -795,12 +867,51 @@ private:
         if(regions)mean/=long(regions);
         for(size_t i=0;i<regions;++i) {const int avg=int(reg[i].lumSum/(reg[i].cells?reg[i].cells:1));int dev=avg-int(mean);if(dev<0)dev=-dev;if(dev>bestDev) {bestDev=dev;selected=i;}}
         if(regions<2 || bestDev<48)selected=SIZE_MAX;   // no clear single highlight
+        // r400: one white or grey region among coloured ones is the highlight
+        // (a frame or a lit tile), whatever the brightness average says.
+        {size_t plain=SIZE_MAX,plainCount=0;
+         for(size_t i=0;i<regions;++i) {
+            const unsigned mx=reg[i].r>reg[i].g?(reg[i].r>reg[i].b?reg[i].r:reg[i].b):(reg[i].g>reg[i].b?reg[i].g:reg[i].b);
+            const unsigned mn=reg[i].r<reg[i].g?(reg[i].r<reg[i].b?reg[i].r:reg[i].b):(reg[i].g<reg[i].b?reg[i].g:reg[i].b);
+            if(mx>=150 && mx-mn<36) {plain=i;++plainCount;}
+         }
+         if(regions>=2 && plainCount==1)selected=plain;}
         const bool pl=options_.polish;
         const size_t coverage=inked*100/(GX*GY);
         size_t a=0;Put(out,a,cap,pl?u"Ekran graficzny. ":u"Graphical screen. ");
         const size_t boxH=maxy-miny+1;
+        // r400 (user: audio-described icons and logos). A picture in the middle
+        // is named when it can be: the computer maker's logo (the firmware's
+        // BGRT table says where it is drawn), or the logo of the system being
+        // loaded; a small mark under it is the progress indicator. Otherwise
+        // each region gets its colour and shape.
+        size_t logo=SIZE_MAX,spinner=SIZE_MAX;
+        if(regions>=1 && regions<=3 && coverage<45) {
+            for(size_t i=0;i<regions;++i)if(logo==SIZE_MAX || reg[i].cells>reg[logo].cells)logo=i;
+            const size_t cx=(reg[logo].x0+reg[logo].x1)/2;
+            if(cx<GX/2-4 || cx>GX/2+3)logo=SIZE_MAX;
+            for(size_t i=0;i<regions && logo!=SIZE_MAX;++i)if(i!=logo) {
+                if(reg[i].cells<=2 && reg[i].y0>reg[logo].y1)spinner=i;else {logo=SIZE_MAX;spinner=SIZE_MAX;}
+            }
+        }
+        if(logo!=SIZE_MAX) {
+            size_t bx=0,by=0,bw=0,bh=0;bool maker=false;
+            if(BgrtRect(bx,by,bw,bh)) {
+                const size_t px=(reg[logo].x0+reg[logo].x1+1)*W/(2*GX),py=(reg[logo].y0+reg[logo].y1+1)*H/(2*GY);
+                maker=px+W/GX>=bx && px<=bx+bw+W/GX && py+H/GY>=by && py<=by+bh+H/GY;
+            }
+            const bool windows=bootManager_ && bootManager_[0]==u'W';
+            if(maker)Put(out,a,cap,pl?u"Logo producenta komputera":u"The computer maker's logo");
+            else if(windows)Put(out,a,cap,pl?u"Logo Windows":u"The Windows logo");
+            else {Put(out,a,cap,pl?u"Logo, kolor ":u"A logo, ");Put(out,a,cap,ColourName(reg[logo].r,reg[logo].g,reg[logo].b,pl));}
+            Put(out,a,cap,pl?u" na środku ekranu":u" in the middle of the screen");
+            if(spinner!=SIZE_MAX)Put(out,a,cap,pl?u", pod nim wskaźnik postępu":u", a progress indicator under it");
+            Put(out,a,cap,u".");
+            if(sigOut) {uint32_t h=2166136261u;auto mix=[&](uint32_t v){h=(h^v)*16777619u;};mix(77);mix(uint32_t(regions));mix(uint32_t(maker));mix(uint32_t(spinner!=SIZE_MAX));*sigOut=h?h:1;}
+            return true;
+        }
         if(regions==1 && coverage>=55)Put(out,a,cap,pl?u"Pełnoekranowy obraz.":u"A full-screen picture.");
-        else if(regions==1) {Put(out,a,cap,pl?u"Obraz":u"A picture");VerticalWhere(out,a,cap,miny,maxy,pl);Put(out,a,cap,u".");}
+        else if(regions==1) {Put(out,a,cap,pl?u"Obraz, ":u"A picture, ");Put(out,a,cap,ColourName(reg[0].r,reg[0].g,reg[0].b,pl));VerticalWhere(out,a,cap,miny,maxy,pl);Put(out,a,cap,u".");}
         else {
             char16_t n[16];size_t k=0;Number(n,k,regions);n[k]=0;Put(out,a,cap,n);Put(out,a,cap,u" ");
             Put(out,a,cap,pl?PolishRegions(regions):u"graphical regions");
@@ -808,13 +919,72 @@ private:
             Put(out,a,cap,u".");
             if(selected!=SIZE_MAX) {   // which one is highlighted (navigation feedback)
                 Put(out,a,cap,pl?u" Zaznaczony ":u" Highlighted ");char16_t s[16];k=0;Number(s,k,selected+1);s[k]=0;Put(out,a,cap,s);
-                Put(out,a,cap,pl?u" z ":u" of ");k=0;Number(s,k,regions);s[k]=0;Put(out,a,cap,s);Put(out,a,cap,u".");
+                Put(out,a,cap,pl?u" z ":u" of ");k=0;Number(s,k,regions);s[k]=0;Put(out,a,cap,s);
+                Put(out,a,cap,u", ");Put(out,a,cap,ColourName(reg[selected].r,reg[selected].g,reg[selected].b,pl));
+                Put(out,a,cap,u" ");Put(out,a,cap,ShapeName(reg[selected].x1-reg[selected].x0+1,reg[selected].y1-reg[selected].y0+1,W*GY,H*GX,pl));Put(out,a,cap,u".");
+            }
+            if(regions<=6) {   // every icon in reading order: colour and shape
+                Put(out,a,cap,pl?u" Po kolei: ":u" In order: ");
+                for(size_t i=0;i<regions;++i) {
+                    if(i)Put(out,a,cap,u", ");
+                    Put(out,a,cap,ColourName(reg[i].r,reg[i].g,reg[i].b,pl));Put(out,a,cap,u" ");
+                    Put(out,a,cap,ShapeName(reg[i].x1-reg[i].x0+1,reg[i].y1-reg[i].y0+1,W*GY,H*GX,pl));
+                }
+                Put(out,a,cap,u".");
             }
         }
         char16_t pc[16];size_t k=0;Number(pc,k,coverage);pc[k]=0;
         Put(out,a,cap,pl?u" Zajmuje około ":u" It covers about ");Put(out,a,cap,pc);Put(out,a,cap,pl?u" procent ekranu.":u" percent of the screen.");
         if(sigOut) {uint32_t h=2166136261u;auto mix=[&](uint32_t v){h=(h^v)*16777619u;};mix(uint32_t(regions));mix(uint32_t(selected));mix(uint32_t(coverage));mix(uint32_t(minx|(miny<<8)|(maxx<<16)|(maxy<<24)));*sigOut=h?h:1;}
         return true;
+    }
+    // Plain colour words for a picture's average colour.
+    static const char16_t* ColourName(unsigned r,unsigned g,unsigned b,bool pl) {
+        const unsigned mx=r>g?(r>b?r:b):(g>b?g:b),mn=r<g?(r<b?r:b):(g<b?g:b);
+        if(mx<50)return pl?u"czarny":u"black";
+        if(mx-mn<36)return mx>200?(pl?u"biały":u"white"):mx>110?(pl?u"jasnoszary":u"light grey"):(pl?u"szary":u"grey");
+        if(r==mx) {
+            if(g>b+40)return g*10>r*8?(pl?u"żółty":u"yellow"):(pl?u"pomarańczowy":u"orange");
+            if(b>g+40)return b*10>r*7?(pl?u"fioletowy":u"purple"):(pl?u"różowy":u"pink");
+            return pl?u"czerwony":u"red";
+        }
+        if(g==mx)return b*10>g*8?(pl?u"turkusowy":u"cyan"):r*10>g*8?(pl?u"żółtozielony":u"yellow-green"):(pl?u"zielony":u"green");
+        return g*10>b*8?(pl?u"turkusowy":u"cyan"):r*10>b*7?(pl?u"fioletowy":u"purple"):(pl?u"niebieski":u"blue");
+    }
+    // A region's shape from its box in grid cells (xScale/yScale make cells square).
+    static const char16_t* ShapeName(size_t w,size_t h,size_t xScale,size_t yScale,bool pl) {
+        const size_t pw=w*xScale,ph=h*yScale;
+        if(pw>=ph*3)return pl?u"pasek":u"bar";
+        if(ph>=pw*3)return pl?u"słupek":u"column";
+        if(w<=1 && h<=1)return pl?u"znak":u"mark";
+        return (w>=6 || h>=6)?(pl?u"duży obraz":u"large picture"):(pl?u"kwadrat":u"square");
+    }
+    // The firmware's boot graphics (ACPI BGRT): where the maker's logo is drawn.
+    bool BgrtRect(size_t& x,size_t& y,size_t& w,size_t& h) {
+        static const efi_guid acpi2={0x8868e871,0xe4f1,0x11d3,{0xbc,0x22,0x00,0x80,0xc7,0x3c,0x88,0x81}};
+        if(!table_ || !table_->ConfigurationTable)return false;
+        const uint8_t* rsdp=nullptr;
+        for(size_t i=0;i<table_->NumberOfTableEntries;++i) {
+            const auto& entry=table_->ConfigurationTable[i];const uint8_t* a=reinterpret_cast<const uint8_t*>(&entry);const uint8_t* b=reinterpret_cast<const uint8_t*>(&acpi2);
+            bool same=true;for(size_t k=0;k<16;++k)if(a[k]!=b[k])same=false;
+            if(same)rsdp=*reinterpret_cast<const uint8_t* const*>(a+16);
+        }
+        auto le32=[](const uint8_t* p) {return uint32_t(p[0]|p[1]<<8|p[2]<<16|uint32_t(p[3])<<24);};
+        auto le64=[&](const uint8_t* p) {return uint64_t(le32(p))|(uint64_t(le32(p+4))<<32);};
+        if(!rsdp || rsdp[0]!='R' || rsdp[1]!='S' || rsdp[15]<2)return false;
+        const uint8_t* xsdt=reinterpret_cast<const uint8_t*>(uintptr_t(le64(rsdp+24)));
+        if(!xsdt || xsdt[0]!='X')return false;
+        const uint32_t length=le32(xsdt+4);
+        for(uint32_t at=36;at+8<=length && at<36+8*256;at+=8) {
+            const uint8_t* t=reinterpret_cast<const uint8_t*>(uintptr_t(le64(xsdt+at)));
+            if(!t || t[0]!='B' || t[1]!='G' || t[2]!='R' || t[3]!='T' || le32(t+4)<56)continue;
+            const uint8_t* bmp=reinterpret_cast<const uint8_t*>(uintptr_t(le64(t+40)));
+            if(!bmp || bmp[0]!='B' || bmp[1]!='M')return false;
+            const int32_t bw=int32_t(le32(bmp+18)),bh=int32_t(le32(bmp+22));
+            if(bw<=0 || !bh)return false;
+            x=le32(t+48);y=le32(t+52);w=size_t(bw);h=size_t(bh<0?-bh:bh);return true;
+        }
+        return false;
     }
     static const char16_t* PolishRegions(size_t n) {
         if(n==1)return u"obszar graficzny";
@@ -833,6 +1003,7 @@ private:
         if(tick_>=pumpRetry_ && options_.voice->Pump(options_.voice,2048)!=EFI_SUCCESS)pumpRetry_=tick_+50;
     }
     void PollFrameBuffer() {
+        if(options_.reviewOnly) {pixelDirty_=false;return;}   // r401: Charon's own screens are console text; no frame-buffer work beside Charon
         lastPoll_=tick_;
         Gop* gop=DeviceGop();
         const GopBltFn original=OriginalBlt(gop);
@@ -1290,7 +1461,9 @@ private:
         return true;
     }
     void RecognizePixels() {
+        if(options_.reviewOnly) {pixelDirty_=false;return;}   // r401: Charon's own screens are console text; no frame-buffer work beside Charon
         pixelDirty_=false;
+        PruneGops();   // an instance uninstalled since its Blt is forgotten (pixelGop_ too), never read
         Gop* gop=pixelGop_;const GopBltFn original=OriginalBlt(gop);
         if(!gop || !original || !gop->Mode || !gop->Mode->info)return;
         const size_t screenWidth=gop->Mode->info->horizontal,screenHeight=gop->Mode->info->vertical;
@@ -1360,7 +1533,7 @@ private:
             else if(ch==0x25c4 || ch==0x25c0)ch=0x2190;
             else if(ch==0x25ba || ch==0x25b6)ch=0x2192;
             if(ch>=0x2190 && ch<=0x2193) {
-                if(!space && at+1<capacity) {out[at++]=u' ';if(map)map[at]=uint8_t(c);}
+                if(!space && at+2<capacity) {out[at++]=u' ';if(map)map[at]=uint8_t(c);}   // room for the arrow and the terminator too
                 out[at++]=ch;space=false;continue;
             }
             // Frames and a menu marker '*' in front of an entry are decoration.
@@ -1576,7 +1749,7 @@ private:
     IconTile icons_[24]={};
     size_t iconLabelLength_=0;   // r384: the label in front of pendingIcon_ (OpenCanopy)
     size_t iconSelected_=SIZE_MAX;
-    char16_t pendingIcon_[48]={};
+    char16_t pendingIcon_[64]={};   // label (at most 38) + ", " + "ikona" + position
     void ClearIcons() {for(auto& tile:icons_)tile={};iconSelected_=SIZE_MAX;pendingIcon_[0]=0;strip_={};stripSelected_=SIZE_MAX;}
     // r384: icons inside one wide blit. Columns with ink in the upper three
     // quarters (labels sit below) form the icons; the selected one sits on a
@@ -1625,8 +1798,9 @@ private:
         if(at)pendingIcon_[at++]=u',';
         if(at)pendingIcon_[at++]=u' ';
         pendingIcon_[at]=0;
-        const char16_t* word=options_.polish?u"ikona":u"icon";Put(pendingIcon_,at,48,word);
-        if(options_.positions) {pendingIcon_[at++]=u' ';Number(pendingIcon_,at,selected+1);Put(pendingIcon_,at,48,options_.polish?u" z ":u" of ");Number(pendingIcon_,at,count);pendingIcon_[at]=0;}
+        const char16_t* word=options_.polish?u"ikona":u"icon";Put(pendingIcon_,at,sizeof(pendingIcon_)/2,word);
+        // The position is built apart and appended bounded (a 38-character label ran past the buffer).
+        if(options_.positions) {char16_t where[48];size_t k=0;where[k++]=u' ';Number(where,k,selected+1);where[k]=0;Put(where,k,48,options_.polish?u" z ":u" of ");Number(where,k,count);where[k]=0;Put(pendingIcon_,at,sizeof(pendingIcon_)/2,where);}
         if(!anyDirty_)firstDirty_=tick_;
         anyDirty_=true;
     }
@@ -1677,8 +1851,8 @@ private:
             ++count;if(tile.x<icons_[selected].x)++index;}
         if(count<2)return;
         iconSelected_=selected;iconLabelLength_=0;
-        size_t at=0;const char16_t* word=options_.polish?u"ikona":u"icon";Put(pendingIcon_,at,48,word);
-        if(options_.positions) {pendingIcon_[at++]=u' ';Number(pendingIcon_,at,index+1);Put(pendingIcon_,at,48,options_.polish?u" z ":u" of ");Number(pendingIcon_,at,count);pendingIcon_[at]=0;}
+        size_t at=0;const char16_t* word=options_.polish?u"ikona":u"icon";Put(pendingIcon_,at,sizeof(pendingIcon_)/2,word);
+        if(options_.positions) {char16_t where[48];size_t k=0;where[k++]=u' ';Number(where,k,index+1);where[k]=0;Put(where,k,48,options_.polish?u" z ":u" of ");Number(where,k,count);where[k]=0;Put(pendingIcon_,at,sizeof(pendingIcon_)/2,where);}
         if(!anyDirty_)firstDirty_=tick_;
         anyDirty_=true;
     }
@@ -1718,33 +1892,17 @@ private:
         return found;
     }
     // NVDA progress beep: 110 Hz * 2^(percent/25), 40 ms, one beep per change.
-    static unsigned ProgressHertz(int percent) {
-        static const uint16_t steps[25]={1000,1028,1057,1087,1117,1149,1181,1214,1248,1283,1320,1357,1395,1434,1474,1516,1558,1602,1647,1693,1741,1790,1840,1892,1945};
-        return unsigned((110u<<(percent/25))*steps[percent%25]/1000);
-    }
+    static unsigned ProgressHertz(int percent) {return progressfb::Hertz(percent);}   // r401: shared with Charon's own tasks (CharonProgress.h)
     void Progress(int percent) {
         charontrace::Value("reader progress",uint64_t(percent));
-        if(!options_.progress || percent==lastPercent_)return;
+        if(!options_.progress || options_.reviewOnly || percent==lastPercent_)return;
         const int previous=lastPercent_;lastPercent_=percent;
         if((options_.progress&1) && tick_>=endToneUntil_ && options_.effects && options_.effects->Tone)  // r384: never cut the countdown's end tone
            
-            options_.effects->Tone(options_.effects->context,ProgressHertz(percent),40);
-        if((options_.progress&2) && (previous<0 || percent/10!=previous/10 || percent==100)) {
+            options_.effects->Tone(options_.effects->context,ProgressHertz(percent),progressfb::toneMs);
+        if((options_.progress&2) && progressfb::SpeakAt(previous,percent)) {
             if(percent>=100)Raise(formatting::Event::taskDone);   // r397
-            char16_t text[64]={};size_t at=0;
-            if(percent>=100)text[at++]=u'1';
-            if(percent>=10)text[at++]=char16_t(u'0'+(percent/10)%10);
-            text[at++]=char16_t(u'0'+percent%10);
-            const char16_t* unit=options_.polish?u" procent":u" percent";
-            if(options_.explicitMessages) {
-                // r375: progress said explicitly too, varied per step.
-                static const char16_t* plUnit[]={u" procent, kurwa",u" procent tego mielenia, ja pierdolę",u" procent, czekaj, łamago",u" procent, ślimaczy się to w chuj",u" procent, ja pierdolę, jak wolno",u" procent i dalej mieli, w chuj"};
-                static const char16_t* enUnit[]={u" percent, damn it",u" percent of this grinding, fuck it",u" percent, wait, numpty",u" percent, slow as fuck",u" percent, Jesus, so slow, damn it",u" percent and still grinding, shit"};
-                unit=(options_.polish?plUnit:enUnit)[(percent/10+ExplicitVariety())%6];
-                if(percent>=100)unit=options_.polish?u" procent, kurwa, wreszcie":u" percent, fucking finally";
-            }
-            while(*unit && at<63)text[at++]=*unit++;
-            text[at]=0;Speak(text);
+            char16_t text[64]={};progressfb::Phrase(percent,options_.polish,options_.explicitMessages,unsigned(ExplicitVariety()),text);Speak(text);
         }
     }
     static void Number(char16_t* out,size_t& at,size_t value) {
@@ -2135,6 +2293,14 @@ private:
     bool ocrRow_[maxRows]={};
     size_t usedColumns_=80;   // r397: one past the rightmost column anything was drawn in
     void Flush() {
+        // r401: beside Charon (reviewOnly) nothing is read automatically, and the
+        // review keys read the screen model, which the console hook keeps: the
+        // changed rows are just taken note of. No analysis at raised priority
+        // while Charon's own speech is playing.
+        if(options_.reviewOnly) {
+            for(size_t r=0;r<rows_ && r<maxRows;++r)dirty_[r]=false;
+            anyDirty_=false;menuIntro_=false;menuMoved_=false;keyPending_=false;return;
+        }
         event_=formatting::Event::none;
         {size_t used=0;for(size_t r=0;r<rows_;++r)for(size_t c=used;c<columns_;++c)if(attr_[r][c]&0x80)used=c+1;usedColumns_=used?used:columns_;}
         // r397: a row the OCR reads as the old text with many cells changed is the old
@@ -2286,8 +2452,13 @@ private:
         }
         // r386: GRUB's '*' mark wins over colours (on a wallpaper the key-help
         // text has a picture behind it and looks highlighted).
-        for(size_t r=0;r<rows_;++r)if(dirty_[r] && StarRow(r,u'>')) {highlight_=r;break;}
-        if(highlight_==SIZE_MAX)for(size_t r=0;r<rows_;++r)if(dirty_[r] && StarRow(r)) {highlight_=r;break;}
+        // r400: the mark really wins: a framed menu on another background made
+        // every entry look highlighted, the last one was taken before this
+        // point, and Debian's GRUB was announced as "UEFI Firmware Settings,
+        // 3 of 3" while "*Debian GNU/Linux" was selected.
+        bool arrowMark=false;
+        for(size_t r=0;r<rows_;++r)if(dirty_[r] && StarRow(r,u'>')) {highlight_=r;arrowMark=true;break;}
+        if(!arrowMark)for(size_t r=0;r<rows_;++r)if(dirty_[r] && StarRow(r)) {highlight_=r;break;}
         if(highlight_==SIZE_MAX)for(size_t r=0;r<rows_;++r)if(dirty_[r] && MarkRow(r)) {highlight_=r;break;}   // r397
         if(highlight_==SIZE_MAX || highlight_>=rows_ || !dirty_[highlight_] || !(HighlightRow(highlight_) || StarRow(highlight_) || StarRow(highlight_,u'>') || MarkRow(highlight_) || ColourSelectedRow(highlight_))) {
             highlight_=SIZE_MAX;
@@ -2295,6 +2466,12 @@ private:
             if(highlight_==SIZE_MAX)for(size_t r=0;r<rows_;++r)if(dirty_[r] && StarRow(r)) {highlight_=r;break;}
             if(highlight_==SIZE_MAX)for(size_t r=0;r<rows_;++r)if(dirty_[r] && ColourSelectedRow(r)) {highlight_=r;break;}   // r392
         }
+#ifdef HAK_CHARON_READER_TRACE
+        for(size_t r=0;r<rows_;++r)if(dirty_[r]) {
+            const uint64_t flags=(StarRow(r)?1:0)|(HighlightRow(r)?2:0)|(MarkRow(r)?4:0)|(ColourSelectedRow(r)?8:0)|(highlight_==r?128:0);
+            charontrace::Value("reader pick",(uint64_t(r)<<56)|(flags<<48)|(uint64_t(text_[r][0]&0xff)<<40)|(uint64_t(text_[r][1]&0xff)<<32)|(uint64_t(text_[r][2]&0xff)<<24)|(uint64_t(text_[r][3]&0xff)<<16)|(uint64_t(text_[r][4]&0xff)<<8)|uint64_t(text_[r][5]&0xff));
+        }
+#endif
         // r397: a row without a letter or digit (systemd-boot's separator
         // line "─────" in the highlight colour) is no selection.
         if(highlight_<rows_) {bool word=false;for(size_t c=0;c<columns_ && !word;++c) {const char16_t ch=text_[highlight_][c];word=(ch>=u'0' && ch<=u'9') || (ch>=u'A' && ch<=u'Z') || (ch>=u'a' && ch<=u'z') || (ch>=0xc0 && ch<0x2000);}
@@ -2332,11 +2509,13 @@ private:
          for(size_t r=0;r<rows_;++r)if(dirty_[r]) {char16_t t[maxColumns+1];char u8[400];
              if(RowText(r,t,maxColumns+1)) {Utf8(t,u8,sizeof(u8));{const size_t ts=TextStart(r);charontrace::Value("reader row",(uint64_t(r)<<32)|(uint64_t(ColourSelectedRow(r))<<24)|(uint64_t(ts!=SIZE_MAX?attr_[r][ts]:0)<<16)|(uint64_t(HighlightRow(r))<<8)|attr_[r][0]);}charontrace::Text(u8);}}}
 #endif
-        char16_t speech[1600]={};
+        // speech and info are static (6.4 KB off the started program's stack): Flush
+        // runs only from the timer or under Guard and never calls itself.
+        static char16_t speech[1600];for(auto& ch:speech)ch=0;
         // r389: screen text that is not the selection (banners such as "GNU
         // GRUB version ...", loader logs, help, message windows) goes to the
         // boot-message voice: it speaks alongside the reader and is not cut.
-        char16_t info[1600]={};
+        static char16_t info[1600];for(auto& ch:info)ch=0;
         if(scrolledOut_[0]) {Add(info,1600,scrolledOut_);scrolledOut_[0]=0;}
         // A program swapped in by a chain loader is named before its screen.
         {char16_t named[96]={};WatchImage(named);if(named[0]) {Add(speech,1600,named);Raise(formatting::Event::newProgram);}}
@@ -2519,7 +2698,7 @@ private:
                 Number(intro,at,count);
                 const char16_t* unit=options_.polish?(count%10>=2 && count%10<=4 && (count%100<10 || count%100>=20)?u" pozycje":u" pozycji"):u" items";
                 while(*unit)intro[at++]=*unit++;intro[at++]=speechtext::ownClose;intro[at]=0;
-                Append16(speech,1600,intro);menuAnnounced_=true;
+                Append16(speech,1600,intro);menuAnnounced_=true;menuIntro_=true;
             }
             // r397: a group heading above the items ("Test Mix:", "Cache:" in
             // Windows Memory Diagnostic's options) is said when the selection
@@ -2677,6 +2856,7 @@ private:
                 // the number that changed is the time left.
                 // r390 (user): a number changed by a key (an editor's line and column) is no countdown.
                 if(counter && !KeyRecent() && (options_.managerFlags&4) && !countdownStopped_ && RunningProfile() && ChangedNumber(before,now)>0)StopCountdown();
+                if(counter && !KeyRecent() && ChangedNumber(before,now)>=0) {countdownSeen_=tick_;if(quietMenu_==1)quietMenu_=2;}   // r400
                 if(counter && options_.timers && !KeyRecent()) {
                     const long left=ChangedNumber(before,now);
                     if(left>=0) {
@@ -2817,6 +2997,20 @@ private:
         // Without the message voice (older provider) messages are read as before, after the selection.
         auto* fx=options_.effects;
         const bool messages=fx && fx->SpeakMessage && options_.messageVoice;
+        // r400 (user): a boot menu that counts down to starting a system by
+        // itself is not read out, so the boot messages that follow stay clear;
+        // any key reads it at once. A new menu is first held for a moment: with
+        // no countdown in that time it is read as always.
+        if(menuIntro_ && !everKey_ && !quietMenu_) {quietMenu_=1;quietTick_=tick_;heldMenu_[0]=0;heldInfo_[0]=0;}
+        menuIntro_=false;
+        if(quietMenu_ && !everKey_) {
+            if(quietMenu_==1) {
+                if(speech[0]) {heldMenu_[0]=0;Add(heldMenu_,1600,speech);}
+                if(info[0])Add(heldInfo_,1600,info);
+                return;
+            }
+            speech[0]=0;   // counting down: the menu stays unread, messages go on
+        }
         if(info[0] && !messages)Add(speech,1600,info);
         // r389: messages wait until the screen is quiet for 60 ms (a form's
         // help is drawn after the selection and would come in pieces); the
@@ -2848,7 +3042,7 @@ private:
     void SendMessages() {
         if(!pendingInfo_[0])return;
         auto* fx=options_.effects;
-        char16_t composed[1600];char language[3]={};
+        static char16_t composed[1600];char language[3]={};   // static: timer only, off the program's stack
 #ifdef HAK_CHARON_READER_TRACE
         {char raw[4800];Utf8(pendingInfo_,raw,sizeof(raw));charontrace::Text("reader message raw");charontrace::Text(raw);}
 #endif
@@ -2858,7 +3052,7 @@ private:
          if(FormatSpeech(pendingInfo_,formatted_,sizeof(formatted_)/2))source=formatted_;
          if(event_==formatting::Event::none)event_=keep;}
         ComposeSpeech(source,false,composed,1600,language);
-        char utf8[4800];Utf8(composed,utf8,sizeof(utf8));pendingInfo_[0]=0;
+        static char utf8[4800];Utf8(composed,utf8,sizeof(utf8));pendingInfo_[0]=0;
         if(quiet_ || !fx || !fx->SpeakMessage || !utf8[0])return;
 #ifdef HAK_CHARON_READER_TRACE
         charontrace::Text("reader message");charontrace::Text(utf8);
@@ -2878,7 +3072,7 @@ private:
         ownSpeech_=own;
         if(!options_.explicitMessages) {Speak(text);ownSpeech_=false;return;}
         ++ExplicitVariety();
-        char16_t styled[1600];
+        static char16_t styled[1600];   // static: SayOwn runs from the timer or under Guard and does not nest
         if(FormatCharonMessage(text,styled,1600,true,options_.polish))Speak(styled);else Speak(text);
         ownSpeech_=false;
     }
@@ -2914,7 +3108,7 @@ private:
         return (options_.polish?explicitPl:explicitEn)[ExplicitVariety()%count];
     }
     void Speak(const char16_t* text) {
-        if(stopped_)return;
+        if(stopped_ || farewell_)return;
         // r397: screen text of frame characters alone ("│", a box side) is no speech, on every path.
         if(!ownSpeech_ && !rawSpeech_) {bool own=false;size_t n=0,frame=0;
             for(size_t i=0;text[i];++i) {const char16_t ch=text[i];if(ch==speechtext::ownOpen)own=true;if(ch==u' ')continue;++n;if(ch>=0x2500 && ch<=0x259f)++frame;}
@@ -2934,7 +3128,7 @@ private:
     }
     void TrySpeakPending() {
         if(!pending_[0] || stopped_)return;
-        char utf8[4800];Utf8(pending_,utf8,sizeof(utf8));
+        static char utf8[4800];Utf8(pending_,utf8,sizeof(utf8));   // static: off the program's stack
         if(options_.voice->SpeakUtf8(options_.voice,pendingLanguage_[0]?pendingLanguage_:options_.language,utf8)==EFI_SUCCESS) {pending_[0]=0;failed_=false;}
         else failed_=true;
     }
@@ -3165,7 +3359,7 @@ private:
                 Silence();
                 const efi_tpl current=boot_->RaiseTPL(TPL_HIGH_LEVEL);boot_->RestoreTPL(current);
                 const bool loaded=sfx->SynthLoaded && sfx->SynthLoaded(sfx->context,keys[at]);   // r396e: preloaded modules switch at TPL_CALLBACK
-                if(current<=TPL_APPLICATION || (loaded && current<=TPL_CALLBACK)) {char16_t report[120]={};const bool ok=sfx->SetSynth(sfx->context,keys[at],0,report,120);pendingSynth_=0xffff;
+                if(current<=TPL_APPLICATION || (loaded && current<=TPL_CALLBACK)) {char16_t report[120]={};++VoiceSwitching();const bool ok=sfx->SetSynth(sfx->context,keys[at],0,report,120);--VoiceSwitching();pendingSynth_=0xffff;
                     put(pl?u"Syntezator ":u"Synthesizer ");put(ok?report:names[0]);
                     if(current<=TPL_APPLICATION) {Guard guard(boot_);SayOwn(text,false);} else SayOwn(text,false);
                     return;}
@@ -3243,7 +3437,7 @@ private:
     }
     static ResidentReader* A11yReader(HAK_BOOT_A11Y_PROTOCOL* p) {
         ResidentReader* r=active_;
-        if(!r || p!=&r->a11y_ || r->stopped_ || r->suspended_ || !r->boot_)return nullptr;
+        if(!r || !r->installed_ || p!=&r->a11y_ || r->stopped_ || r->suspended_ || !r->boot_)return nullptr;
         return r;
     }
     static HAK_A11Y_STATUS HAK_A11Y_EFIAPI A11ySpeak(HAK_BOOT_A11Y_PROTOCOL* p,const HAK_A11Y_CHAR16* text,uint32_t flags) {
@@ -3426,13 +3620,15 @@ private:
     // TPL is loaded here, when the program reads a key at TPL_APPLICATION.
     bool applyingSynth_=false;
     void ApplyPendingSynth() {
-        if(pendingSynth_==0xffff || stopped_ || suspended_ || !boot_ || applyingSynth_)return;
+        if(pendingSynth_==0xffff || !installed_ || stopped_ || suspended_ || !boot_ || applyingSynth_)return;
         auto* sfx=options_.effects;if(!sfx || !sfx->SetSynth) {pendingSynth_=0xffff;return;}
         const efi_tpl current=boot_->RaiseTPL(TPL_HIGH_LEVEL);boot_->RestoreTPL(current);
         if(current>TPL_APPLICATION)return;
         const uint8_t key=uint8_t(pendingSynth_);pendingSynth_=0xffff;
         applyingSynth_=true;   // loading a module may print or stall: no re-entry
+        ++VoiceSwitching();
         char16_t report[120]={};const bool ok=sfx->SetSynth(sfx->context,key,0,report,120);
+        --VoiceSwitching();
         applyingSynth_=false;
         char16_t text[160]={};size_t n=0;auto put=[&](const char16_t* s) {while(*s && n+1<160)text[n++]=*s++;text[n]=0;};
         put(options_.polish?u"Syntezator ":u"Synthesizer ");put(ok?report:u"TVox");
@@ -3625,6 +3821,7 @@ private:
         if(!keyPending_)EchoFromCaret();
         if(!keyPending_ || tick_-keyTick_>20)SnapshotBeforeKey();   // r393 "what changed"
         keyPending_=true;keyTick_=tick_;keyScan_=scan;keyChar_=ch;
+        everKey_=true;if(quietMenu_) {quietMenu_=0;rereadAfterKey_=true;}   // r400: the held menu is read now
     }
     bool KeyRecent() const {return keyPending_ && tick_-keyTick_<50;}
     // r389: a key's answer of one or two lines (menu move, typed character)
@@ -3633,6 +3830,7 @@ private:
     size_t DirtyRows() const {size_t n=0;for(size_t r=0;r<rows_;++r)if(dirty_[r])++n;return n;}
     bool CursorShown() const {return real_ && real_->Mode && real_->Mode->CursorVisible;}
     void CursorEcho() {
+        if(options_.reviewOnly)return;   // r401: Charon echoes its own keys
         size_t cr=0,cc=0;const bool drawn=DrawnCaret(cr,cc);
         if(!drawn) {cr=row_;cc=column_;}
         if(!KeyRecent() || !(drawn || CursorShown()) || cr>=rows_)return;
@@ -3779,7 +3977,9 @@ private:
     // ---- r393 speech history (Insert+H), like NVDA's Speech History ------
     void AddHistory(const char16_t* text) {
         if(!text)return;
-        char16_t* slot=history_[historyNext_];size_t at=0;bool space=true;
+        // Built apart and copied in only when kept: with the ring full the next
+        // slot is the oldest entry, which a repeated or empty utterance erased.
+        static char16_t slot[historyLength];size_t at=0;bool space=true;
         for(size_t i=0;text[i] && at+1<historyLength;++i) {
             const char16_t c=text[i];
             if(c==speechtext::ownOpen || c==speechtext::ownClose)continue;
@@ -3796,6 +3996,7 @@ private:
             size_t k=0;while(last[k] && last[k]==slot[k])++k;
             if(last[k]==slot[k])return;   // the same words again (a repeated key)
         }
+        for(size_t k=0;k<=at;++k)history_[historyNext_][k]=slot[k];
         historyNext_=(historyNext_+1)%historySize;if(historyCount_<historySize)++historyCount_;
     }
     const char16_t* HistoryEntry(size_t i) const {return history_[(historyNext_+historySize-historyCount_+i)%historySize];}
@@ -4298,7 +4499,7 @@ private:
         ResidentReader* r=active_;
         if(!r || !r->originalStall_)return EFI_DEVICE_ERROR;
         r->ApplyPendingSynth();   // r396e
-        if(r->Paused())r->BlockWhilePaused();
+        if(r->installed_ && r->Paused())r->BlockWhilePaused();
         return r->originalStall_(microseconds);
     }
     // True when the key is consumed by the reader.
@@ -4310,6 +4511,7 @@ private:
         if(historyOpen_) {const char16_t c=KeyListKey(key);if(c)command_=c;return true;}   // r393 speech history
         if(reviewPause_) {const char16_t c=PauseCommand(key);if(c)command_=c;return true;}
         if(inputHelp_) {
+            Guard guard(boot_);   // speech from the program's key read: the timer must not pump or speak meanwhile
             if(insertArmed_) {insertArmed_=false;const char16_t c=InsertCommand(key);if(c==u'x') {command_=c;return true;}
                 if(c)SayOwn(CommandHelp(c));else SayKeyName(key);return true;}
             if(InsertKey(key)) {insertArmed_=true;insertTick_=tick_;SayOwn(options_.polish?u"Insert, klawisz czytnika":u"Insert, the reader key");return true;}
@@ -4331,14 +4533,15 @@ private:
         ResidentReader* r=active_;
         auto original=r?r->originalRead_:nullptr;
         if(!original)return EFI_NOT_READY;
+        if(!r->installed_)return original(self,key);   // uninstalled, reached through a wrapper
+        r->Service();
         r->ApplyPendingSynth();   // r396
         if(key && r->Injected(key->ScanCode,key->UnicodeChar))return EFI_SUCCESS;   // r393 reveal / stop countdown
-        // r389: a key the modifier poll read by accident goes to the program first.
-        if(r->havePush_ && key) {r->havePush_=false;*key=r->pushed_.key;
-            const bool eaten=r->FilterKey(*key);if(!eaten)r->NoteKey(key->ScanCode,key->UnicodeChar);
-            if(eaten) {key->ScanCode=0;key->UnicodeChar=0;return EFI_NOT_READY;}
-            return EFI_SUCCESS;}
-        const auto status=original(self,key);
+        // r389: a key the modifier poll read by accident goes to the program first,
+        // through the same filters as a key read here.
+        efi_status status=EFI_SUCCESS;
+        if(r->havePush_ && key) {r->havePush_=false;*key=r->pushed_.key;}
+        else status=original(self,key);
         if(status!=EFI_SUCCESS || !key)return status;
         if(r->swallowScan_ && key->ScanCode==r->swallowScan_ && !key->UnicodeChar) {
             r->swallowScan_=0;key->ScanCode=0;key->UnicodeChar=0;return EFI_NOT_READY;}   // r388 voice ring arrow
@@ -4358,13 +4561,14 @@ private:
         ResidentReader* r=active_;
         auto original=r?r->originalReadEx_:nullptr;
         if(!original)return EFI_NOT_READY;
+        if(!r->installed_)return original(self,data);   // uninstalled, reached through a wrapper
+        r->Service();
         r->ApplyPendingSynth();   // r396
         if(data && r->Injected(data->key.ScanCode,data->key.UnicodeChar)) {data->state.shift=0;data->state.toggle=0;return EFI_SUCCESS;}   // r393
-        if(r->havePush_ && data) {r->havePush_=false;*data=r->pushed_;
-            const bool eaten=r->FilterKey(data->key);if(!eaten)r->NoteKey(data->key.ScanCode,data->key.UnicodeChar);
-            if(eaten) {data->key.ScanCode=0;data->key.UnicodeChar=0;return EFI_NOT_READY;}
-            return EFI_SUCCESS;}
-        const auto status=original(self,data);
+        // A key the modifier poll read by accident: through the same filters as a key read here.
+        efi_status status=EFI_SUCCESS;
+        if(r->havePush_ && data) {r->havePush_=false;*data=r->pushed_;}
+        else status=original(self,data);
         if(status!=EFI_SUCCESS || !data)return status;
         // With Ctrl or Alt held the key is a program shortcut, not ours.
         const uint32_t held=(data->state.shift&shiftValid)?data->state.shift:0;
@@ -4409,6 +4613,10 @@ private:
 #endif
         auto& self=*static_cast<ResidentReader*>(context);
         if(self.stopped_ || self.suspended_)return;
+        // r401: on Charon's own screens (reviewOnly) Charon speaks at application
+        // level with the same voice. The timer then only counts; the work is done
+        // from Charon's key polling (Service), so the two never interleave.
+        if(self.options_.reviewOnly && !self.servicing_) {++self.serviceDue_;return;}
         ++self.tick_;
 #ifdef HAK_CHARON_TICK_TRACE
         if(!(self.tick_%100)) {efi_tpl t=self.boot_->RaiseTPL(TPL_HIGH_LEVEL);self.boot_->RestoreTPL(t);charontrace::Value("reader heartbeat",(uint64_t(self.tick_)<<8)|t);}
@@ -4430,6 +4638,21 @@ private:
         // Speak after output pauses for 120 ms, or every 500 ms while an
         // application redraws continuously (progress bars, scrolling logs).
         // r389: 20 ms after a key the program read (its answer is one burst), 60 ms otherwise.
+        // r400: quiet countdown menus (see Flush).
+        if(self.quietMenu_==1 && self.tick_-self.quietTick_>=160) {
+            self.quietMenu_=0;
+            if(!self.quiet_) {
+                if(self.heldMenu_[0])self.Speak(self.heldMenu_);
+                auto* fx=self.options_.effects;
+                if(self.heldInfo_[0] && fx && fx->SpeakMessage && self.options_.messageVoice) {self.Add(self.pendingInfo_,1600,self.heldInfo_);self.infoTick_=self.tick_;}
+            }
+            self.heldMenu_[0]=0;self.heldInfo_[0]=0;
+        } else if(self.quietMenu_==2 && self.tick_-self.countdownSeen_>=160)self.quietMenu_=0;
+        if(self.rereadAfterKey_ && self.tick_-self.keyTick_>=8) {
+            self.rereadAfterKey_=false;
+            for(size_t r=0;r<self.rows_;++r) {self.dirty_[r]=true;for(size_t col=0;col<maxColumns;++col)self.prevRaw_[r][col]=0;}
+            self.lastHighlight_[0]=0;self.lastHighlightRow_=SIZE_MAX;self.menuAnnounced_=false;self.highlight_=SIZE_MAX;self.anyDirty_=true;self.firstDirty_=self.tick_;
+        }
         if(self.anyDirty_ && (self.tick_-self.lastOutput_>=(self.KeyRecent() && self.DirtyRows()<=2?2u:6u) || self.tick_-self.firstDirty_>=50))self.Flush();   // r388: 60 ms (was 120)
         else if(!self.anyDirty_ && self.KeyRecent() && self.tick_-self.keyTick_>=2 && self.tick_-self.lastOutput_>=2)self.CursorEcho();
         if(self.pending_[0] && !(self.tick_%50))self.TrySpeakPending();
@@ -4462,7 +4685,7 @@ private:
         // screen (a shell prompt, a firmware page) is not mistaken for an error:
         // nothing at all for 2 s (no console text, no drawing, no recognised
         // text, no key) and then the blank frame holds for a further 3 s.
-        if(!self.pixelDirty_ && self.tick_-self.lastOutput_>=250 && self.tick_-self.lastBlt_>=250
+        if(!self.options_.reviewOnly && !self.pixelDirty_ && self.tick_-self.lastOutput_>=250 && self.tick_-self.lastBlt_>=250
             && self.tick_-self.lastText_>=250 && self.tick_-self.keyTick_>=250 && !(self.tick_%20)) {
             const int kind=self.ClassifyBlankScreen();
             if(kind) {
@@ -4480,7 +4703,8 @@ private:
             self.blankKind_=0;self.blankAnnounced_=false;   // activity resumed: leave the blank state
         }
         self.DriveBlankTone();
-        if(self.graphicsActivity_ && !self.graphicsAnnounced_ && !self.blankKind_ && self.tick_-self.graphicsActivity_>=150
+        if(self.options_.reviewOnly) {}
+        else if(self.graphicsActivity_ && !self.graphicsAnnounced_ && !self.blankKind_ && self.tick_-self.graphicsActivity_>=150
             && self.lastText_<self.graphicsActivity_) {
             // r397 (user): describe the strictly graphical screen (regions,
             // coverage, where, which is highlighted). Only when there is
@@ -4509,11 +4733,14 @@ private:
         // A missing device (not yet connected) is retried every half second;
         // no pumping in between, so firmware is not slowed down by retries.
         if(self.tick_<self.pumpRetry_)return;
-        if(self.options_.voice->Pump(self.options_.voice,2048)!=EFI_SUCCESS)self.pumpRetry_=self.tick_+50;
+        if(self.options_.reviewOnly) {}   // r401: beside Charon the voice is pumped by Charon itself (never twice, never at raised priority)
+        else if(VoiceSwitching()) {}   // r401: a synthesizer is being changed right now
+        else if(self.options_.voice->Pump(self.options_.voice,2048)!=EFI_SUCCESS)self.pumpRetry_=self.tick_+50;
     }
     // Speak the handoff, then silence DMA. Runs in the loader's context, at
     // its TPL, with no allocation (see header comment).
-    void Quiesce(bool announce) {
+    uint64_t GraphicsOrBusy() const {return busyAnnounced_ && busyAt_>=graphicsActivity_?busyAt_+1:graphicsActivity_;}
+    void Quiesce(bool announce,bool leaving=false) {
         if(stopped_)return;
         // r366: a program swapped in by a chain loader that ends firmware
         // services at once (Memtest86+) is named with the handoff.
@@ -4532,9 +4759,18 @@ private:
             static const char16_t* plTake[]={u"No i chuj, system przejmuje stery, ja spadam.",u"System przejmuje sterowanie, dalej radź sobie sam, kurwa.",u"Pa, frajerze, system przejmuje stery."};
             static const char16_t* enTake[]={u"Fuck it, the system takes over, I’m out.",u"The system takes over, you’re on your own now, damn it.",u"Bye, sucker, the system takes the wheel."};
             text=OwnPhrase(text,plTake,enTake,3);
-            char16_t both[256]={};
-            if(named[0]) {size_t at=0;for(size_t i=0;named[i] && at<150;++i)both[at++]=named[i];both[at++]=u' ';for(size_t i=0;text[i] && at<254;++i)both[at++]=text[i];both[at]=0;text=both;}
-            char utf8[768];Utf8(text,utf8,sizeof(utf8));
+            static char16_t both[600];both[0]=0;
+            // r400: with only pictures on the screen (a loading logo), say what is shown.
+            static char16_t shown[300];shown[0]=0;
+            if(leaving && lastText_<GraphicsOrBusy() && DescribeGraphics(shown,300)) {
+                size_t at=0;for(size_t i=0;text[i] && at<250;++i)both[at++]=text[i];
+                both[at++]=u' ';const char16_t* cut=shown;
+                for(size_t i=0;shown[i];++i)if(shown[i]==u'.' && shown[i+1]==u' ') {cut=shown+i+2;break;}   // without "Graphical screen."
+                for(size_t i=0;cut[i] && at<598;++i)both[at++]=cut[i];
+                both[at]=0;text=both;
+            }
+            if(named[0] && text!=both) {size_t at=0;for(size_t i=0;named[i] && at<150;++i)both[at++]=named[i];both[at++]=u' ';for(size_t i=0;text[i] && at<254;++i)both[at++]=text[i];both[at]=0;text=both;}
+            static char utf8[2000];Utf8(text,utf8,sizeof(utf8));
             const bool spoke=options_.voice->SpeakUtf8(options_.voice,options_.language,utf8)==EFI_SUCCESS;
             if(spoke || cue) {
                 auto* fx=options_.effects;
@@ -4547,15 +4783,62 @@ private:
                 }
             }
         }
-        for(unsigned attempt=0;attempt<3;++attempt)if(options_.voice->Stop(options_.voice)==EFI_SUCCESS)break;
+        bool stoppedAudio=false;
+        for(unsigned attempt=0;attempt<3;++attempt)if(options_.voice->Stop(options_.voice)==EFI_SUCCESS) {stoppedAudio=true;break;}
+        // r400 (user: sound until the system shows its own screen): firmware
+        // code ends here, so the sound card itself is left repeating a soft
+        // "loading" cue from reserved memory (about a minute, then silence)
+        // until the operating system's audio driver takes the card. Not for
+        // test tools that never load one.
+        if(leaving && stoppedAudio && options_.linger && options_.effects && options_.effects->Linger
+            && !(bootManager_ && BootTool(bootManager_)))options_.effects->Linger(options_.effects->context);
+    }
+    void RecrcRuntime() {
+        auto* rt=table_->RuntimeServices;rt->Hdr.CRC32=0;uint32_t crc=0;
+        if(boot_->CalculateCrc32(rt,rt->Hdr.HeaderSize,&crc)==EFI_SUCCESS)rt->Hdr.CRC32=crc;
+    }
+    // r400: falling tones and "Charon is turning off", then the real reset.
+    static efi_status EFIAPI HookReset(efi_reset_type type,efi_status status,size_t size,void* data) {
+        auto* self=active_;
+        if(!self || !self->originalReset_)return EFI_DEVICE_ERROR;
+        auto original=self->originalReset_;
+        if(self->installed_ && !self->stopped_ && !self->suspended_ && !self->handedOff_ && !self->quiet_) {
+            efi_tpl current=self->boot_->RaiseTPL(TPL_HIGH_LEVEL);self->boot_->RestoreTPL(current);
+            if(current<=TPL_APPLICATION) {
+                auto* fx=self->options_.effects;
+                // Whatever is being read stops; the tones play alone (speech
+                // start-up sounds would replace them), then the words.
+                if(fx && fx->Silence)fx->Silence(fx->context);
+                if(fx && fx->Beep) {fx->Beep(fx->context,7999,320);self->boot_->Stall(380000);}
+                self->Announce(self->options_.polish?u"Wyłączanie Charona.":u"Charon is turning off.");
+                self->farewell_=true;   // nothing drawn after this may cut the farewell
+                // Speech needs a moment to start: wait for it to begin (2 s at
+                // most), then for its end (4 s in all), then let the last
+                // samples leave the sound card.
+                bool started=false;unsigned i=0;
+                for(;i<400;++i) {
+                    self->boot_->Stall(10000);
+                    const bool idle=!fx || !fx->SpeechIdle || fx->SpeechIdle(fx->context);
+                    if(!idle)started=true;
+                    if((started && idle && i>40) || (!started && i>200))break;
+                }
+                self->boot_->Stall(250000);
+                charontrace::Value("reader farewell",(uint64_t(started)<<16)|i);
+                const efi_status result=original(type,status,size,data);
+                self->farewell_=false;   // the reset came back: keep reading
+                return result;
+            }
+        }
+        return original(type,status,size,data);
     }
     static efi_status EFIAPI HookExit(efi_handle image,size_t key) {
         auto* self=active_;
         if(!self)return EFI_DEVICE_ERROR;
         auto original=self->originalExit_;
+        if(!self->installed_)return original?original(image,key):EFI_DEVICE_ERROR;   // uninstalled, reached through a wrapper
         if(self->Paused())self->BlockWhilePaused();   // r390: read the last messages before the system takes over
         efi_tpl current=self->boot_->RaiseTPL(TPL_HIGH_LEVEL);self->boot_->RestoreTPL(current);
-        self->Quiesce(current<=TPL_APPLICATION);
+        self->Quiesce(current<=TPL_APPLICATION,true);
         self->RemoveHooks();
         self->handedOff_=true;
         return original(image,key);
@@ -4566,6 +4849,7 @@ private:
         auto* self=active_;
         if(!self)return EFI_DEVICE_ERROR;
         auto original=self->originalStart_;
+        if(!self->installed_)return original?original(image,exitSize,exitData):EFI_DEVICE_ERROR;   // uninstalled, reached through a wrapper
         const char16_t* previous=self->bootManager_;
         const efi_handle outerImage=self->currentImage_;void* const outerBase=self->currentBase_;
         if(!self->stopped_ && !self->suspended_) {
@@ -4603,11 +4887,12 @@ private:
     // Returns the boot manager name in effect before this image (restored
     // when StartImage returns). An image seen at load time is announced once.
     const char16_t* ObserveStart(efi_handle image,const char16_t* before) {
-        for(size_t i=0;i<observedCount_ && i<maxObserved;++i)if(observed_[i].handle==image) {
-            bootManager_=observed_[i].name;return observed_[i].before;}
-        Observed& entry=observed_[observedCount_++%maxObserved];entry={image,nullptr,before};
         efi_guid guid=EFI_LOADED_IMAGE_PROTOCOL_GUID;efi_loaded_image_protocol* loaded=nullptr;
         const efi_status found=boot_->HandleProtocol?boot_->HandleProtocol(image,&guid,reinterpret_cast<void**>(&loaded)):EFI_UNSUPPORTED;
+        void* const base=(found==EFI_SUCCESS && loaded)?loaded->ImageBase:nullptr;
+        for(size_t i=0;i<observedCount_ && i<maxObserved;++i)if(observed_[i].handle==image && observed_[i].base==base) {
+            bootManager_=observed_[i].name;return observed_[i].before;}
+        Observed& entry=observed_[observedCount_++%maxObserved];entry={image,nullptr,before,base};
 #ifdef HAK_CHARON_READER_TRACE
         charontrace::Value("reader image seen",(uint64_t(found==EFI_SUCCESS)<<63)|(loaded?uint64_t(uintptr_t(loaded->ImageBase))&0x7fffffffffffull:0));
 #endif
@@ -4694,7 +4979,7 @@ private:
     }
     efi_handle currentImage_=nullptr;void* currentBase_=nullptr;
     static constexpr size_t maxObserved=32;
-    struct Observed {efi_handle handle;const char16_t* name;const char16_t* before;};
+    struct Observed {efi_handle handle;const char16_t* name;const char16_t* before;void* base;};   // base: firmware gives a later image the handle address of an unloaded one
     Observed observed_[maxObserved]={};size_t observedCount_=0;
     efi_event imageNotify_=nullptr;void* imageRegistration_=nullptr;
     // r363/r364: boot managers with their own graphical terminal carry an
@@ -4931,16 +5216,19 @@ private:
         self.Quiesce(false);self.handedOff_=true;
     }
     // ---- proxy ---------------------------------------------------------
+    static volatile int& GuardDepth() {static volatile int depth=0;return depth;}
     struct Guard {
         efi_boot_services* boot;efi_tpl old=0;bool raised=false;
         explicit Guard(efi_boot_services* b):boot(b) {
             const efi_tpl current=boot->RaiseTPL(TPL_HIGH_LEVEL);boot->RestoreTPL(current);
             if(current<TPL_CALLBACK) {old=boot->RaiseTPL(TPL_CALLBACK);raised=true;}
+            ++GuardDepth();   // r402: the rescue timer stays out of guarded reader code
         }
-        ~Guard() {if(raised)boot->RestoreTPL(old);}
+        ~Guard() {--GuardDepth();if(raised)boot->RestoreTPL(old);}
     };
     static efi_status EFIAPI ProxyOutput(efi_simple_text_output_protocol* self,char16_t* text) {
         auto& r=Self(self);
+        if(!r.installed_)return r.saved_.OutputString(self,text);   // uninstalled, reached through another program's wrapper
         r.ApplyPendingSynth();   // r396e: programs that never read ConIn (OpenCore, forms) still print
         // r386: the text starts where the real cursor is. A shadow cursor left
         // at a line end (the previous program's output) put the first letter
@@ -4967,23 +5255,27 @@ private:
     }
     static efi_status EFIAPI ProxyReset(efi_simple_text_output_protocol* self,bool extended) {
         auto& r=Self(self);r.inConOut_=true;const auto status=r.saved_.Reset(self,extended);r.inConOut_=false;
+        if(!r.installed_)return status;
         Guard guard(r.boot_);r.QueryDimensions();r.ClearShadow();return status;
     }
     static efi_status EFIAPI ProxySetMode(efi_simple_text_output_protocol* self,size_t mode) {
         auto& r=Self(self);r.inConOut_=true;const auto status=r.saved_.SetMode(self,mode);r.inConOut_=false;
+        if(!r.installed_)return status;
         Guard guard(r.boot_);r.QueryDimensions();r.ClearShadow();return status;
     }
     static efi_status EFIAPI ProxyAttribute(efi_simple_text_output_protocol* self,size_t attribute) {
         auto& r=Self(self);const auto status=r.saved_.SetAttribute(self,attribute);
-        if(status==EFI_SUCCESS)r.attribute_=attribute;
+        if(status==EFI_SUCCESS && r.installed_)r.attribute_=attribute;
         return status;
     }
     static efi_status EFIAPI ProxyClear(efi_simple_text_output_protocol* self) {
         auto& r=Self(self);r.inConOut_=true;const auto status=r.saved_.ClearScreen(self);r.inConOut_=false;
+        if(!r.installed_)return status;
         Guard guard(r.boot_);r.QueryDimensions();r.SnapshotPreClear();r.ClearShadow();r.baseAttribute_=r.attribute_;r.clearedScreen_=true;return status;
     }
     static efi_status EFIAPI ProxyCursor(efi_simple_text_output_protocol* self,size_t column,size_t row) {
         auto& r=Self(self);const auto status=r.saved_.SetCursorPosition(self,column,row);
+        if(!r.installed_)return status;
 #ifdef HAK_CHARON_READER_TRACE
         charontrace::Value("reader cursor",(uint64_t(row)<<16)|column);
 #endif
@@ -5013,7 +5305,10 @@ private:
     efi_system_table* table_=nullptr;efi_boot_services* boot_=nullptr;
     efi_simple_text_output_protocol* real_=nullptr;
     efi_simple_text_output_protocol saved_{};
+    // What RemoveHooks could not restore (another program's wrappers on top of the proxies).
+    efi_simple_text_output_protocol* leftAt_=nullptr;efi_simple_text_output_protocol left_{};uint8_t leftMask_=0;
     efi_status (EFIAPI *originalExit_)(efi_handle,size_t)=nullptr;
+    efi_status (EFIAPI *originalReset_)(efi_reset_type,efi_status,size_t,void*)=nullptr;
     efi_status (EFIAPI *originalStart_)(efi_handle,size_t*,char16_t**)=nullptr;
     const char* volatile marker_=nullptr;
     const char16_t* bootManager_=nullptr;
@@ -5025,6 +5320,7 @@ private:
     TtfOcr ttfOcr_{};uint8_t* fontData_[6]={};size_t loadedFonts_=0;
 
     efi_event timer_=nullptr,exitEvent_=nullptr;
+    efi_event rescue_=nullptr;uint64_t rescueSeen_=0;unsigned rescueIdle_=0;bool rescuing_=false;volatile bool working_=false;   // r402
     ResidentOptions options_{};
     // Every member is constant-initialized: Charon has no C runtime to run
     // global constructors (an .init_array would never execute).
@@ -5036,6 +5332,9 @@ private:
     uint64_t tick_=0,lastOutput_=0,firstDirty_=0,pumpRetry_=0;
     int lastPercent_=-1;
     bool menuAnnounced_=false;
+    // r400: quiet countdown menus. 0 off, 1 a new menu held, 2 counting down.
+    bool menuIntro_=false,everKey_=false,rereadAfterKey_=false;uint8_t quietMenu_=0;
+    uint64_t quietTick_=0,countdownSeen_=0;char16_t heldMenu_[1600]={},heldInfo_[1600]={};
     bool busySaid_=false;  // r382 text spinner announced
     BmOcr bmOcr_;          // r384 OpenCanopy labels
     struct SmallBlit {size_t x,y,w,h;};SmallBlit small_[4]={{SIZE_MAX,0,0,0},{SIZE_MAX,0,0,0},{SIZE_MAX,0,0,0},{SIZE_MAX,0,0,0}};size_t smallNext_=0;  // r384 pointer/animation blits
@@ -5068,6 +5367,7 @@ private:
     uint8_t majorityBg_=0;
     char16_t lastHighlight_[maxColumns+1]={};size_t lastHighlightRow_=SIZE_MAX;
     size_t reviewRow_=SIZE_MAX,reviewCol_=0;  // r378 review cursor
+    volatile unsigned serviceDue_=0;bool servicing_=false;   // r401 (reviewOnly)
     bool quiet_=false;unsigned rate_=10;      // r379 automatic reading, speech rate (tenths)
     unsigned pitch_=10,volume_=10,voiceSetting_=0;   // r388 voice settings ring
     size_t caretLineX_[maxRows]={};
@@ -5113,7 +5413,7 @@ private:
     bool hiddenPending_=false,revealArmed_=false,countdownStopped_=false;uint16_t revealScan_=0;char16_t revealChar_=0;uint64_t revealUntil_=0;
     const managers::Profile* hiddenProfile_=nullptr;bool hiddenMaybe_=false;
     bool installed_=false,stopped_=false,handedOff_=false,failed_=false,anyDirty_=false;
-    bool hooksRemoved_=false,foreignConOut_=false,suspended_=false;
+    bool hooksRemoved_=false,foreignConOut_=false,suspended_=false,farewell_=false;
 };
 #ifdef __clang__
 #define CHARON_CONSTANT_INIT [[clang::require_constant_initialization]]
@@ -5121,4 +5421,6 @@ private:
 #define CHARON_CONSTANT_INIT
 #endif
 CHARON_CONSTANT_INIT static ResidentReader residentReader;
+// r401: a second reader, only for review beside Charon's own screens: the reader that reads started programs keeps no state from it.
+CHARON_CONSTANT_INIT [[maybe_unused]] static ResidentReader reviewReader;
 }

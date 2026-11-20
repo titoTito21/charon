@@ -14,6 +14,10 @@ ways to install). GPL-2.0-or-later.
                  from power-on, firmware menus and setup) unless -NoReader.
   -NoReader      Manager: only the boot manager, no Driver#### reader.
   -Default       Shim and Manager: Charon first in BootOrder (Shim always).
+  -FirstEntry D  r403: at the end, the existing boot entry with description D
+                 (e.g. CharonDOS) is put first in BootOrder - Windows Setup put
+                 Windows Boot Manager first; CharonDOS installed before Windows
+                 stays the default (its WINNT command starts Windows).
   -Yes           no questions (otherwise a dialogue and "TAK" to confirm).
 Shim and MokManager (shimx64.efi, mmx64.efi, signed by Microsoft's UEFI CA)
 are taken from -ShimDir (default: shim next to this script, e.g. from a
@@ -75,7 +79,8 @@ param(
     [uint32]$PartitionNumber,
     [uint64]$StartLba,
     [uint64]$SizeLba,
-    [string]$PartitionGuid
+    [string]$PartitionGuid,
+    [string]$FirstEntry = ''
 )
 $ErrorActionPreference = 'Stop'
 if (-not $Source) { $Source = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'EFI\HAK' }
@@ -85,8 +90,8 @@ $DriverFile = '\EFI\HAK\CHARONVOICE.EFI'
 $EspType = '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}'
 . (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'CharonEfiSign.ps1')
 $Pl = if ($Language) { $Language -eq 'pl' } else { (Get-UICulture).Name -like 'pl*' }
-function Say([string]$pl, [string]$en) { if ($Pl) { Write-Host $pl } else { Write-Host $en } }
-function Fail([string]$pl, [string]$en) { if ($Pl) { throw $pl } else { throw $en } }
+function Say([string]$textPl, [string]$textEn) { if ($Pl) { Write-Host $textPl } else { Write-Host $textEn } }   # r402: a parameter named $pl hid the $Pl flag (names are case-insensitive): everything was said in Polish
+function Fail([string]$textPl, [string]$textEn) { if ($Pl) { throw $textPl } else { throw $textEn } }
 
 # ---- load option bytes (UEFI 2.10, 3.1.3 and 10.3) --------------------------
 function New-DriverOption([uint32]$Number, [uint64]$Start, [uint64]$Size, [guid]$Guid) {
@@ -268,6 +273,15 @@ if ($Mode -ne 'Reader') {
 # The current first boot entry (not Charon) becomes Charon's Continue target.
 function Get-BootOrder { $b = Get-Var 'BootOrder'; $ids = @(); if ($b) { for ($i = 0; $i + 1 -lt $b.Length; $i += 2) { $ids += [BitConverter]::ToUInt16($b, $i) } }; return , $ids }
 function BootName([int]$Id) { return 'Boot{0:X4}' -f $Id }
+function Move-FirstEntry {
+    if (-not $FirstEntry -or $DryRun) { return }
+    $ids = Get-BootOrder; $want = $null
+    foreach ($id in $ids) { $o = Get-Var (BootName $id); if ($o -and (Option-Description $o) -eq $FirstEntry) { $want = $id; break } }
+    if ($null -eq $want) { Say ("Nie ma wpisu rozruchu {0}; kolejność bez zmian." -f $FirstEntry) ("There is no boot entry {0}; boot order unchanged." -f $FirstEntry); return }
+    $newOrder = @([uint16]$want) + @($ids | Where-Object { $_ -ne $want })
+    $b = @(); foreach ($id in $newOrder) { $b += [BitConverter]::GetBytes([uint16]$id) }; Set-Var 'BootOrder' ([byte[]]$b)
+    Say ("{0} jest znowu pierwszy w kolejności rozruchu ({1})." -f $FirstEntry, (BootName $want)) ("{0} is first in the boot order again ({1})." -f $FirstEntry, (BootName $want))
+}
 function Option-Description([byte[]]$o) { $end = 6; while ($end + 1 -lt $o.Length -and -not ($o[$end] -eq 0 -and $o[$end + 1] -eq 0)) { $end += 2 }; return [Text.Encoding]::Unicode.GetString($o, 6, $end - 6) }
 $continueId = $null
 if ($Mode -ne 'Reader') {
@@ -333,6 +347,14 @@ try {
         New-Item -ItemType Directory -Force (Join-Path $hak 'tools') | Out-Null
         Copy-Item $memtest (Join-Path $hak 'tools\memtest.efi') -Force
     }
+    # r400: optional parts travel with the boot manager when the package has them:
+    # network drivers, packages (CharonDOS), the installers themselves.
+    if ($Mode -ne 'Reader') {
+        foreach ($d in 'drivers', 'packages', 'addon') {
+            $from = Join-Path $Source $d
+            if (Test-Path $from) { Copy-Item $from $hak -Recurse -Force }
+        }
+    }
     # Language of the reader until settings are changed in Charon itself: English unless -Language pl (r399).
     if (-not (Test-Path (Join-Path $hak 'audio-language'))) { [IO.File]::WriteAllText((Join-Path $hak 'audio-language'), $(if ($Language -eq 'pl') { 'pl' } else { 'en' })) }
     if ($Sign) { [IO.File]::WriteAllBytes((Join-Path $hak 'charon-db.cer'), $certificate.RawData) }
@@ -372,7 +394,7 @@ if ($Mode -ne 'Reader') {
     if ($useShim -and $Sign) {
         Say 'Przy następnym starcie shim pokaże MokManagera (niebieski ekran, bez mowy): 1. naciśnij klawisz w ciągu 10 sekund; 2. wybierz Enroll key from disk; 3. wybierz partycję EFI, potem EFI, HAK, charon-mok.cer; 4. Continue, potem Yes; 5. Reboot. Kolejność pozycji bywa różna w wersjach shim (niesprawdzone na komputerze).' 'At the next start shim opens MokManager (blue screen, no speech): 1. press a key within 10 s; 2. Enroll key from disk; 3. the EFI partition, EFI, HAK, charon-mok.cer; 4. Continue, then Yes; 5. Reboot. Item order differs between shim versions (not tried on a computer).'
     }
-    if (-not $withReader) { return }
+    if (-not $withReader) { Move-FirstEntry; return }
     # r399: and the reader outside Charon, as in -Mode Reader.
     $script:DriverFile = '\EFI\HAK\CHARONVOICE.EFI'; $script:Description = 'Charon voice'
 }
@@ -403,3 +425,4 @@ if ($Sign) {
     Say ("Secure Boot: dopisz certyfikat do listy db w ustawieniach firmware (np. Secure Boot > Key Management > db > Append / Enroll from file). Plik: \EFI\HAK\charon-db.cer na partycji EFI albo charon-db.cer obok instalatora. Odcisk SHA-1: {0}. Klucze Microsoftu zostaw. Do tego czasu firmware pomija sterownik i komputer startuje bez mowy." -f $certificate.Thumbprint) `
         ("Secure Boot: add the certificate to the db list in firmware setup (e.g. Secure Boot > Key Management > db > Append / Enroll from file). File: \EFI\HAK\charon-db.cer on the EFI partition or charon-db.cer next to the installer. SHA-1 thumbprint: {0}. Keep Microsoft's keys. Until then firmware skips the driver and the computer starts without speech." -f $certificate.Thumbprint)
 }
+Move-FirstEntry

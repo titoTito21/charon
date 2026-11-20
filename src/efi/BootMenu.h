@@ -14,12 +14,14 @@
 #include "HiiMenu.h"
 #include "OwnedShellLauncher.h"
 #include "CharonResident.h"
+#include "CharonMenuVoiceMark.h"
 #include "CharonReaderControl.h"
 #include "CharonManagerProbe.h"
 #include "CharonFirmwareBrowser.h"
 #include "CharonFileBrowser.h"
 #include "CharonMedia.h"
 #include "CharonSynthHost.h"
+#include "CharonWorkspace.h"
 
 namespace hakefi {
 inline const char16_t* SettingsSlot(unsigned slot) {return slot?u"\\EFI\\HAK\\charon-settings-b.bin":u"\\EFI\\HAK\\charon-settings-a.bin";}
@@ -459,7 +461,7 @@ inline efi_status SaveContinue(efi_file_protocol* root,const MenuEntry& entry) {
 }
 inline void Append(char16_t* out,size_t capacity,const char16_t* text) {
     size_t at=0;while(at+1<capacity && out[at])++at;
-    while(at+1<capacity && *text)out[at++]=*text++;
+    while(at+1<capacity && text && *text)out[at++]=*text++;   // a missing wording (nullptr) adds nothing
     if(at && out[at-1]>=0xd800 && out[at-1]<=0xdbff)--at;
     out[at]=0;
 }
@@ -527,6 +529,7 @@ inline void DisplayRoles(const char16_t* text,char16_t* out,size_t capacity) {
         {u", okno wyboru",u"▼"},{u" Okno wyboru",u"▼"},{u", popup",u"▼"},{u" Popup",u"▼"},
         {u", suwak",u"◄►"},{u" Suwak",u"◄►"},{u", slider",u"◄►"},{u" Slider",u"◄►"},
         {u", pole wyboru, zaznaczone",u"[X]"},{u", pole wyboru, niezaznaczone",u"[ ]"},{u", check box, checked",u"[X]"},{u", check box, not checked",u"[ ]"},
+        {u", lista rozwijana",u"▼"},{u", combo box",u"▼"},   // before the shorter ", lista"
         {u", lista",u"►"},{u", list",u"►"}};
     size_t at=0;const char16_t* icon=nullptr;
     for(size_t i=0;text[i] && at+1<capacity;) {
@@ -570,7 +573,7 @@ inline uint8_t residentPolish=0,residentVerbosity=1,residentProgress=1;
 // r382: the screen reader's voice: rate | pitch<<8 | volume<<16 | effects volume<<24.
 inline uint32_t residentVoice=0;
 inline uint16_t residentMessageVoice=14|(10<<8);   // r389: boot-message voice rate | pitch<<8 (tenths)
-inline uint32_t residentReading=1|(1<<2)|(47<<8)|(60u<<14)|(25u<<20);  // r390/r393: PackReading of the reader settings
+inline uint32_t residentReading=1|(1<<2)|(47<<8)|(60u<<14)|(25u<<20)|(1u<<29);  // r390/r393: PackReading of the reader settings
 // r390: one place for the settings <-> menu model copies (were written out four times).
 inline void ModelFromSettings(MenuModel& model,const CharSettings& settings) {
     model.wrap=settings.wrap;model.language=settings.language;model.sounds=settings.sounds;
@@ -597,6 +600,10 @@ struct LaunchSpeech {
     bool pl=false,explicitMessages=false,speechOk=false,resident=false,driverResumed=false;
     uint8_t verbosity=1,progress=1;
 };
+// r401: the reader serving review keys on Charon's own screens (menu, settings,
+// workspace, browsers), and whether the menu loop should switch it on again.
+inline LaunchSpeech& MenuReview() {static LaunchSpeech speech;return speech;}
+inline bool& MenuReviewWanted() {static bool wanted=true;return wanted;}
 inline void LaunchSay(LaunchSpeech& speech,const char16_t* text,unsigned maximumMs) {
     if(!speech.speechOk || !speech.voice)return;
     char16_t styled[1024]={};FormatCharonMessage(text,styled,1024,speech.explicitMessages,speech.pl,false);
@@ -665,13 +672,13 @@ inline efi_status EFIAPI AppReaderResume(ReaderControl*,const char* language,uin
     u.polish=(polish&1)!=0;u.explicitMessages=(polish&2)!=0;u.positions=(polish&4)==0;u.timers=uint8_t((polish>>3)&3);u.verbosity=verbosity;u.progress=progress;
     u.rate=uint8_t(voice);u.pitch=uint8_t(voice>>8);u.volume=uint8_t(voice>>16);u.effectsVolume=uint8_t(voice>>24);
     u.punctuation=uint8_t(reading&3);u.capitals=uint8_t((reading>>2)&7);u.screenLanguage=uint8_t((reading>>5)&3);u.readerFlags=uint8_t((reading>>8)&63);
-    u.formatFlags=ReadingFormat(reading);u.stereo=ReadingStereo(reading);const uint8_t extra=uint8_t((reading>>20)&31);u.managerFlags=uint8_t(extra&7);u.brailleAttributes=(extra&8)!=0;u.dictionary=(extra&16)!=0;
+    u.formatFlags=ReadingFormat(reading);u.stereo=ReadingStereo(reading);const uint8_t extra=uint8_t((reading>>20)&31);u.managerFlags=uint8_t(extra&7);u.brailleAttributes=(extra&8)!=0;u.dictionary=(extra&16)!=0;u.linger=(reading>>29)&1;
     return residentReader.Resume(&u);
 }
 inline void PublishAppReaderControl(MenuVoice* voice,AudioEffects* effects) {
     auto* boot=systemTable->BootServices;
     if(appReaderControlHandle || !voice || FindReaderControl(boot))return;
-    appReaderControl={1,sizeof(ReaderControl),charonRelease,0,voice,effects,AppReaderSuspend,AppReaderResume};
+    appReaderControl={1,sizeof(ReaderControl),charonRelease,1,voice,effects,AppReaderSuspend,AppReaderResume};   // r401: reserved=1 marks an outer Charon (not the firmware driver)
     efi_handle handle=nullptr;
     if(boot->InstallProtocolInterface(&handle,&readerControlGuid,EFI_NATIVE_INTERFACE,&appReaderControl)==EFI_SUCCESS)appReaderControlHandle=handle;
 }
@@ -679,7 +686,44 @@ inline void WithdrawAppReaderControl() {
     if(!appReaderControlHandle)return;
     if(systemTable->BootServices->UninstallProtocolInterface(appReaderControlHandle,&readerControlGuid,&appReaderControl)==EFI_SUCCESS)appReaderControlHandle=nullptr;
 }
+// r401: the reader's options from the settings (shared by a program launch and by review in Charon's own dialogues).
+inline ResidentOptions MakeResidentOptions(const LaunchSpeech& speech) {
+        ResidentOptions options;options.voice=speech.voice;options.effects=speech.effects;
+        options.language[0]=speech.language[0];options.language[1]=speech.language[1];
+        options.polish=speech.pl;options.verbosity=speech.verbosity;options.progress=speech.progress;options.explicitMessages=speech.explicitMessages;
+        options.rate=uint8_t(residentVoice);options.pitch=uint8_t(residentVoice>>8);options.volume=uint8_t(residentVoice>>16);options.effectsVolume=uint8_t(residentVoice>>24);
+        options.positions=(entryDetail&4)!=0;options.timers=uint8_t((residentPolish>>3)&3);options.selfImage=charonSelfImage;
+        options.punctuation=uint8_t(residentReading&3);options.capitals=uint8_t((residentReading>>2)&7);options.screenLanguage=uint8_t((residentReading>>5)&3);options.readerFlags=uint8_t((residentReading>>8)&63);
+        options.formatFlags=ReadingFormat(residentReading);options.stereo=ReadingStereo(LaunchReading());{const uint8_t extra=uint8_t((LaunchReading()>>20)&31);options.managerFlags=uint8_t(extra&7);options.linger=(LaunchReading()>>29)&1;options.brailleAttributes=(extra&8)!=0;options.dictionary=(extra&16)!=0;}
+        return options;
+}
+// r401: screen review in Charon's own dialogues (the workspace installer):
+// the reader is switched on silent - Charon speaks itself - and serves only
+// its review keys, with the user's reader settings.
+inline bool ReviewReaderOn(LaunchSpeech& speech) {
+    if(speech.resident || speech.driverResumed)return true;
+    if(!speech.speechOk)return false;
+    // A Charon started by another Charon (through OpenCore, rEFInd...) speaks with the outer one's reader: no review mode there, as before r401.
+    if(residentDriver && residentDriver->reserved==1)return false;
+    if(residentDriver) {
+        const uint32_t reading=LaunchReading()&~(uint32_t(readerFlagAutoRead)<<8);
+        if(residentDriver->Resume(residentDriver,speech.language,uint8_t((speech.pl?1:0)|(speech.explicitMessages?2:0)|((entryDetail&4)?0:4)|0x20),
+            speech.verbosity,0,residentVoice,reading)==EFI_SUCCESS) {speech.driverResumed=true;return true;}
+        return false;
+    }
+    ResidentOptions options=MakeResidentOptions(speech);
+    options.readerFlags=uint8_t(options.readerFlags&~readerFlagAutoRead);options.reviewOnly=true;options.timers=0;options.progress=0;
+    if(reviewReader.Install(systemTable,options)==EFI_SUCCESS) {speech.resident=true;return true;}
+    return false;
+}
+inline void ReviewReaderOff(LaunchSpeech& speech) {
+    if(speech.driverResumed && residentDriver) {residentDriver->Suspend(residentDriver);speech.driverResumed=false;}
+    if(speech.resident) {reviewReader.Uninstall();speech.resident=false;}
+}
 inline bool LaunchActivateReader(LaunchSpeech& speech) {
+    // r401: a program is starting: the review-only reader of Charon's screens
+    // makes room for the full reader; the menu loop switches it back on later.
+    if(&speech!=&MenuReview()) {ReviewReaderOff(MenuReview());MenuReviewWanted()=true;}
     if(speech.resident || speech.driverResumed)return true;
     // r389: the boot-message voice (driver or in-image provider).
     {AudioEffects* fx=residentDriver?residentDriver->effects:speech.effects;
@@ -689,13 +733,7 @@ inline bool LaunchActivateReader(LaunchSpeech& speech) {
             speech.verbosity,speech.progress,residentVoice,LaunchReading())==EFI_SUCCESS) {speech.driverResumed=true;return true;}
     }
     if(speech.speechOk && !residentDriver) {
-        ResidentOptions options;options.voice=speech.voice;options.effects=speech.effects;
-        options.language[0]=speech.language[0];options.language[1]=speech.language[1];
-        options.polish=speech.pl;options.verbosity=speech.verbosity;options.progress=speech.progress;options.explicitMessages=speech.explicitMessages;
-        options.rate=uint8_t(residentVoice);options.pitch=uint8_t(residentVoice>>8);options.volume=uint8_t(residentVoice>>16);options.effectsVolume=uint8_t(residentVoice>>24);
-        options.positions=(entryDetail&4)!=0;options.timers=uint8_t((residentPolish>>3)&3);options.selfImage=charonSelfImage;
-        options.punctuation=uint8_t(residentReading&3);options.capitals=uint8_t((residentReading>>2)&7);options.screenLanguage=uint8_t((residentReading>>5)&3);options.readerFlags=uint8_t((residentReading>>8)&63);
-        options.formatFlags=ReadingFormat(residentReading);options.stereo=ReadingStereo(LaunchReading());{const uint8_t extra=uint8_t((LaunchReading()>>20)&31);options.managerFlags=uint8_t(extra&7);options.brailleAttributes=(extra&8)!=0;options.dictionary=(extra&16)!=0;}
+        ResidentOptions options=MakeResidentOptions(speech);
         if(residentReader.Install(systemTable,options)==EFI_SUCCESS) {speech.resident=true;PublishAppReaderControl(speech.voice,speech.effects);return true;}
     }
     return false;
@@ -939,7 +977,7 @@ inline efi_status RunBootMenu(efi_handle self,efi_file_protocol* root,uint16_t c
     const bool settingsInvalid=settingsStatus!=EFI_SUCCESS && settingsStatus!=EFI_NOT_FOUND;
     ModelFromSettings(model,settings);
     // r393: synthesizer add-ons on the disk; the chosen one is loaded (TVox otherwise).
-    menuSynthCount=synths::Scan(boot,root,menuSynths,synths::maxSynths);model.synthCount=menuSynthCount;
+    menuSynthCount=synths::ScanAll(boot,inventory.selfDevice,root,menuSynths,synths::maxSynths);model.synthCount=menuSynthCount;
     for(size_t i=0;i<menuSynthCount;++i) {model.synthKeys[i]=menuSynths[i].key;model.synthVoiceCounts[i]=uint8_t(menuSynths[i].voices);}
     char16_t synthReport[200]={};bool synthFailed=false;
     if(settings.synthKey && effects && effects->SetSynth)synthFailed=!effects->SetSynth(effects->context,settings.synthKey,settings.synthVoice,synthReport,200);
@@ -951,7 +989,7 @@ inline efi_status RunBootMenu(efi_handle self,efi_file_protocol* root,uint16_t c
     auto cue=[&](MenuCue event) {if(effectsAvailable && settings.sounds && event!=MenuCue::none)effects->QueueCue(effects->context,event);};
     char locale[64]={};InstallationLocale(root,locale);
     bool pl=PolishSettings(settings,locale);char language[3]={pl?'p':'e',pl?'l':'n',0};
-    if(!pl) {inventory.pl=false;if(inventory.count>inventory.firmwareCount)status=inventory.Refresh(current);}
+    if(!pl) {inventory.pl=false;if(inventory.count>inventory.firmwareCount) {status=inventory.Refresh(current);inventoryStatus=status;model.devices=inventory.count;}}
     auto shareReading=[&]() {
         residentLanguage[0]=language[0];residentLanguage[1]=language[1];residentPolish=uint8_t((pl?1:0)|(settings.explicitMessages?2:0)|((settings.detail&4)?0:4)|((settings.timers&3)<<3));
         residentVerbosity=settings.verbosity?settings.verbosity:1;residentProgress=settings.progress;
@@ -974,8 +1012,19 @@ inline efi_status RunBootMenu(efi_handle self,efi_file_protocol* root,uint16_t c
     if(inventoryStatus!=EFI_SUCCESS) {Append(statusText,512,BootMessage(BootProblem::inventoryRead,pl,settings.explicitMessages));AppendBootStatus(statusText,512,inventoryStatus);}
     else if(!inventory.count)Append(statusText,512,BootMessage(BootProblem::emptyInventory,pl,settings.explicitMessages));
     if(settingsInvalid)Append(statusText,512,pl?u"Nieprawidłowe ustawienia; użyto domyślnych. Zapis zablokowany.":u"Invalid settings; defaults loaded. Saving blocked.");
+    bool muteAnnounce=false;   // r400: the workspace reports a program's end itself
+    // r401: every screen of Charon answers the reader's shortcuts (review keys,
+    // Alt+arrows, Insert layout, numpad): the reader runs silent beside the menu.
+    auto reviewOn=[&]() {
+        auto& m=MenuReview();ReviewReaderOff(m);m=LaunchSpeech{};m.voice=voice;m.effects=effects;m.language=language;m.pl=pl;
+        m.explicitMessages=settings.explicitMessages;m.verbosity=settings.verbosity;m.progress=settings.progress;
+        m.speechOk=voice && !speechFailed && settings.verbosity;
+        const bool on=ReviewReaderOn(m);
+        ApplyVoiceProfile(effects,settings.rate,settings.pitch,settings.speechVolume,settings.effectsVolume);
+        return on;
+    };
     auto announce=[&](const char16_t* text,bool authored=false) {
-        if(voice && !speechFailed) {char16_t styled[1400]={};
+        if(voice && !speechFailed && !muteAnnounce) {char16_t styled[1400]={};
             // r382: on the screen reader page Charon speaks with the reader's voice.
             if(model.page==MenuPage::reader)ApplyVoiceProfile(effects,model.readerRate,model.readerPitch,model.readerVolume,settings.effectsVolume);
             else ApplyVoiceProfile(effects,settings.rate,settings.pitch,settings.speechVolume,settings.effectsVolume);
@@ -985,9 +1034,13 @@ inline efi_status RunBootMenu(efi_handle self,efi_file_protocol* root,uint16_t c
             if(voice->SpeakUtf8(voice,language,utf8)!=EFI_SUCCESS) {
                 speechFailed=true;render=true;}}
     };
+    // r400: a sound device that fails to stop is a broken sound device, not a
+    // reason to keep the computer from starting: the failure is recorded and
+    // the transfer goes on without speech.
     auto stop=[&]() {
         const auto stopped=voice?voice->Stop(voice):EFI_SUCCESS;
-        return stopped==EFI_SUCCESS?CleanupCharonShell():stopped;
+        if(stopped!=EFI_SUCCESS) {speechFailed=true;charontrace::Value("CHARON stop failed",uint64_t(stopped));}
+        return CleanupCharonShell();
     };
     auto message=[&](const char16_t* text) {statusText[0]=0;Append(statusText,512,text);announce(text);render=true;sayFocus=false;};
     auto popup=[&](const char16_t* text) {
@@ -1020,7 +1073,7 @@ inline efi_status RunBootMenu(efi_handle self,efi_file_protocol* root,uint16_t c
                     pl ? u"Kolejność rozruchu, podmenu" : u"Boot order, submenu",
                     pl ? u"Ustawienia Charona, podmenu" : u"Charon settings, submenu",
                     pl ? u"Ustawienia UEFI, podmenu" : u"UEFI settings, submenu",
-                    u"UEFI Shell",pl ? u"Narzędzia systemowe, podmenu" : u"System tools, submenu",pl ? u"Kontynuuj" : u"Continue"};
+                    u"UEFI Shell",pl ? u"Środowisko Charona: programy, pliki, edytor" : u"Charon workspace: programs, files, editor",pl ? u"Narzędzia systemowe, podmenu" : u"System tools, submenu",pl ? u"Kontynuuj" : u"Continue"};
                 Append(label,capacity,settings.explicitMessages?ExplicitMenuLabel(model.page,row,pl):labels[row]);
                 if(row==mainContinue) {uint16_t id;size_t size;
                     auto target=ReadContinue(root,id,size);
@@ -1029,7 +1082,7 @@ inline efi_status RunBootMenu(efi_handle self,efi_file_protocol* root,uint16_t c
                     else if(target==EFI_SUCCESS) {MenuEntry entry{id,continueBytes+14,size};char16_t name[300];EntryLabel(entry,pl,name,300);Append(label,capacity,u" — ");Append(label,capacity,name);}
                     else Append(label,capacity,pl ? u" — nieprawidłowy zapisany cel" : u" — invalid saved target");}
             } else if(model.page==MenuPage::devices) {
-                if(inventory.count) {EntryLabel(inventory.entries[row],pl,label,capacity);if(settings.detail&4)position(row,inventory.count);}
+                if(inventory.count) {if(row<inventory.count)EntryLabel(inventory.entries[row],pl,label,capacity);if(settings.detail&4)position(row,inventory.count);}
                 else Append(label,capacity,settings.explicitMessages?(pl?u"Brak tych cholernych poprawnych wpisów rozruchowych":u"No damn valid boot entries"):
                     (pl ? u"Brak prawidłowych wpisów rozruchowych" : u"No valid boot entries"));
             } else if(model.page==MenuPage::settings) {
@@ -1059,7 +1112,7 @@ inline efi_status RunBootMenu(efi_handle self,efi_file_protocol* root,uint16_t c
                     pl?u"Syntezator":u"Synthesizer",pl?u"Głos syntezatora":u"Synthesizer voice"};
                 pick(labels[row]);
                 if(row==setSynth || row==setSynthVoice) {   // r396
-                    Append(label,capacity,pl?u", okno wyboru, ":u", combo box, ");
+                    Append(label,capacity,pl?u", lista rozwijana, ":u", combo box, ");
                     const synths::Info* info=synths::Find(menuSynths,menuSynthCount,model.synthKey);
                     if(!info)Append(label,capacity,row==setSynth?(pl?u"TVox, wbudowany":u"TVox, built in"):u"TVox");
                     else if(row==setSynth) {char16_t name[48];synths::Wide(info->name,sizeof(info->name),name,48);Append(label,capacity,name);Append(label,capacity,pl?u", dodatek":u", add-on");}
@@ -1143,22 +1196,24 @@ inline efi_status RunBootMenu(efi_handle self,efi_file_protocol* root,uint16_t c
                     pl?u"Tekst poza zaznaczeniem drugim głosem":u"Text outside the selection on the second voice",pl?u"Czytaj wpisywane znaki":u"Speak typed characters",
                     pl?u"Czytaj wpisywane słowa":u"Speak typed words",pl?u"Czytaj znak pod kursorem po strzałkach":u"Speak the character at the cursor after arrows",
                     pl?u"Automatyczne czytanie zmian ekranu":u"Automatic reading of screen changes",pl?u"Porady w menu Charona":u"Hints in Charon's menu",
-                    pl?u"Ukryte menu menedżerów rozruchu":u"Hidden boot-manager menus",pl?u"Zatrzymuj odliczanie menedżerów rozruchu":u"Stop boot-manager countdowns",
+                    pl?u"Ukryte menu menedżerów rozruchu":u"Hidden boot-manager menus",pl?u"Zatrzymuj odliczanie menedżerów rozruchu":u"Stop boot-manager countdowns",pl?u"Dźwięk wczytywania po przekazaniu sterowania systemowi":u"Loading sound after the system takes over",
                     pl?u"Formatowanie tekstu, podmenu":u"Text formatting, submenu",
                     pl?u"Syntezator":u"Synthesizer",pl?u"Głos syntezatora":u"Synthesizer voice"};
                 pick(labels[row]);
                 if(row==readerSynthRow || row==readerSynthVoiceRow) {
                     // r393 synthesizer add-ons (\EFI\HAK\synths)
-                    Append(label,capacity,pl?u", okno wyboru, ":u", combo box, ");
+                    Append(label,capacity,pl?u", lista rozwijana, ":u", combo box, ");
                     const synths::Info* info=synths::Find(menuSynths,menuSynthCount,model.synthKey);
                     if(!info)Append(label,capacity,row==readerSynthRow?(pl?u"TVox, wbudowany":u"TVox, built in"):u"TVox");
                     else if(row==readerSynthRow) {char16_t name[48];synths::Wide(info->name,sizeof(info->name),name,48);Append(label,capacity,name);Append(label,capacity,pl?u", dodatek":u", add-on");}
                     else Append(label,capacity,info->voiceName[model.synthVoice<info->voices?model.synthVoice:0]);
                 } else if(row==readerHiddenMenuRow) {
                     static const char16_t* hiddenPl[]={u"wyłączone",u"ogłoś i czekaj 2 sekundy",u"zawsze odsłaniaj"};static const char16_t* hiddenEn[]={u"off",u"announce and wait 2 seconds",u"always reveal"};
-                    Append(label,capacity,pl?u", okno wyboru, ":u", combo box, ");Append(label,capacity,(pl?hiddenPl:hiddenEn)[(model.readerExtra&3)<=2?(model.readerExtra&3):1]);
+                    Append(label,capacity,pl?u", lista rozwijana, ":u", combo box, ");Append(label,capacity,(pl?hiddenPl:hiddenEn)[(model.readerExtra&3)<=2?(model.readerExtra&3):1]);
                 } else if(row==readerStopCountdownRow) {
                     Append(label,capacity,(model.readerExtra&4)?(pl?u", pole wyboru, zaznaczone":u", check box, checked"):(pl?u", pole wyboru, niezaznaczone":u", check box, not checked"));
+                } else if(row==readerLingerRow) {
+                    Append(label,capacity,(model.readerExtra&128)?(pl?u", pole wyboru, zaznaczone":u", check box, checked"):(pl?u", pole wyboru, niezaznaczone":u", check box, not checked"));
                 } else if(row==readerFormattingRow) {
                 } else if(row==readerVerbosityRow || row==readerPunctuationRow || row==readerLanguageRow) {
                     static const char16_t* verbosityPl[]={u"wyłączony",u"krótko",u"szczegółowo"};static const char16_t* verbosityEn[]={u"off",u"short",u"detailed"};
@@ -1166,7 +1221,7 @@ inline efi_status RunBootMenu(efi_handle self,efi_file_protocol* root,uint16_t c
                     static const char16_t* langPl[]={u"automatycznie",u"jak menu",u"angielski",u"polski"};static const char16_t* langEn[]={u"automatic",u"as the menu",u"English",u"Polish"};
                     const char16_t* value=row==readerVerbosityRow?(pl?verbosityPl:verbosityEn)[model.verbosity<=2?model.verbosity:1]
                         :row==readerPunctuationRow?(pl?levelPl:levelEn)[model.punctuation&3]:(pl?langPl:langEn)[model.screenLanguage&3];
-                    Append(label,capacity,pl?u", okno wyboru, ":u", combo box, ");Append(label,capacity,value);
+                    Append(label,capacity,pl?u", lista rozwijana, ":u", combo box, ");Append(label,capacity,value);
                 } else if(ReaderCheckRow(row)) {
                     static const uint8_t bits[]={1,2,16,8,4,32};
                     const bool on=row<=readerCapPitchRow?(model.capitals&(1u<<(row-readerCapSayRow)))!=0:(model.readerFlags&bits[row-readerMessagesRow])!=0;
@@ -1323,6 +1378,7 @@ inline efi_status RunBootMenu(efi_handle self,efi_file_protocol* root,uint16_t c
     // Speak the farewell, let it finish (bounded), stop audio, then reset.
     // ResetSystem does not return on success; a return is reported.
     auto powerOff=[&](efi_reset_type type,const char16_t* text)->efi_status {
+        if(effects && effects->Beep && settings.sounds)effects->Beep(effects->context,7999,320);   // r400: falling tones, the reverse of the start sound
         announce(text);
         if(voice && !speechFailed)for(unsigned i=0;i<800;++i) {
             if(effects && effects->SpeechIdle) {if(i>20 && effects->SpeechIdle(effects->context))break;}
@@ -1411,8 +1467,6 @@ inline efi_status RunBootMenu(efi_handle self,efi_file_protocol* root,uint16_t c
     } else if(status!=EFI_SUCCESS) {
         problem(status==EFI_NOT_FOUND?(ContinueWasConfigured(root)?BootProblem::continueMissing:BootProblem::nothingToStart):
             status==EFI_INVALID_PARAMETER?BootProblem::continueInvalid:BootProblem::continueRead,status);
-    } else if(speechFailed) {
-        problem(BootProblem::audioStop,EFI_DEVICE_ERROR);
     } else {
         efi_event deadline=nullptr;
         status=boot->CreateEvent(EVT_TIMER,TPL_APPLICATION,nullptr,nullptr,&deadline);
@@ -1448,7 +1502,20 @@ inline efi_status RunBootMenu(efi_handle self,efi_file_protocol* root,uint16_t c
                 presented.Present(MenuPage::main,settings.sounds,cue);
                 Say(u"\r\n");
             }
-            if(speechFailed)problem(BootProblem::audioStop,EFI_DEVICE_ERROR);
+            // r400: without working speech the default system still starts after
+            // the usual wait (a key opens the menu); silence must not strand the user.
+            auto silentContinue=[&]() {
+                Say(pl?u"Brak mowy; system uruchomi się sam. Dowolny klawisz otwiera menu.\r\n":u"No speech; the system starts by itself. Any key opens the menu.\r\n");
+                unsigned seconds=settings.autoSeconds && settings.autoSeconds!=autoNever?settings.autoSeconds:3;if(seconds>15)seconds=15;
+                bool pressed=false;
+                for(unsigned i=0;i<seconds*10 && !pressed;++i) {
+                    efi_input_key key{};if(input && input->ReadKeyStroke(input,&key)==EFI_SUCCESS)pressed=true;
+                    else boot->Stall(100000);
+                }
+                if(pressed) {presented.RequestMainMenu();sayFocus=true;return;}
+                residentQuickBoot=true;launch(autoId,continueBytes+14,autoSize,nullptr,nullptr);residentQuickBoot=false;
+            };
+            if(speechFailed)silentContinue();
             else {
                 EfiAutoContinue gate{boot,input,voice,timer,deadline};
                 gate.effects=effects;gate.sounds=settings.sounds;gate.timers=settings.timers;
@@ -1459,7 +1526,7 @@ inline efi_status RunBootMenu(efi_handle self,efi_file_protocol* root,uint16_t c
                 if(result==AutoContinueResult::handoff) {
                     residentQuickBoot=true;DrainKeys(systemTable);launch(autoId,continueBytes+14,autoSize,EfiAutoContinue::BeforeTransfer,&gate);residentQuickBoot=false;
                     if(gate.cancelled) {presented.RequestMainMenu();sayFocus=true;}
-                } else if(result==AutoContinueResult::failed)problem(BootProblem::audioStop,gate.error);
+                } else if(result==AutoContinueResult::failed) {speechFailed=true;silentContinue();}
                 else {presented.RequestMainMenu();sayFocus=true;}
             }
         }
@@ -1482,6 +1549,7 @@ inline efi_status RunBootMenu(efi_handle self,efi_file_protocol* root,uint16_t c
         if(idle)boot->CloseEvent(idle);
         idle=nullptr;}
     while(!done) {
+        if(MenuReviewWanted() && !MenuReview().resident && !MenuReview().driverResumed) {MenuReviewWanted()=false;reviewOn();}
         if(render) {
             const bool failedBeforeSpeech=speechFailed;
             if(model.page==MenuPage::devices && inventory.count)selected=model.index;
@@ -1492,12 +1560,7 @@ inline efi_status RunBootMenu(efi_handle self,efi_file_protocol* root,uint16_t c
             // monotone. Guarded by flagVoice (formatFlags bit 0); the marker is
             // the reader's ESC 'f' + 12-byte payload, parsed by the voice engine.
             if((settings.formatFlags&1u) && model.page!=MenuPage::reader) {
-                int rangeStep=4-int(model.index)*8/12;if(rangeStep<-4)rangeStep=-4;if(rangeStep>4)rangeStep=4;
-                char16_t m[16];size_t w=0;
-                m[w++]=0x001b;m[w++]=u'f';
-                m[w++]=u'm';m[w++]=u'm';m[w++]=u'm';m[w++]=u'0';m[w++]=u'-';m[w++]=u'a';
-                m[w++]=char16_t(u'm'+rangeStep);m[w++]=u'm';m[w++]=u'm';m[w++]=u'0';m[w++]=u'-';m[w++]=u'-';m[w++]=u' ';
-                for(size_t i=0;i<w;++i)label[i]=m[i];label[w]=0;
+                const size_t w=menuvoice::PositionMark(model.index,label);label[w]=0;   // r401: shared with the workspace (CharonMenuVoiceMark.h)
                 labelFor(model.index,label+w,512-w);
             } else labelFor(model.index,label,512);
             // Replace speech before potentially slow firmware console painting.
@@ -1581,7 +1644,9 @@ inline efi_status RunBootMenu(efi_handle self,efi_file_protocol* root,uint16_t c
                 mediaSig=sig;ConnectRemovable(boot);
                 static uint8_t before[32][640];size_t beforeCount=0;
                 for(size_t i=inventory.firmwareCount;i<inventory.count && beforeCount<32;++i) {size_t n=inventory.entries[i].size<640?inventory.entries[i].size:640;memset(before[beforeCount],0,640);memcpy(before[beforeCount++],inventory.entries[i].data,n);}
-                if(inventory.Refresh(current)==EFI_SUCCESS) {
+                const auto mediaRefreshed=inventory.Refresh(current);
+                if(mediaRefreshed!=EFI_SUCCESS) {model.devices=inventory.count;if(model.page==MenuPage::devices) {model.index=0;render=true;}}   // a failed refresh clears the inventory
+                if(mediaRefreshed==EFI_SUCCESS) {
                     char16_t text[900]={};
                     auto known=[&](const uint8_t* a,size_t n,const uint8_t* const* list,size_t listCount)->bool {
                         for(size_t k=0;k<listCount;++k)if(Same(a,list[k],n<640?n:640))return true;return false;};
@@ -1678,6 +1743,7 @@ inline efi_status RunBootMenu(efi_handle self,efi_file_protocol* root,uint16_t c
                 }
                 cue(TransitionCue(before,eventKey,action,model));
                 statusText[0]=0;Append(statusText,512,pl?u"Ustawienia zapisane":u"Settings saved");
+                ReviewReaderOff(MenuReview());MenuReviewWanted()=true;   // r401: the review reader takes the new settings
             } else {ModelFromSettings(model,settings);
                 popup(pl?u"Nie potwierdzono zapisu; bieżące ustawienia niezmienione.":u"Save not confirmed; current settings unchanged.");}
         } else if(action==MenuAction::openDevices && !inventory.count) {
@@ -1687,6 +1753,41 @@ inline efi_status RunBootMenu(efi_handle self,efi_file_protocol* root,uint16_t c
             status=RunHiiMenu(systemTable,speechFailed?nullptr:voice,effects,pl,settings.sounds,settings.explicitMessages);
             render=true;sayFocus=true;
             if(status!=EFI_SUCCESS)popup(pl?u"Przeglądarka ustawień UEFI zakończyła się błędem.":u"UEFI settings browser returned an error.");
+        } else if(action==MenuAction::openWorkspace) {
+            // r400: the Charon workspace (CharonWorkspace.h): programs, files,
+            // packages, the editor. It borrows the menu's voice and launcher.
+            struct Bridge {efi_handle self;efi_file_protocol* root;decltype(announce)* announce;decltype(launch)* launch;MenuModel* model;char16_t* popupText;bool* watchdog;bool* mute;decltype(reviewOn)* reviewOn;};
+            Bridge bridge{self,root,&announce,&launch,&model,popupText,&launchWatchdog,&muteAnnounce,&reviewOn};
+            ws::Host host{};host.system=systemTable;host.boot=boot;host.root=root;host.selfDevice=inventory.selfDevice;host.image=self;
+            host.voice=speechFailed?nullptr:voice;host.effects=effects;host.pl=pl;host.sounds=settings.sounds && effectsAvailable;
+            host.positions=(settings.detail&4)!=0;host.context=&bridge;
+            host.say=[](void* c,const char16_t* text) {(*static_cast<Bridge*>(c)->announce)(text,false);};
+            // r401: progress as everywhere in Charon, and review of Charon's own dialogues.
+            host.progress=settings.progress;host.explicitMessages=settings.explicitMessages;host.formatFlags=settings.formatFlags;
+            host.sayAuthored=[](void* c,const char16_t* text) {(*static_cast<Bridge*>(c)->announce)(text,true);};
+            host.review=[](void* c,bool on) {
+                if(!on)return false;   // the reader stays for the whole of Charon; a program launch replaces it
+                auto& b=*static_cast<Bridge*>(c);
+                if(!MenuReview().resident && !MenuReview().driverResumed) {MenuReviewWanted()=false;(*b.reviewOn)();}
+                return MenuReview().resident || MenuReview().driverResumed;};
+            host.launch=[](void* c,const char16_t*,const uint8_t* option,size_t size,char16_t* report,size_t capacity) {
+                auto& b=*static_cast<Bridge*>(c);const MenuModel before=*b.model;b.popupText[0]=0;
+                *b.watchdog=false;*b.mute=true;(*b.launch)(mediaEntryId,option,size,nullptr,nullptr);*b.mute=false;*b.watchdog=true;
+                size_t k=0;for(;b.popupText[k] && k+1<capacity;++k)report[k]=b.popupText[k];
+                report[k]=0;b.popupText[0]=0;*b.model=before;};
+            host.ensureReader=[](void* c) {auto& b=*static_cast<Bridge*>(c);uint16_t id;return FindFirmwareVoice(id)==EFI_SUCCESS || InstallFirmwareVoice(b.self,b.root)==EFI_SUCCESS;};
+            const auto leave=ws::Run(host);
+            popupText[0]=0;statusText[0]=0;model.page=MenuPage::main;model.index=mainWorkspace;
+            switch(leave) {
+                case ws::Leave::devices:model.index=mainDevices;break;case ws::Leave::order:model.index=mainOrder;break;
+                case ws::Leave::settings:model.index=mainSettings;break;case ws::Leave::firmware:model.index=mainFirmware;break;
+                case ws::Leave::shell:model.index=mainShell;break;case ws::Leave::tools:model.index=mainTools;break;
+                case ws::Leave::continueBoot:model.index=mainContinue;break;
+                case ws::Leave::restart:model.page=MenuPage::tools;model.index=toolRestart;break;
+                case ws::Leave::shutdown:model.page=MenuPage::tools;model.index=toolShutdown;break;
+                default:break;
+            }
+            render=true;sayFocus=true;
         } else if(action==MenuAction::openShell) {
             status=StartCharonShell(boot,self,root,voice);
             char16_t result[256]={};Append(result,256,status==EFI_SUCCESS?(pl?u"Powrót z powłoki UEFI.":u"Returned from UEFI Shell."):(pl?u"Nie udało się uruchomić lub zamknąć powłoki UEFI.":u"UEFI Shell launch or cleanup failed."));
@@ -1873,7 +1974,7 @@ inline efi_status RunBootMenu(efi_handle self,efi_file_protocol* root,uint16_t c
                     launchWatchdog=false;launch(mediaEntryId,data,size,nullptr,nullptr);launchWatchdog=true;
                     boot->FreePool(data);started=true;
                     // The program may have changed the disk: read the folder again.
-                    files::LoadFolder(boot,pl,list,browser);model.listCount=list.count;model.index=keep<list.count?keep:0;
+                    files::LoadFolder(boot,pl,list,browser);model.listCount=list.count;(model.page==MenuPage::notice?model.noticeIndex:model.index)=keep<list.count?keep:0;   // launch() left its message open: the list row is the notice's return row
                 }
             }
             if(started)continue;

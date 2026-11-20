@@ -75,7 +75,7 @@ code=share/'edk2-x86_64-code.fd'
 shutil.copyfile(code,area/'firmware-code.fd');shutil.copyfile(share/'edk2-i386-vars.fd',area/'firmware-vars.fd')
 QMPC={}
 def run(disk,log,wait):
-    command=[cvm.QEMU,'-name','Charon-'+name,'-machine','q35,accel=tcg','-cpu','max','-smp','2','-m',os.environ.get('CHARON_MEM','512'),'-nic','none','-display','sdl']
+    command=[cvm.QEMU,'-name','Charon-'+name,'-machine','q35,accel='+{'whpx':'whpx,kernel-irqchip=off','tcg':'tcg'}[os.environ.get('CHARON_ACCEL','whpx')],'-cpu','max','-smp',os.environ.get('CHARON_SMP','4'),'-m',os.environ.get('CHARON_MEM','512'),'-nic','none','-display','sdl']
     command+=['-drive','if=pflash,format=raw,readonly=on,file=firmware-code.fd','-drive','if=pflash,format=raw,file=firmware-vars.fd',
         '-drive',f'if=ide,format=raw,file={disk},index=0','-audiodev','dsound,id=charon_audio','-device','ich9-intel-hda','-device','hda-duplex,audiodev=charon_audio',
         '-qmp',f'tcp:127.0.0.1:{cvm.PORT},server=on,wait=off','-serial',f'file:{log}',*(['-smbios',os.environ['CHARON_SMBIOS']] if os.environ.get('CHARON_SMBIOS') else []),*(['-smbios',os.environ['CHARON_SMBIOS0']] if os.environ.get('CHARON_SMBIOS0') else []),'-debugcon','file:'+log.replace('.log','-ovmf.log'),'-global','isa-debugcon.iobase=0x402']

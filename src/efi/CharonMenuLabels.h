@@ -26,6 +26,8 @@ inline const char16_t* ExplicitMenuLabel(MenuPage page,size_t row,bool pl) {
          {u"UEFI guts, submenu, for fuck’s sake.",u"Firmware settings, if you’ve got the balls, submenu, damn it.",u"Poking UEFI at your own bloody risk, submenu."}},
         {{u"Powłoka UEFI dla twardzieli, chuj z tym.",u"Wiersz poleceń UEFI, stukaj, ile wlezie, do kurwy nędzy.",u"Shell UEFI, czarna magia, kurwa mać."},
          {u"UEFI Shell for hard bastards.",u"UEFI command line, type your heart out, shit.",u"UEFI Shell, black fucking magic."}},
+        {{u"Środowisko Charona: programy, pliki i edytor, kurwa, cały ten kram.",u"Warsztat Charona, grzeb w plikach i odpalaj graty, do chuja.",u"Środowisko, czyli mały pierdolony Emacs na dnie firmware."},
+         {u"Charon workspace: programs, files and the editor, the whole fucking lot.",u"Charon’s workshop, dig through files and launch junk, damn it.",u"The workspace, a tiny bloody Emacs at the bottom of firmware."}},
         {{u"Narzędzia systemowe, skrzynka z łomem, podmenu, ja pierdolę.",u"Śrubokręty i młotki tego złomu, podmenu, do chuja.",u"Narzędzia, do jasnej anielki, podmenu, jebany świat."},
          {u"System tools, the crowbar box, submenu, you bastard.",u"Screwdrivers and hammers for this heap, submenu, bloody hell.",u"Tools, for crying out loud, submenu, goddammit."}},
         {{u"Jebać czekanie, odpalamy.",u"Dość gadania, startuj, w pizdu.",u"No to w drogę, idzie w pizdu."},

@@ -70,6 +70,10 @@ musl=['-I'+str(mathOut/'include'),'-I'+str(math/'musl/include'),'-I'+str(math/'m
 dspPrelude=['-include','stddef.h','-include','stdlib.h']
 boot=['-fshort-wchar','-Wall','-Wextra','-Werror','-DHAK_CHARON_LIVE_VOICE']+(['-DHAK_CHARON_TRACE'] if trace else [])+(['-DHAK_CHARON_VOICE_DRIVER','-Wno-unused-function'] if driver else [])
 boot+=os.environ.get('CHARON_EXTRA','').split()  # e.g. -DHAK_CHARON_READER_TRACE
+# r400: Charon's own HTTPS (BearSSL built by tools/build-charon-bearssl.py); the boot manager only, not the voice driver.
+bearssl=Path(os.environ.get('CHARON_BEARSSL',container/'work/charon-bearssl-uefi'))/'libcharon-bearssl.a'
+https=bearssl.exists() and not driver
+if https:boot+=['-DHAK_CHARON_HTTPS']
 units=[
  (clangxx,cxx+compat,'src/tts/tvox_native/tvox_freestanding.cpp','frontend'),
  (clang,target+['-mno-red-zone'],'src/tts/tvox_native/tvox_context_x64.S','context'),
@@ -90,7 +94,7 @@ def unit(item):
     compiler,options,source,name=item;out=build/(name+'.o')
     run([compiler,*options,'-c',root/source,'-o',out]);return out
 with ThreadPoolExecutor(max_workers=6) as pool:objects=list(pool.map(unit,units))
-run([lld,'-r','--gc-sections','--undefined=efi_main','-o',build/'closed.o',*objects,mathOut/'hak-math.o'])
+run([lld,'-r','--gc-sections','--undefined=efi_main','-o',build/'closed.o',*objects,mathOut/'hak-math.o',*([bearssl] if https else [])])
 undefined=run([nm,'-u',build/'closed.o']).strip()
 assert not undefined,'EFI graph has unresolved symbols:\n'+undefined
 # No C runtime runs global constructors in Charon: any .init_array/.ctors

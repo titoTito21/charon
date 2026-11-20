@@ -1,0 +1,244 @@
+CharonPC - Bochs inside Charon: plan after stage 1
+=================================================
+GPL-2.0-or-later (this text and the glue in src/pc). Bochs 3.1: LGPL-2.1-or-later.
+
+0. Where stage 1 stands
+-----------------------
+CHARONPC.EFI (tools/build-charon-bochs.py) is a UEFI application of about
+1.6 MB: Bochs 3.1 (unmodified sources, two added lines registering the
+"charon" display library), musl 1.2.5, libc++/libc++abi 23.1.5 without
+exceptions, and the glue in this folder:
+
+  bochs-config.h  hand-written config.h (CPU level 6 32-bit, FPU, APIC,
+                  i440FX PCI, PIIX IDE, ATAPI CD-ROM, ACPI, HPET, VGA/VBE,
+                  no SB16/NE2000/USB/Cirrus yet, no plugins, textconfig CI)
+  pc_efi.cpp      efi_main, memory (every block tracked and freed on exit),
+                  volume files, TSC clock calibrated on a firmware timer,
+                  log sinks, Charon's MenuVoice, console save/restore
+  pc_posix.c      the libc's OS side: fd table over EFI files, "rom:" memory
+                  images, stdio, time, stubs (sockets, mmap, signals)
+  pc_gui.cc       display library "charon": text modes -> Simple Text Output
+                  (changed cells only, CP437 -> Unicode), graphics -> GOP
+                  (8/15/16/24/32 bpp tiles, centred), keys from Simple Text
+                  Input Ex -> emulated PS/2 keyboard (US layout)
+  pc_bns.cpp      Braille 'n Speak on COM1 -> MenuVoice SpeakUtf8
+  pc_config.cpp   CHARONPC.CFG -> Bochs configuration (in memory, "rom:bochsrc")
+  pc_main.cc      calls Bochs's own bxmain()
+
+Bochs runs on a private 8 MiB stack (src/synth/common/synth_coro.c); abort()
+or exit() inside Bochs ends the run, never the firmware. The BIOS and the
+LGPL VGA BIOS of the Bochs release are built into the image.
+
+1. CHARONPC.CFG (the profile file the Charon installer writes)
+---------------------------------------------------------------
+Location: CharonDOS drive C, \PC\<PROFILE>\CHARONPC.CFG (C = folder "C" next
+to CHARONDOS.EFI). CharonDOS "WIN <profile>" starts CHARONPC.EFI from the
+folder of CHARONDOS.EFI with LoadOptions "config=<volume path of the .CFG>"
+plus " pl" for Polish. Started without options, CHARONPC reads CHARONPC.CFG
+from its own folder.
+
+Text, one key=value per line, '#' or ';' starts a comment line, keys are
+case-insensitive, a value may be quoted. UNKNOWN KEYS ARE AN ERROR (a typo
+in a profile is reported on screen, not ignored). File names are relative
+to the folder of CHARONPC.CFG unless they start with '\' (volume root).
+
+  profile=WIN98          name shown in logs (free text)
+  cpu=p2_klamath         Bochs CPU model: i486dx4, pentium, pentium_mmx,
+                         p2_klamath, p3_katmai, p4_willamette,
+                         amd_k6_2_chomper, athlon_xp   (default p2_klamath)
+  memory=64              guest RAM in MB, 1..2048 (default 64)
+  ips=60000000           emulated instructions per second for timing
+                         (Bochs "ips"; default 60 M)
+  sync=both              realtime | both | slowdown | none (default both:
+                         PIT and CMOS clock follow real time)
+  disk=WIN98.IMG         first hard disk (ATA 0 master)
+  disk_format=raw        raw|img|flat, vhd|vpc (fixed and dynamic VHD),
+                         vmdk (VMware 4 sparse), vmdk3, vdi (VirtualBox),
+                         vhdx
+  disk2=..., disk2_format=...   second hard disk (ATA 0 slave)
+  cdrom=WIN98SE.ISO      ATAPI CD-ROM (ATA 1 master) with this ISO
+  floppy=BOOT.IMG        1.44 MB floppy A:
+  boot=cdrom,disk        boot order: disk, cdrom, floppy (comma separated)
+  com1=bns               bns (Braille 'n Speak -> Charon's voice, default),
+                         none, file:<name> (raw COM1 output into a file)
+  sound=sb16             sb16 | none   (stage 2, see 3.; ignored now)
+  net=ne2000             ne2000 | none (stage 3, see 4.; ignored now)
+  reader=jfw             guest screen reader of the profile (see 6.):
+                         charon | jdos | provox | asap | jfw | weyes | none
+  lang=pl                pl | en: CharonPC's own messages and the BNS
+                         speech language (overrides the " pl" option)
+  log=CHARONPC.LOG       write the Bochs log into this file (debugging)
+  debugcon=1             also mirror the log to I/O port 0x402 (QEMU tests)
+
+Example profiles the installer can write:
+
+  # Windows 95 OSR2 from the user's CD
+  profile=WIN95
+  cpu=pentium_mmx
+  memory=64
+  disk=WIN95.IMG
+  cdrom=WIN95.ISO
+  floppy=BOOT95.IMG          (Win95 CDs are not bootable: boot floppy)
+  boot=floppy,disk
+  com1=bns
+  reader=jfw
+
+  # Windows 98 SE / ME
+  profile=WIN98
+  cpu=p2_klamath
+  memory=128
+  disk=WIN98.IMG
+  cdrom=WIN98SE.ISO
+  boot=cdrom,disk
+
+  # Windows XP, installation CD or a ready image (e.g. XP Mode VHD)
+  profile=WINXP
+  cpu=p3_katmai              (p4_willamette if SSE2 is wanted)
+  memory=512
+  disk=XPMODE.VHD
+  disk_format=vhd
+  boot=disk
+
+2. Disks, images and the 4 GiB FAT32 limit
+------------------------------------------
+Working now (stage 1, verified): raw image on the FAT volume (FreeDOS 1.4
+USB image, read/write, Bochs lock file created and removed). Compiled in
+and selectable by disk_format, not yet tried in QEMU: VHD fixed/dynamic
+(Bochs "vpc"), VMDK sparse ("vmware4"), VDI, VHDX, ISO on the CD-ROM.
+
+Ready images the user brings:
+- Windows XP Mode: the file VirtualXPVHD inside WindowsXPMode_*.exe is a
+  dynamic VHD (about 1.2 GB) -> disk=XPMODE.VHD, disk_format=vhd. It was
+  installed under Virtual PC (ACPI uniprocessor HAL, Intel 440BX/PIIX4,
+  S3 Trio display); Bochs is i440FX/PIIX3 with ACPI: expect "new hardware"
+  rounds and a 640x480 standard VGA until a display driver is given (see 5).
+- VirtualBox/VMware disks: vdi, vmdk (monolithic sparse). A "flat" VMDK is a
+  descriptor plus a raw "-flat.vmdk": use the -flat file as raw.
+
+FAT32 holds files of at most 4 GiB - 1 byte:
+- dynamic VHD/VDI/VMDK grow only with data: Win9x/ME and a small XP fit
+  in 4 GB of real data;
+- raw images over 4 GiB: Bochs "concat" mode (up to 8 files, each up to
+  4 GiB - 512, read as one disk). Add disk_format=concat with disk=X.001 and
+  the installer splits the image into X.001 ... X.008 (32 GB maximum);
+- partitions (stage 4): a new Bochs image module "charonpart" reading and
+  writing an EFI Block I/O handle (a GPT partition with a CharonPC type
+  GUID, or a whole extra disk) by LBA. No size limit, no FAT overhead,
+  fastest. Safety: only a partition the user chose in the installer and
+  that carries the CharonPC partition type, never the ESP or a partition
+  with a recognised file system the firmware has mounted; opened
+  exclusively (OpenProtocol BY_DRIVER|EXCLUSIVE) for the whole run.
+  CHARONPC.CFG: disk=part:<partition GUID>.
+
+3. SB16 -> Charon's UEFI audio (design)
+---------------------------------------
+Why SB16: Windows 95/98/ME ship the "Creative Sound Blaster 16 or AWE-32"
+driver in the box; DOS games and DOS speech programs use it too; no driver
+for the HDA/AC97 chips of today exists for 9x. XP installs the SB16 through
+"Add Hardware" (non-PnP ISA, port 220, IRQ 5, DMA 1/5); for XP the ES1370
+(PCI, Bochs "es1370") is the better second choice once its inbox driver is
+confirmed (XP has es1371mp; ES1370 needs testing).
+
+Bochs side: BX_SUPPORT_SB16=1 and BX_SUPPORT_SOUNDLOW=1 compile sb16.cc,
+opl.cc (FM synthesis in software), soundlow.cc, soundmod.cc. Bochs's
+soundlow resampler and mixer normally run in host threads (bxthread); in
+UEFI there are no threads, so the "charon" sound driver
+(src/pc/pc_sound.cc, PLUGIN_ENTRY_FOR_SND_MODULE(charon), a second
+two-line entry in plugin.h/plugin.cc like the GUI) runs the mixer from the
+GUI event hook (every 1 ms of emulated time, bounded work) instead of a
+thread: bx_soundlow_waveout_c::mixer_common() is called with a buffer of
+the device period, its PCM16 stereo 48 kHz result goes to the device.
+
+Device side - two cases:
+a) Charon present (CharonDOS started from Charon or CHARONVOICE.EFI
+   resident): Charon's VoiceProvider already owns the HAK audio stream of
+   AudioDxe (CharonAudioDevice.h, streamGuid a5e7cf46...; a second Open
+   gets NOT_READY). It needs a new, published, versioned interface beside
+   MenuVoice: "CharonPcmSink" { version, size, Open(rate, channels),
+   Write(const int16_t*, frames, *accepted), Queued(*frames), Close() }
+   that mixes guest PCM under the speech (speech ducking optional) in
+   Charon's existing mixer (BootMix.h). This is a Charon change (new
+   build), so it waits for the user's go.
+b) No Charon voice: CHARONPC opens the HAK stream itself
+   (charonaudioefi::Device::Open/Write, the same code Charon uses, after
+   loading \EFI\HAK\AudioDxe.efi when no stream is published), at the
+   rate the stream reports, and Stops it before returning.
+Latency target 40-80 ms (one 1 ms tick feeds 48 frames; a 4096-frame
+ring). Sample-rate conversion stays in Bochs's resampler (linear without
+libsamplerate). Volume: SB16 mixer registers are emulated by sb16.cc.
+
+4. NE2000 -> network (design)
+-----------------------------
+Bochs side: BX_SUPPORT_NE2K=1, BX_NETWORKING=1, ne2k.cc (ISA NE2000 or PCI
+RTL8029 - inbox drivers in Win95/98/ME/XP), netmod.cc, netutil.cc, plus a
+"charon" net module (PLUGIN_ENTRY_FOR_NET_MODULE) polled from the GUI hook.
+Two back ends, chosen by the profile (net=ne2000 uses the first that works):
+a) Bridged, wired LAN only: EFI Simple Network Protocol of the NIC in
+   promiscuous receive (the guest has its own MAC). Firmware's MNP/IP stack
+   is bound to the same NIC, so CHARONPC takes SNP exclusively while it
+   runs (DisconnectController of MNP children, reconnect on exit). Does
+   not work on Wi-Fi (no frames for a second MAC).
+b) NAT (works everywhere, default): Bochs's built-in user-mode network
+   (iodev/network/slirp, eth_slirp) with its BSD socket calls served by a
+   socket shim over UEFI TCP4/UDP4/DNS4 service bindings - the transport
+   Charon already uses (CharonTcp4Transport.h). Guest sees 10.0.2.x with
+   DHCP and DNS from slirp; outgoing TCP/UDP only.
+Charon's own downloads must not run while CHARONPC owns the NIC.
+
+5. Windows 95/98/ME/XP specifics
+--------------------------------
+- Display: Bochs VBE ("vga: extension=vbe") gives VESA modes; 9x/XP have
+  only the 16-colour VGA driver in the box. Stage 2 enables
+  BX_SUPPORT_CLGD54XX (Cirrus GD5446, inbox drivers in 95/98/ME/XP, Bochs
+  vgabios-cirrus) for 800x600+ in colour. GOP output is centred unscaled;
+  scaling to the firmware mode is a later refinement.
+- Win95 with a fast CPU fails on the NDIS calibration loop ("Windows
+  protection error"); Bochs's interpreter is slow enough on most hosts, ips
+  keeps it predictable; FIX95CPU is the documented guest fix.
+- Ctrl+Alt+Del: Ctrl+Alt belongs to Charon's reader. Proposal: Ctrl+Shift+F11
+  types Ctrl+Alt+Del into the guest (needed for XP logon and Task Manager).
+- Keyboard: EFI gives characters, not key up/down; CHARONPC types each key
+  as press+release (25 ms apart). Holding keys (games), AltGr and Polish
+  letters need a layout table (Polish programmer's = US + AltGr) - stage 2.
+- Mouse: none (keyboard-only Windows use is the target).
+- Speed: stage 1 builds Bochs with -mcmodel=large -fno-pic
+  -fno-jump-tables (the proven Charon module flags, safe for any load
+  address). Measure MIPS with a DOS benchmark first; if Win98 installation
+  is too slow, try a PIC small-code-model build (RIP-relative globals,
+  jump tables) - ImageTool must then convert the remaining absolute
+  relocations; check with check-charon-pe.py.
+
+6. Which reader speaks
+----------------------
+- Text modes (DOS, Windows setup's blue text screens, XP text setup):
+  Charon's resident reader reads the UEFI console that CHARONPC writes
+  (verified with CHARONVOICE.EFI resident). Nothing is needed in the guest.
+- Windows GUI (graphics modes): Charon cannot read pixels as text; the
+  guest needs a screen reader that speaks through the emulated Braille 'n
+  Speak on COM1 (no sound card needed): JAWS for Windows 3.x-5.x and
+  Window-Eyes 4.x/5.x support the BNS; for DOS: JAWS for DOS, Provox,
+  ASAP, Vocal-Eyes (datajake.braillescreen.net). With SB16 working, SAPI 4/5
+  readers (e.g. NVDA 2017.3 on XP, Narrator) become possible too.
+- Two readers at once speak over each other (one MenuVoice, every
+  SpeakUtf8 cancels the previous utterance). Profile key reader=:
+    charon  -> Charon's resident reader reads, COM1 BNS still spoken;
+    any guest reader -> CHARONPC suspends Charon's resident reader for the
+    run (ReaderControl Suspend/Resume of the same Charon release) and only
+    the BNS speaks; Charon resumes when CHARONPC returns.
+  ReaderControl is a same-release interface, so this is done when CHARONPC
+  is shipped inside a Charon release.
+- BNS protocol: CR ends an utterance, Ctrl+X silences, Ctrl+E <digits>
+  <letter> commands are parsed and logged (rate/pitch/volume/punctuation
+  are not applied: MenuVoice v1/v2 has no prosody call; needs MenuVoice v3
+  "SetProsody(rate, pitch, volume)" in Charon). Text is CP437; profiles
+  with lang=pl need CP852 and Mazovia tables (the DOS readers' Polish
+  versions) - a com1_codepage= key in stage 2.
+
+7. Stage order proposal
+-----------------------
+  2: Cirrus display, Polish keyboard/codepages, Ctrl+Alt+Del chord, MIPS
+     measurement, VHD/VMDK/ISO trials, Windows 98 SE install test,
+     reader suspension when a guest reader is chosen.
+  3: SB16 + OPL through Charon (needs CharonPcmSink in Charon), ES1370 for XP.
+  4: NE2000 with NAT (slirp over TCP4/UDP4), bridged SNP for wired LAN.
+  5: Partition back end, concat for big raw images, XP profile end to end.

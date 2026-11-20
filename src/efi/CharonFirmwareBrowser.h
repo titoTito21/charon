@@ -145,6 +145,7 @@ inline efi_status VariableDetail(efi_runtime_services* runtime,const InfoList& l
     const bool whole=status==EFI_SUCCESS;
     if(status==EFI_BUFFER_TOO_SMALL) {
         // Too big for the detail buffer: say its size and attributes only.
+        size=0;   // with the needed size and no buffer firmware answers EFI_INVALID_PARAMETER
         status=runtime->GetVariable((char16_t*)name,&guid,&attributes,&size,nullptr);
         if(status!=EFI_BUFFER_TOO_SMALL && status!=EFI_SUCCESS)return status;
     } else if(!whole)return status;

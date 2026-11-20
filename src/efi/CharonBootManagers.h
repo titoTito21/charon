@@ -19,6 +19,9 @@ inline constexpr BootManagerSignature bootManagerSignatures[]={
     {"IBL!Dibspo!jnbhf",u""},
     // Tools a boot manager starts (r366): named, without the boot manager cue.
     {"Nfnuftu97,",u"Memtest86+"},
+    {"QbttNbsl!NfnUftu97",u"MemTest86"},  // r400 (not exercised: no image here): "PassMark MemTest86"
+    {"HQU!gejtl!)hejtl*",u"GPT fdisk"},  // r400 (not exercised: no image here): "GPT fdisk (gdisk)"
+    {"Qfsgpsn!NPL!nbobhfnfou",u"MokManager"},  // r400 (not exercised: no image here): "Perform MOK management"
     // Clover carries OpenCore's libraries and other boot managers' names.
     {"Dmpwfs!sfwjtjpo",u"Clover"},  // "Clover revision"
     {"sFGJoe",u"rEFInd"},
@@ -37,18 +40,21 @@ inline constexpr BootManagerSignature bootManagerSignatures[]={
     {"OfuCTE0y97!FGJ!Cppu",u"NetBSD boot"},  // r386
     {"GsffCTE0bne75!FGJ!mpbefs",u"FreeBSD loader"},  // r386: "FreeBSD/amd64 EFI loader"
     {"WUPZFGJ!qbsujujpo",u"Ventoy"},  // r386: Ventoy's GRUB ("VTOYEFI partition"), before GRUB
+    {"ofucppu/yz{",u"netboot.xyz"},  // r400 (not exercised): "netboot.xyz"
+    {"HSVC5EPT",u"GRUB4DOS"},  // r400 (not exercised): "GRUB4DOS"
     {"jQYF!dpnnboe!mjof",u"iPXE"},
     {"HOV!HSVC",u"GRUB"},
     {"Mjnjof",u"Limine"},
+    {"sFGJu",u"rEFIt"},  // r400 (not exercised): "rEFIt", after rEFInd
 };
 inline bool FirstStage(const char16_t* name) {
     return name && name[0]==u's' && name[1]==u'h' && name[2]==u'i' && name[3]==u'm' && !name[4];
 }
 inline bool BootTool(const char16_t* name) {
     if(!name)return false;
-    static const char16_t memtest[]=u"Memtest86+";
-    size_t i=0;for(;memtest[i] && name[i]==memtest[i];++i) {}
-    return !memtest[i] && !name[i];
+    static const char16_t* const tools[]={u"Memtest86+",u"MemTest86",u"GPT fdisk",u"MokManager"};
+    for(const auto* tool:tools) {size_t i=0;for(;tool[i] && name[i]==tool[i];++i) {}if(!tool[i] && !name[i])return true;}
+    return false;
 }
 // Name of the first signature (in table order) found as ASCII or UTF-16LE
 // text, or nullptr. One pass over the image; `idle` runs every 256 KiB.

@@ -137,7 +137,7 @@ int LiveVoice::QueueText(Language language,const char* text,size_t bytes,double 
     if(useExternal_){const int s=BeginExternalChunk();if(s){Fail(s);return s;}stage_=Stage::Synthesizing;return 0;}
     int status=BeginChunk();
     if(status){Fail(status);return status;}
-    stage_=Stage::Preparing;return 0;
+    stage_=front_==Front::None?Stage::Finishing:Stage::Preparing;return 0;   // only switches (or nothing): end at the next pump, never wait in Preparing
 }
 int LiveVoice::AppendText(Language language,const char* text,size_t bytes,double rate,double pitch,double volume){
     if(pumping_)return Busy;if(!pool_)return NotInitialized;
@@ -160,9 +160,11 @@ int LiveVoice::AppendText(Language language,const char* text,size_t bytes,double
     if(queuedBytes_+(queuedBytes_?1:0)+bytes>maximumTextBytes)return Busy;
     if(queuedBytes_+4+bytes>maximumTextBytes)return Busy;
     if(queuedBytes_)queued_[queuedBytes_++]=' ';
-    if(queuedBytes_&&language!=queuedLanguage_){queued_[queuedBytes_++]=0x1b;queued_[queuedBytes_++]=language==Language::English?'e':'p';queued_[queuedBytes_++]=' ';}
+    if(queuedBytes_&&language!=queuedEndLanguage_){queued_[queuedBytes_++]=0x1b;queued_[queuedBytes_++]=language==Language::English?'e':'p';queued_[queuedBytes_++]=' ';}
     for(size_t i=0;i<bytes;++i)queued_[queuedBytes_+i]=text[i];queuedBytes_+=bytes;queued_[queuedBytes_]=0;
-    if(queuedBytes_==bytes)queuedLanguage_=language;queuedRate_=rate;queuedPitch_=pitch;queuedVolume_=volume;return 0;
+    if(queuedBytes_==bytes)queuedLanguage_=language;
+    queuedEndLanguage_=language;for(size_t i=0;i+1<bytes;++i)if(text[i]==0x1b&&(text[i+1]=='e'||text[i+1]=='p'))queuedEndLanguage_=text[i+1]=='e'?Language::English:Language::Polish;
+    queuedRate_=rate;queuedPitch_=pitch;queuedVolume_=volume;return 0;
 }
 void LiveVoice::PushPending(){
     if(pendingOffset_<pendingCount_){size_t accepted=engine_->PushSpeech(generation_,pending_+pendingOffset_,pendingCount_-pendingOffset_,channel_,SpeechPan());pendingOffset_+=accepted;}
@@ -431,8 +433,10 @@ size_t LiveVoice::RenderExternal(int16_t* out,size_t maximum){
             if(!got)break;   // the module is preparing
             continue;
         }
+        // a refill can leave the phase a whole sample ahead: advance first, never extrapolate
+        if(extPhase_>=1){while(extPhase_>=1&&extAt_+1<extCount_){extPhase_-=1;++extAt_;}continue;}
         const int32_t a=extBuffer_[extAt_],b=extBuffer_[extAt_+1];
-        out[made++]=int16_t(a+int32_t((b-a)*extPhase_));
+        const int32_t mixed=a+int32_t((b-a)*extPhase_);out[made++]=int16_t(mixed>32767?32767:mixed<-32768?-32768:mixed);
         extPhase_+=extStep_;
         while(extPhase_>=1&&extAt_+1<extCount_){extPhase_-=1;++extAt_;}
     }

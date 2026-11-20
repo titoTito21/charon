@@ -27,9 +27,11 @@ enum class MenuAction { none, changed, edge, openDevices, openSettings, openFirm
     openFiles, fileUp,
     // r396d
     startFirmwareMenu,
+    // r400
+    openWorkspace,
     unhandled /* internal: page-specific handler defers to generic navigation */ };
 // Main rows. Continue stays last.
-enum MainRow : size_t { mainDevices, mainOrder, mainSettings, mainFirmware, mainShell, mainTools, mainContinue, mainCount };
+enum MainRow : size_t { mainDevices, mainOrder, mainSettings, mainFirmware, mainShell, mainWorkspace /* r400 */, mainTools, mainContinue, mainCount };
 // System tools rows (r370).
 enum ToolsRow : size_t { toolInfo, toolClock, toolSetClock, toolWake, toolVariables, toolDrivers, toolUpdates, toolConnect, toolFiles /* r387 */, toolRestart, toolShutdown, toolFirmware, toolFirmwareMenu /* r396d */, toolsCount };
 // Settings rows 0..11 keep their r354 positions; r355 rows follow.
@@ -44,7 +46,7 @@ enum ReaderRow : size_t { readerRateRow, readerPitchRow, readerVolumeRow, reader
     readerVerbosityRow, readerPunctuationRow, readerLanguageRow, readerCapSayRow, readerCapBeepRow, readerCapPitchRow,
     readerMessagesRow, readerTypedRow, readerWordsRow, readerCursorRow, readerAutoReadRow, readerHintsRow,
     // r393: boot managers (hidden menus: combo; countdowns: check box) and the text formatting submenu.
-    readerHiddenMenuRow, readerStopCountdownRow, readerFormattingRow,
+    readerHiddenMenuRow, readerStopCountdownRow, readerLingerRow /* r400 */, readerFormattingRow,
     readerSynthRow, readerSynthVoiceRow /* r393 synthesizer add-ons */, readerCount };
 // r393 "Formatowanie tekstu" rows: check boxes (formatFlags bits 0-5, then readerExtra braille, dictionary).
 enum FormattingRow : size_t { formatVoiceRow, formatIconsRow, formatColoursRow, formatBrightRow, formatFontRow, formatInverseRow,
@@ -64,7 +66,7 @@ struct MenuModel {
     uint8_t pitch=10,readerRate=10,readerPitch=10,readerVolume=10;  // r382 voices (tenths)
     uint8_t messageRate=14,messagePitch=10;  // r389 boot-message voice (tenths)
     uint8_t punctuation=1,capitals=1,screenLanguage=0,readerFlags=47;  // r390 reader text settings
-    uint8_t formatFlags=255,readerExtra=25;   // r399 non-monotone voice (colour/font/style/position) + per-event icons
+    uint8_t formatFlags=255,readerExtra=153;   // r399 non-monotone voice (colour/font/style/position) + per-event icons
     // r393: synthesizer add-ons found on the disk (keys, voice counts); 0 = TVox.
     uint8_t synthKey=0,synthVoice=0;uint8_t synthKeys[8]={};uint8_t synthVoiceCounts[8]={};size_t synthCount=0;
     size_t SynthSlot() const {for(size_t i=0;i<synthCount;++i)if(synthKeys[i]==synthKey)return i;return SIZE_MAX;}
@@ -247,13 +249,13 @@ struct MenuModel {
             value=uint8_t(event==MenuEvent::right?(value+1)%states:(value+states-1)%states);
             return MenuAction::changeReaderVoice;
         }
-        if(page==MenuPage::reader && (event==MenuEvent::left || event==MenuEvent::right) && ReaderCheckRow(index))return MenuAction::none;
+        if(page==MenuPage::reader && (event==MenuEvent::left || event==MenuEvent::right) && (ReaderCheckRow(index) || index==readerTimerSpeechRow || index==readerTimerSoundRow))return MenuAction::none;
         // r393: hidden boot-manager menus cycle with Left/Right; Right opens the formatting submenu.
         if(page==MenuPage::reader && (event==MenuEvent::left || event==MenuEvent::right) && index==readerHiddenMenuRow) {
             uint8_t mode=uint8_t(readerExtra&3);mode=event==MenuEvent::right?uint8_t((mode+1)%3):uint8_t((mode+2)%3);
             readerExtra=uint8_t((readerExtra&~3)|mode);return MenuAction::toggleTimer;}
-        if(page==MenuPage::reader && event==MenuEvent::left && (index==readerStopCountdownRow || index==readerFormattingRow))return MenuAction::none;
-        if(page==MenuPage::reader && event==MenuEvent::right && index==readerStopCountdownRow)return MenuAction::none;
+        if(page==MenuPage::reader && event==MenuEvent::left && (index==readerStopCountdownRow || index==readerLingerRow || index==readerFormattingRow))return MenuAction::none;
+        if(page==MenuPage::reader && event==MenuEvent::right && (index==readerStopCountdownRow || index==readerLingerRow))return MenuAction::none;
         if(page==MenuPage::reader && event==MenuEvent::right && index==readerFormattingRow)event=MenuEvent::enter;
         if(page==MenuPage::formatting && (event==MenuEvent::left || event==MenuEvent::right))return MenuAction::none;
         // r393: Left/Right choose the synthesizer (TVox, then the add-ons) and its voice.
@@ -330,6 +332,7 @@ struct MenuModel {
             if(index==mainSettings) {page=MenuPage::settings;index=0;return MenuAction::openSettings;}
             if(index==mainFirmware)return MenuAction::openFirmware;
             if(index==mainShell)return event==MenuEvent::enter?MenuAction::openShell:MenuAction::none;
+            if(index==mainWorkspace)return event==MenuEvent::enter?MenuAction::openWorkspace:MenuAction::none;
             if(index==mainTools) {page=MenuPage::tools;index=0;return MenuAction::openTools;}
             return event==MenuEvent::enter ? MenuAction::continueBoot : MenuAction::none;
         }
@@ -398,6 +401,7 @@ struct MenuModel {
         }
         if(page==MenuPage::reader && event==MenuEvent::enter && index==readerFormattingRow) {page=MenuPage::formatting;index=0;return MenuAction::openDetail;}
         if(page==MenuPage::reader && (event==MenuEvent::enter || event==MenuEvent::space) && index==readerStopCountdownRow) {readerExtra=uint8_t(readerExtra^4);return MenuAction::toggleTimer;}
+        if(page==MenuPage::reader && (event==MenuEvent::enter || event==MenuEvent::space) && index==readerLingerRow) {readerExtra=uint8_t(readerExtra^128);return MenuAction::toggleTimer;}
         if(page==MenuPage::reader && (event==MenuEvent::enter || event==MenuEvent::space) && (index==readerHiddenMenuRow || index==readerFormattingRow || index==readerSynthRow || index==readerSynthVoiceRow))return MenuAction::none;
         if(page==MenuPage::formatting && (event==MenuEvent::enter || event==MenuEvent::space) && index<formattingCount) {
             if(index<=formatFamiliesRow)formatFlags=uint8_t(formatFlags^(1u<<index));

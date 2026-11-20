@@ -1,0 +1,22 @@
+Charon r404 (released 2026-11-20; final builds charon-win-r404final, charon-win-r404final-drv,
+charon-audio-driver-r404/AudioDxe-r404.efi; CharonDOS package unchanged from r403)
+
+1. VMware Workstation, firmware VMW201.00V (EFI), test VM work/vmware-r403/charon.vmx, COM1 to a file.
+   - Sound card not set in the .vmx: VMware gave an Ensoniq ES1371 (no Charon driver) ->
+     "Live speech unavailable". sound.virtualDev = "hdaudio" (codec ALC885) is needed.
+   - With HD Audio, r403 crashed the firmware: #GP in AudioDxe HdaCodecAudioIoSetupPlayback+0x4b0
+     (driver base from the trace, symbols from AudioDxe.dll.map). VMware's firmware binds its own HDA
+     driver; AudioDxe then shares the controller (GET_PROTOCOL fallback) and its codec data is
+     used after the controller is reset. FIX: DisconnectFirmwareHda (CharonAc97.h) disconnects every
+     other BY_DRIVER agent of an HDA controller (PCI 04/03) before AudioDxe connects (Charon,
+     the reconnect path, BootAudio.h). Trace: "firmware hda disconnected=1", setup/begin = 0.
+   - Then the stream faulted after the first fraction of a second (HAK_AUDIO_TRACE AudioDxe):
+     reason 1, poll gap 44.7 ms > 40 ms; after recovery reason 6, LPIB = 0x4000 = CBL.
+     FIX (HakAudioStream.c, HakAudioRing.h): poll limit 70 ms, maximum advance 3584 frames,
+     LPIB == CBL read as 0. Ring host tests pass. VMware: no fault, WAVE stream keeps running;
+     the user heard the speech.
+2. Codec gain: setup(..., 127, ...) instead of -12 dB (AudioDxe clamps to the top amp step) in
+   CharonAudioDevice.h, BootAudio.h, BootSpeech.h. The user confirmed it is louder and fine in VMware.
+   Not checked: codecs with amps above 0 dB on real hardware (possible distortion).
+3. Regression of the boot managers NOT run for this release (user's decision); the changes are in the
+   sound path only. ISO boot (CD/USB) and the test machine listing are checked below by the release scripts.

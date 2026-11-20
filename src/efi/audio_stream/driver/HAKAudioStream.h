@@ -3,13 +3,14 @@
  * All entry points are called at TPL_APPLICATION; no application callbacks.
  * Initial negotiated format is exactly 48000 Hz, stereo interleaved PCM16LE.
  * Revision 2 (r389) adds Discard; revision 1 providers end at Stop.
+ * Revision 3 (r400) adds Linger.
  * This header alone does not establish driver availability. */
 #ifndef HAK_AUDIO_STREAM_H
 #define HAK_AUDIO_STREAM_H
 #include <Uefi.h>
 #define HAK_AUDIO_STREAM_GUID \
  {0xa5e7cf46,0x421c,0x4ea9,{0x93,0x1e,0x16,0x4b,0xf3,0xa8,0xb2,0x70}}
-#define HAK_AUDIO_STREAM_REVISION 2
+#define HAK_AUDIO_STREAM_REVISION 3
 #define HAK_AUDIO_STREAM_RUNNING 1
 #define HAK_AUDIO_STREAM_DRAINED 2
 #define HAK_AUDIO_STREAM_FAULT 4
@@ -47,5 +48,14 @@ struct HAK_AUDIO_STREAM {
    * near yet (a newer utterance replaces the old one). Dropped frames are
    * subtracted from SubmittedFrames and reported; the stream keeps running. */
   EFI_STATUS (EFIAPI *Discard)(HAK_AUDIO_STREAM *This,UINT64 *DiscardedFrames);
+  /* Revision 3: sound for the time AFTER ExitBootServices, when no firmware
+   * code runs. Call it last, on a stopped stream (after Stop). The controller
+   * is left playing from memory reserved at Begin (EfiReservedMemoryType, so
+   * the operating system never reuses it): Loop (at most 65536 frames) is
+   * heard Repeats times (at most 64), then about 20 minutes of silence follow
+   * before the cycle starts again - a cue can therefore never sound without
+   * end. It stops for good when an operating system driver resets the
+   * controller. No timer, interrupt or callback remains. */
+  EFI_STATUS (EFIAPI *Linger)(HAK_AUDIO_STREAM *This,CONST INT16 *Loop,UINT32 LoopFrames,UINT32 Repeats);
 };
 #endif

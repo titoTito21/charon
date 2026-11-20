@@ -38,19 +38,19 @@ inline int Compare(const Entry& a,const Entry& b) {
 }
 // Kind of device a volume lives on, from its device path.
 inline void PutVolumeKind(char16_t* out,size_t capacity,const uint8_t* path,bool pl) {
-    const char16_t* kind=pl?u"urządzenie UEFI":u"UEFI device";uint32_t partition=0;bool memory=false;
+    const char16_t* kind=pl?u"urządzenie UEFI":u"UEFI device";uint32_t partition=0;bool memory=false,usb=false,plain=true;   // plain: still the default kind
     for(size_t at=0;at<4096;) {
         const uint8_t type=path[at],sub=path[at+1];const size_t n=systools::Le16(path+at+2);
         if(type==0x7f || n<4)break;
-        if(type==3 && (sub==5 || sub==15 || sub==16))kind=u"USB";
-        else if(type==3 && (sub==1 || sub==2 || sub==0x12 || sub==0x17 || sub==0x1d || sub==0x19) && kind[0]!=u'U')kind=pl?u"dysk":u"disk";
-        else if(type==4 && sub==2)kind=u"CD/DVD";
+        if(type==3 && (sub==5 || sub==15 || sub==16)) {kind=u"USB";usb=true;plain=false;}
+        else if(type==3 && (sub==1 || sub==2 || sub==0x12 || sub==0x17 || sub==0x1d || sub==0x19) && !usb) {kind=pl?u"dysk":u"disk";plain=false;}
+        else if(type==4 && sub==2) {kind=u"CD/DVD";plain=false;}
         else if(type==4 && sub==1 && n>=8)partition=systools::Le32(path+at+4);
         else if(type==1 && sub==3)memory=true;
-        else if(type==4 && sub==6)kind=pl?u"firmware":u"firmware";
+        else if(type==4 && sub==6) {kind=pl?u"firmware":u"firmware";plain=false;}
         at+=n;
     }
-    if(memory && kind[0]==u'u')kind=pl?u"dysk w pamięci":u"RAM disk";
+    if(memory && plain)kind=pl?u"dysk w pamięci":u"RAM disk";
     systools::Put(out,capacity,kind);
     if(partition) {systools::Put(out,capacity,pl?u", partycja ":u", partition ");systools::PutNumber(out,capacity,partition);}
 }
@@ -204,7 +204,7 @@ inline void Detail(efi_boot_services* boot,const Browser& browser,const systools
     const auto read=file->Read(file,&size,head);file->Close(file);
     if(read!=EFI_SUCCESS)return;
     const uint32_t pe=size>=64?systools::Le32(head+0x3c):0;
-    if(size<64 || head[0]!='M' || head[1]!='Z' || pe+0x5e>size || head[pe]!='P' || head[pe+1]!='E') {
+    if(size<64 || head[0]!='M' || head[1]!='Z' || uint64_t(pe)+0x5e>size ||head[pe]!='P' || head[pe+1]!='E') {
         systools::Put(out,capacity,pl?u"To nie jest obraz PE; firmware go nie uruchomi.":u"Not a PE image; firmware will not start it.");return;}
     const uint16_t machine=systools::Le16(head+pe+4),subsystem=systools::Le16(head+pe+24+68);
     const char16_t* arch=machine==0x8664?u"x64":machine==0x14c?u"IA32":machine==0xaa64?u"AArch64":machine==0x5064?u"RISC-V 64":nullptr;

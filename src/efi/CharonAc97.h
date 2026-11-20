@@ -15,6 +15,53 @@
 #include <stdint.h>
 #include <efi/boot-services.h>
 namespace charonaudioefi {
+// r400: firmware that boots fast connects only the boot device, so the sound
+// card may have no driver bound when Charon's reader add-on wants to speak
+// (the add-on loads before the PCI bus is enumerated and cannot bind it
+// then). Connects every PCI multimedia controller, and nothing else.
+inline void ConnectAudioControllers(efi_boot_services* boot) {
+    if(!boot || !boot->LocateHandleBuffer || !boot->ConnectController)return;
+    efi_guid pciIoGuid={0x4cf5b200,0x68b8,0x4ca5,{0x9e,0xec,0xb2,0x3e,0x3f,0x50,0x02,0x9a}};
+    struct Config {void* PollMem;void* PollIo;void* Mem[2];void* Io[2];efi_status (EFIAPI *Read)(void*,uint32_t width,uint32_t offset,size_t count,void* buffer);};
+    efi_handle* handles=nullptr;size_t count=0;
+    if(boot->LocateHandleBuffer(ByProtocol,&pciIoGuid,nullptr,&count,&handles)!=EFI_SUCCESS || !handles)return;
+    for(size_t i=0;i<count && i<4096;++i) {
+        Config* io=nullptr;uint8_t classCode[3]={};
+        if(boot->HandleProtocol(handles[i],&pciIoGuid,(void**)&io)!=EFI_SUCCESS || !io)continue;
+        if(io->Read(io,0,9,3,classCode)!=EFI_SUCCESS || classCode[2]!=0x04)continue;
+        boot->ConnectController(handles[i],nullptr,nullptr,true);
+    }
+    boot->FreePool(handles);
+}
+// r404: some firmware binds its OWN driver to the HD Audio controller (VMware,
+// Apple). AudioDxe then falls back to sharing the controller (GET_PROTOCOL
+// mode) and two drivers drive one CORB/RIRB: the controller is reset under
+// the codec and its memory is used after being freed (VMware: #GP inside
+// HdaCodecAudioIoSetupPlayback). Like OpenCore's DisconnectHda quirk, every
+// driver other than `keep` (Charon's AudioDxe) that holds an HDA controller
+// (PCI class 04/03) BY_DRIVER is disconnected before AudioDxe connects.
+// Returns how many were disconnected.
+inline size_t DisconnectFirmwareHda(efi_boot_services* boot,efi_handle keep) {
+    if(!boot || !boot->LocateHandleBuffer || !boot->OpenProtocolInformation || !boot->DisconnectController || !boot->FreePool)return 0;
+    efi_guid pciIoGuid={0x4cf5b200,0x68b8,0x4ca5,{0x9e,0xec,0xb2,0x3e,0x3f,0x50,0x02,0x9a}};
+    struct Config {void* PollMem;void* PollIo;void* Mem[2];void* Io[2];efi_status (EFIAPI *Read)(void*,uint32_t width,uint32_t offset,size_t count,void* buffer);};
+    efi_handle* handles=nullptr;size_t count=0,done=0;
+    if(boot->LocateHandleBuffer(ByProtocol,&pciIoGuid,nullptr,&count,&handles)!=EFI_SUCCESS || !handles)return 0;
+    for(size_t i=0;i<count && i<4096;++i) {
+        Config* io=nullptr;uint8_t classCode[3]={};
+        if(boot->HandleProtocol(handles[i],&pciIoGuid,(void**)&io)!=EFI_SUCCESS || !io)continue;
+        if(io->Read(io,0,9,3,classCode)!=EFI_SUCCESS || classCode[2]!=0x04 || classCode[1]!=0x03)continue;
+        efi_open_protocol_information_entry* entries=nullptr;size_t n=0;
+        if(boot->OpenProtocolInformation(handles[i],&pciIoGuid,&entries,&n)!=EFI_SUCCESS || !entries)continue;
+        efi_handle agents[8];size_t a=0;
+        for(size_t k=0;k<n && a<8;++k)
+            if((entries[k].attributes&EFI_OPEN_PROTOCOL_BY_DRIVER) && entries[k].agent_handle && entries[k].agent_handle!=keep)agents[a++]=entries[k].agent_handle;
+        boot->FreePool(entries);
+        for(size_t k=0;k<a;++k)if(boot->DisconnectController(handles[i],agents[k],nullptr)==EFI_SUCCESS)++done;
+    }
+    boot->FreePool(handles);
+    return done;
+}
 struct PciIoFull;
 using PciIoAccessFn=efi_status (EFIAPI *)(PciIoFull*,uint32_t width,uint8_t bar,uint64_t offset,size_t count,void* buffer);
 using PciIoConfigAccessFn=efi_status (EFIAPI *)(PciIoFull*,uint32_t width,uint32_t offset,size_t count,void* buffer);

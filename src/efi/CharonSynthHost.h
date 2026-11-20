@@ -21,6 +21,7 @@ constexpr size_t maxSynths=8,maxVoices=16;
 struct Info {
     char16_t manifest[64]={};char name[48]={};char version[24]={};char16_t module[96]={};char16_t data[96]={};
     uint8_t sha[32]={};bool hasSha=false;uint32_t abi=0;uint8_t key=0;
+    efi_handle volume=nullptr;   // r400: the volume the manifest was found on (null: Charon's own)
     size_t voices=0;char id[maxVoices][32]={};char16_t voiceName[maxVoices][48]={};char language[maxVoices][8]={};
 };
 // 1..255, stable for a manifest file name (settings V11 byte 42; 0 = TVox).
@@ -91,6 +92,28 @@ inline size_t Scan(efi_boot_services* boot,efi_file_protocol* root,Info* out,siz
     }
     dir->Close(dir);return count;
 }
+// r400: add-ons may live on ANY volume (\EFI\HAK\synths there), so large
+// voices need not fill the EFI system partition. Charon's own volume wins
+// when the same manifest name exists twice.
+inline size_t ScanAll(efi_boot_services* boot,efi_handle ownVolume,efi_file_protocol* ownRoot,Info* out,size_t maximum) {
+    size_t count=Scan(boot,ownRoot,out,maximum);
+    for(size_t i=0;i<count;++i)out[i].volume=ownVolume;
+    efi_guid fsGuid=EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID;efi_handle* handles=nullptr;size_t n=0;
+    if(!boot || boot->LocateHandleBuffer(ByProtocol,&fsGuid,nullptr,&n,&handles)!=EFI_SUCCESS || !handles)return count;
+    static Info other[maxSynths];
+    for(size_t h=0;h<n && count<maximum;++h) {
+        if(handles[h]==ownVolume)continue;
+        efi_simple_file_system_protocol* fs=nullptr;efi_file_protocol* root=nullptr;
+        if(boot->HandleProtocol(handles[h],&fsGuid,(void**)&fs)!=EFI_SUCCESS || !fs || fs->OpenVolume(fs,&root)!=EFI_SUCCESS || !root)continue;
+        const size_t found=Scan(boot,root,other,maxSynths);root->Close(root);
+        for(size_t i=0;i<found && count<maximum;++i) {
+            bool known=false;for(size_t k=0;k<count;++k)if(out[k].key==other[i].key)known=true;
+            if(known)continue;
+            out[count]=other[i];out[count++].volume=handles[h];
+        }
+    }
+    boot->FreePool(handles);return count;
+}
 inline const Info* Find(const Info* list,size_t count,uint8_t key) {for(size_t i=0;i<count;++i)if(list[i].key==key)return &list[i];return nullptr;}
 // Why a module could not be used (spoken; the file name is added).
 enum class Failure {none,missing,checksum,abi,load,start,protocol};
@@ -157,5 +180,13 @@ inline uint32_t VoiceIndex(const CharonSynthModule* m,const char* id,const char*
     for(uint32_t i=0;i<m->voiceCount;++i) {size_t k=0;while(id && id[k] && m->voices[i].id[k]==id[k])++k;if(id && id[k]==0 && m->voices[i].id[k]==0)return i;}
     for(uint32_t i=0;i<m->voiceCount;++i)if(language && m->voices[i].language[0]==language[0] && m->voices[i].language[1]==language[1])return i;
     return UINT32_MAX;
+}
+// r400: loads `m` from the volume it was found on (see ScanAll).
+inline Failure LoadAny(efi_boot_services* boot,efi_handle parent,efi_handle ownVolume,efi_file_protocol* ownRoot,const Info& m,CharonSynthModule** out) {
+    if(!m.volume || m.volume==ownVolume)return Load(boot,parent,ownVolume,ownRoot,m,out);
+    *out=nullptr;efi_guid fsGuid=EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID;
+    efi_simple_file_system_protocol* fs=nullptr;efi_file_protocol* root=nullptr;
+    if(boot->HandleProtocol(m.volume,&fsGuid,(void**)&fs)!=EFI_SUCCESS || !fs || fs->OpenVolume(fs,&root)!=EFI_SUCCESS || !root)return Failure::missing;
+    const Failure f=Load(boot,parent,m.volume,root,m,out);root->Close(root);return f;
 }
 }  // namespace hakefi::synths
