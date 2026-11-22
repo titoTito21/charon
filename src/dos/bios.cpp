@@ -147,6 +147,7 @@ static void update_ticks(void)
     const u32 delta = now - s_last_ms;
     if (!delta) return;
     s_last_ms = now;
+    snd_poll(now);                                        // r407: speaker and Sound Blaster
     s_tick_acc += (u64)delta * 1193180u;
     const u32 n = (u32)(s_tick_acc / 65536000u);
     if (!n) return;
@@ -187,11 +188,13 @@ void machine_poll(void)
         if (hooked) { s_pending_irq0--; cpu_interrupt(8); }
         else s_pending_irq0 = 0;
     }
+    if (R_FL & F_IF) { const u8 vector = snd_take_irq(); if (vector) cpu_interrupt(vector); }   // r407: Sound Blaster
 }
 
 // ---- ports ----------------------------------------------------------------------
 u8 port_in(u16 port)
 {
+    if (snd_owns_port(port)) return snd_port_in(port);    // r407
     switch (port) {
     case 0x21: case 0xA1: return 0;
     case 0x71: return 0;                                  // CMOS: no extended memory, no clock data
@@ -215,8 +218,9 @@ u8 port_in(u16 port)
 void port_out(u16 port, u8 value)
 {
     static u16 cursor;
+    if (snd_owns_port(port)) { snd_port_out(port, value); return; }   // r407
     switch (port) {
-    case 0x61: s_port61 = (u8)((s_port61 & 0x10) | (value & 0x0F)); break;
+    case 0x61: s_port61 = (u8)((s_port61 & 0x10) | (value & 0x0F)); snd_gate(value); break;
     case 0x3D4: s_crtc_index = value; break;
     case 0x3D5:
         if (s_crtc_index == 0x0E) cursor = (u16)((cursor & 0x00FF) | (value << 8));

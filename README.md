@@ -42,7 +42,7 @@ Its interface and messages are in Polish and English.
   that language is spoken. Without them Charon speaks with its built-in TVox.
 - A new boot message interrupts the one still being read (r396).
 
-**Since r397 (current: r404)**
+**Since r397 (current: r408)**
 - Formatting is never monotone: every colour, brightness, font size, style,
   inverse/highlight and screen position moves rate, pitch, volume, modulation and
   timbre, also with eSpeak NG (persona ABI 3); Charon's own menu carries a
@@ -53,7 +53,36 @@ Its interface and messages are in Polish and English.
   its HII forms in-session (full settings editor for any UEFI that publishes forms),
   rebooting only as a last resort.
 
-**r404 (current)**
+**r408 (current; r405-r407 were not released, their changes are part of it)**
+- Charon runs from a RAM volume (`CharonSelfCopy.h`, `CharonSelfRam.h`): its files are
+  copied into memory after the start, the menu loop then switches the live volume; the
+  start medium can be removed or wiped. Settings are mirrored to the start medium.
+- Self-installer (`CharonWsSelfInstall.h`): reader alone / spare entry / first; own EFI
+  partition in free space when the EFI partition is too small.
+- Driver pack (`CharonDriverPack.h`, `CharonWsNet.h`, `tools/make-charon-driverpack.py`,
+  `tools/make-charon-netpack.py`, `tools/build-charon-netdrv-*.py`): loading rules per
+  view, documents `DRIVER-PACK.txt` and `NETWORK-DRIVERS.txt`.
+- Sound: HD Audio codec families and machine table generated from Linux
+  (`tools/gen-charon-hda-quirks.py`, `src/efi/audio_stream/driver/HakHdaQuirk*`,
+  `src/efi/AUDIO-CODECS.txt`; the driver is GPL-2.0-or-later since r408), USB Audio Class
+  1/2/3 (`CharonUsbAudio*.h`, `src/efi/USB-AUDIO.txt`), ES1371 (`CharonEs1371.h`),
+  liveness guards for AC'97/ES1371, `HakHdaControllerMayShare`, Busy guard against nested
+  voice calls.
+- VeraCrypt pre-boot screen (`CharonSecretInput.h`); Wi-Fi scan token fix.
+- CharonPC (`src/pc`): unattended Windows 9x Setup (`pc_unattend.cpp`), control reader
+  (`pc_winread.cpp`, `pc_reader.cpp`, `pc_winfonts.cpp`), SB16 + PC speaker
+  (`pc_sound.cc`), keyboard and power-button keys, per-host speed calibration.
+- CharonDOS: `CHARON` command (`src/dos/charon_cmd.cpp`, `CHARON-COMMANDS.txt`), sound.
+- NVDA inside Windows Setup (`src/windows`, `tools/gen-charon-nvda-setup.py`,
+  `CharonWsNvdaSetup.h`).
+- Scripts: `tools/charon-addon` (second boot entry, `Charon-MakeRoom.ps1`,
+  `Charon-SecureBoot.ps1`: vendor interface with the owner's password only),
+  `tools/gen-charon-linux-scripts.py` (desktops with accessibility), `tools/charon-os`
+  (settings and boot-manager programs for Windows and Linux, host tests).
+- Results: `docs/results/charon-r405-results.txt` .. `charon-r408-results.txt`,
+  regression `docs/results/charon-r408-regression.txt`.
+
+**r404**
 - `DisconnectFirmwareHda` (`src/efi/CharonAc97.h`): a firmware HD Audio driver (VMware,
   Apple) is disconnected before AudioDxe connects; sharing the controller crashed VMware.
 - HAK stream (`src/efi/audio_stream/driver`): poll gap limit 70 ms (was 40), maximum
@@ -172,13 +201,13 @@ clang++ -std=c++17 -I inc -I src/efi tests/BootPreOSMenuTests.cpp -o menu-tests 
 
 ## Boot CD
 
-`harness/make-charon-iso-r404.py` builds `Charon-r404.iso`: a UEFI El Torito CD
+`harness/make-charon-iso-r408.py` builds `Charon-r408.iso`: a UEFI El Torito CD
 (platform EFI, no emulation) with only Charon on it (boot FAT image:
 `EFI/BOOT/BOOTX64.EFI`, `EFI/HAK` voice driver, audio driver, Shell, Memtest86+,
 sounds, synthesizer add-ons) and an isohybrid MBR so the same file can be written
 raw to a USB stick. The FAT image is larger than 32 MB, so the catalogue's sector
 count is 1 (edk2 then uses the rest of the disc as the partition).
-`harness/test-charon-iso-r404.py cd|usb` boots it on OVMF with no hard disk.
+`harness/test-charon-iso-r408.py cd|usb` boots it on OVMF with no hard disk.
 
 ## Testing in QEMU
 

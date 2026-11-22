@@ -9,6 +9,7 @@
 // written to the UEFI specification 2.10 section 11.3 and marked untested.
 // GPL-2.0-or-later.
 #include "CharonWsCore.h"
+#include "CharonTrace.h"   // r408
 namespace hakefi {
 namespace ws {
 namespace net {
@@ -18,6 +19,9 @@ inline efi_guid httpBindingGuid={0xbdc8e6af,0xd9bc,0x4379,{0xa7,0x2a,0xe0,0xc4,0
 inline efi_guid httpGuid={0x7a59b29b,0x910b,0x4171,{0x82,0x42,0xa8,0x5a,0x0d,0xf2,0x5b,0x5b}};
 inline efi_guid wifi2Guid={0x1b0fb9bf,0x699d,0x4fdd,{0xa7,0xc3,0x25,0x46,0x68,0x1b,0xf6,0x3b}};
 inline efi_guid supplicantGuid={0x54fcc43e,0xaa89,0x4333,{0x9a,0x85,0xcd,0xea,0x24,0x05,0x1e,0x9e}};
+inline efi_guid nii31Guid={0x1ACED566,0x76ED,0x4218,{0xBC,0x81,0x76,0x7F,0x1F,0x97,0x7A,0x89}};   // Network Interface Identifier (UNDI 3.1)
+inline efi_guid rngGuid={0x3152bca5,0xeade,0x433d,{0x86,0x2e,0xc0,0x1c,0xdc,0x29,0x1f,0x44}};     // EFI_RNG_PROTOCOL
+inline efi_guid dpcGuid={0x480f8ae9,0x0c46,0x4aa9,{0xbc,0x89,0xdb,0x9f,0xba,0x61,0x98,0x06}};     // edk2 DPC protocol (DpcDxe)
 struct SnpMode;   // read by offset (CurrentAddress 552, MediaPresentSupported 651, MediaPresent 652)
 struct Snp {
     uint64_t Revision;void* Start;void* Stop;void* Initialize;void* Reset;void* Shutdown;void* ReceiveFilters;void* StationAddress;void* Statistics;
@@ -57,7 +61,10 @@ struct Network80211 {uint32_t bssType;Ssid ssid;SuiteList* akm;SuiteList* cipher
 struct NetworkDescription {Network80211 network;uint8_t quality;};
 struct NetworksResult {uint8_t count;NetworkDescription networks[1];};
 struct NetworksData {uint32_t ssidCount;Ssid ssids[1];};
-struct NetworksToken {efi_event Event;efi_status Status;NetworksData* Data;uint32_t ResultCode;NetworksResult* Result;};
+// EFI_80211_GET_NETWORKS_TOKEN (edk2 MdePkg Protocol/WiFi2.h) has NO result code; only the connect token
+// has one. With a ResultCode member here the firmware's Result pointer landed in it and every scan "failed" (r407).
+struct NetworksToken {efi_event Event;efi_status Status;NetworksData* Data;NetworksResult* Result;};
+static_assert(sizeof(NetworksToken)==32,"EFI_80211_GET_NETWORKS_TOKEN layout");
 struct ConnectData {Network80211* Network;uint32_t FailureTimeout;};
 struct ConnectToken {efi_event Event;efi_status Status;ConnectData* Data;uint32_t ResultCode;};
 struct Wifi2 {
@@ -200,7 +207,15 @@ inline void ConnectEverything() {
     for(size_t i=0;i<count;++i) {boot->ConnectController(handles[i],nullptr,nullptr,true);if(i%32==0)Pump();}
     boot->FreePool(handles);
 }
-inline size_t LoadDriverFiles(const char16_t* prefix,const char16_t* prefix2,size_t* failed) {
+// r408: a driver file name is started once per run, whichever volume it came from (Charon's disk and its RAM
+// copy both hold the folder) and however often the user asks; the image stays resident either way.
+inline bool DriverStarted(const char16_t* name,bool remember) {
+    static char16_t names[128][64];static size_t count=0;
+    for(size_t i=0;i<count;++i)if(SameFold(names[i],name))return true;
+    if(remember && count<128 && Len(name)<64)Set(names[count++],64,name);
+    return false;
+}
+inline size_t LoadDriverFiles(const char16_t* prefix,const char16_t* prefix2,size_t* failed,const char16_t* skip=nullptr) {
     auto* boot=U().host->boot;size_t loaded=0;efi_handle volumes[32];const size_t n=Volumes(volumes,32);static Listing list;
     for(size_t v=0;v<n;++v) {
         FileRef folder;folder.volume=volumes[v];Set(folder.path,pathUnits,u"\\EFI\\HAK\\drivers");
@@ -208,6 +223,8 @@ inline size_t LoadDriverFiles(const char16_t* prefix,const char16_t* prefix2,siz
         for(size_t i=0;i<list.count;++i) {   // sorted by name
             const auto& e=list.entries[i];
             if(e.directory || !EndsFold(e.name,u".efi") || !(StartsFold(e.name,prefix) || (prefix2 && StartsFold(e.name,prefix2))))continue;
+            if(skip && StartsFold(e.name,skip))continue;
+            if(DriverStarted(e.name,false))continue;   // r408
             static char16_t path[pathUnits];if(!JoinPath(path,pathUnits,folder.path,e.name))continue;
             size_t device=0;uint8_t* own=nullptr;
             if(boot->HandleProtocol(volumes[v],&media::pathGuid,(void**)&own)!=EFI_SUCCESS || !own || (device=media::PathLength(own))==SIZE_MAX || device>1500)continue;
@@ -220,6 +237,8 @@ inline size_t LoadDriverFiles(const char16_t* prefix,const char16_t* prefix2,siz
             auto status=boot->LoadImage(false,U().host->image,reinterpret_cast<efi_device_path_protocol*>(full),nullptr,0,&image);
             Release(full);
             if(status==EFI_SUCCESS && image) {size_t exitSize=0;char16_t* exitData=nullptr;status=boot->StartImage(image,&exitSize,&exitData);}
+            DriverStarted(e.name,true);   // r408: also a file that failed is not tried again
+            charontrace::Text(status==EFI_SUCCESS?"CHARON net driver file started":"CHARON net driver file failed");
             if(status==EFI_SUCCESS)++loaded;else if(failed)++*failed;
             Tone(700+unsigned(loaded)*40,25);Pump();
         }
@@ -229,21 +248,47 @@ inline size_t LoadDriverFiles(const char16_t* prefix,const char16_t* prefix2,siz
 // Loads what is missing. Returns the number of drivers started.
 inline size_t LoadDrivers(bool announce) {
     size_t loaded=0,failed=0;
-    if(!HasProtocol(snpGuid) || !HasProtocol(wifi2Guid)) {
-        const bool noAdapter=!HasProtocol(snpGuid);
+    // Driver images stay resident, so without being asked (announce) each kind is
+    // loaded once per session, not again on every visit while its hardware is absent.
+    static bool nicTried=false,wifiTried=false;
+    const bool noAdapter=!HasProtocol(snpGuid);
+    if((noAdapter && (announce || !nicTried)) || (!noAdapter && !HasProtocol(wifi2Guid) && (announce || !wifiTried))) {
         const size_t got=LoadDriverFiles(noAdapter?u"nic-":u"wifi-",u"wifi-",&failed);
-        if(got) {loaded+=got;ConnectEverything();}
+        if(noAdapter)nicTried=true;
+        wifiTried=true;
+        if(got) {
+            loaded+=got;ConnectEverything();
+            // A USB adapter that nic-usb-29-cdc-select.efi moves to its CDC configuration gets its
+            // new interface handles from that driver's timer, a moment after the connect pass.
+            if(noAdapter && !HasProtocol(snpGuid) && !HasProtocol(nii31Guid)) {
+                for(unsigned i=0;i<8;++i) {U().host->boot->Stall(100000);Pump();}
+                ConnectEverything();
+            }
+        }
     }
-    if(HasProtocol(snpGuid) && !HasProtocol(ip4Config2Guid)) {
-        const size_t got=LoadDriverFiles(u"net-",nullptr,&failed);
-        if(got) {loaded+=got;ConnectEverything();}
+    // An UNDI driver (Intel's, Realtek's) gives only the Network Interface Identifier
+    // protocol; the Simple Network Protocol above it comes from SnpDxe, a net-* file.
+    bool noRandom=false;static bool noRandomSaid=false;
+    if((HasProtocol(snpGuid) || HasProtocol(nii31Guid)) && !HasProtocol(ip4Config2Guid)) {
+        // The pack's stack modules are a debug build of edk2 and stop the machine in an assertion:
+        // Ip4Dxe when the firmware has no random number protocol (DxeNetLib), DpcDxe when the firmware
+        // already has the DPC protocol (seen in QEMU/OVMF, r407). So: no RNG, no stack; DPC there, no net-10.
+        if(!HasProtocol(rngGuid))noRandom=true;
+        else {
+            const size_t got=LoadDriverFiles(u"net-",nullptr,&failed,HasProtocol(dpcGuid)?u"net-10-":nullptr);
+            if(got) {loaded+=got;ConnectEverything();}
+        }
     }
-    if(announce || loaded || failed) {
+    const bool tellRandom=noRandom && (announce || !noRandomSaid);
+    if(announce || loaded || failed || tellRandom) {
         static char16_t text[300];
-        if(!loaded && !failed)Set(text,300,HasProtocol(snpGuid) && HasProtocol(ip4Config2Guid)?T(u"Firmware ma już sterowniki sieci; nic nie wczytano.",u"The firmware already has network drivers; nothing was loaded.")
+        if(!loaded && !failed && tellRandom)text[0]=0;
+        else if(!loaded && !failed)Set(text,300,HasProtocol(snpGuid) && HasProtocol(ip4Config2Guid)?T(u"Firmware ma już sterowniki sieci; nic nie wczytano.",u"The firmware already has network drivers; nothing was loaded.")
             :T(u"Brak pasujących sterowników w folderze EFI, HAK, drivers.",u"No matching drivers in the folder EFI, HAK, drivers."));
         else {Set(text,300,T(u"Wczytano sterowników: ",u"Drivers loaded: "));CatN(text,300,loaded);
-            if(failed) {Cat(text,300,T(u", nieudanych: ",u", failed: "));CatN(text,300,failed);}}
+            if(failed) {Cat(text,300,T(u", nieudanych: ",u", failed: "));CatN(text,300,failed);}
+            if(tellRandom)Cat(text,300,u". ");}
+        if(tellRandom) {noRandomSaid=true;Cat(text,300,T(u"Firmware nie ma źródła liczb losowych, którego wymagają moduły IPv4; nie wczytano ich.",u"The firmware has no random number source, which the IPv4 modules need; they were not loaded."));}
         Say(text);
     }
     return loaded;
@@ -324,12 +369,12 @@ inline bool WifiJoin(size_t index) {
     static ConnectData data;data.Network=&network;data.FailureTimeout=20;
     ConnectToken token{};token.Data=&data;Signalled()=false;
     if(boot->CreateEvent(EVT_NOTIFY_SIGNAL,TPL_CALLBACK,OnSignal,nullptr,&token.Event)!=EFI_SUCCESS)return false;
-    Say(T(u"Łączę z siecią.",u"Joining the network."));
+    Say(T(u"Łączę się z siecią.",u"Connecting to the network."));
     const auto status=a.wifi->ConnectNetwork(a.wifi,&token);
     const bool done=status==EFI_SUCCESS && WaitSignal(30);
     boot->CloseEvent(token.Event);memset(ascii,0,sizeof(ascii));
     if(!done || token.Status!=EFI_SUCCESS || token.ResultCode!=0) {
-        Fail(token.ResultCode==2?T(u"Sieć odrzuciła połączenie; sprawdź hasło.",u"The network refused; check the password."):T(u"Nie połączono z siecią.",u"Not connected."),status!=EFI_SUCCESS?status:token.Status);
+        Fail((token.ResultCode==1 || token.ResultCode==2)?T(u"Sieć odrzuciła połączenie; sprawdź hasło.",u"The network refused; check the password."):T(u"Nie połączono z siecią.",u"Not connected."),status!=EFI_SUCCESS?status:token.Status);
         return false;}
     return Dhcp(a);
 }
@@ -342,7 +387,7 @@ inline bool Download(const char16_t* url,const FileRef& target,uint64_t* receive
     auto& n=N();auto* boot=U().host->boot;*received=0;
     efi_handle* handles=nullptr;size_t count=0;
     if(boot->LocateHandleBuffer(ByProtocol,&httpBindingGuid,nullptr,&count,&handles)!=EFI_SUCCESS || !handles || !count) {
-        Fail(T(u"Firmware nie ma obsługi HTTP.",u"The firmware has no HTTP support."));return false;}
+        Fail(T(u"Firmware nie obsługuje HTTP.",u"The firmware does not support HTTP."));return false;}
     // The adapter that has an address.
     efi_handle chosen=handles[0];
     for(size_t i=0;i<count;++i)for(size_t k=0;k<n.count;++k) {IpInfo info;if(handles[i]==n.adapters[k].handle && ReadIp(n.adapters[k],info))chosen=handles[i];}
@@ -351,14 +396,14 @@ inline bool Download(const char16_t* url,const FileRef& target,uint64_t* receive
     if(boot->HandleProtocol(chosen,&httpBindingGuid,(void**)&binding)!=EFI_SUCCESS || !binding || binding->CreateChild(binding,&child)!=EFI_SUCCESS || !child
         || boot->HandleProtocol(child,&httpGuid,(void**)&http)!=EFI_SUCCESS || !http) {
         if(binding && child)binding->DestroyChild(binding,child);
-        Fail(T(u"Nie uruchomiono HTTP.",u"HTTP could not be started."));return false;}
+        Fail(T(u"Nie udało się uruchomić HTTP.",u"HTTP could not be started."));return false;}
     static HttpAccessPoint4 point;memset(&point,0,sizeof(point));point.UseDefaultAddress=true;
     HttpConfig config{};config.HttpVersion=1;config.TimeOutMillisec=15000;config.IPv4Node=&point;
     bool ok=false;const char16_t* why=nullptr;efi_status status=http->Configure(http,&config);
     efi_file_protocol* file=nullptr;efi_event event=nullptr;
     static char host[200];static uint8_t block[32768];
     do {
-        if(status!=EFI_SUCCESS) {why=T(u"Sieć nie jest gotowa; najpierw połącz kartę.",u"The network is not ready; connect an adapter first.");break;}
+        if(status!=EFI_SUCCESS) {why=T(u"Sieć nie jest gotowa; najpierw połącz kartę sieciową.",u"The network is not ready; connect a network adapter first.");break;}
         // Host header from the URL.
         size_t at=0;while(url[at] && !(url[at]==u'/' && url[at+1]==u'/'))++at;
         if(!url[at]) {why=T(u"Adres musi zaczynać się od http://",u"The address must start with http://");break;}
@@ -368,13 +413,13 @@ inline bool Download(const char16_t* url,const FileRef& target,uint64_t* receive
         HttpHeader headers[4]={{nameHost,host},{nameAgent,agent},{nameAccept,accept},{nameEncoding,identity}};
         HttpRequest request{0,const_cast<char16_t*>(url)};HttpMessage message{};message.Data=&request;message.HeaderCount=4;message.Headers=headers;
         HttpToken token{};token.Message=&message;
-        if(boot->CreateEvent(EVT_NOTIFY_SIGNAL,TPL_CALLBACK,OnSignal,nullptr,&event)!=EFI_SUCCESS) {why=T(u"Brak pamięci.",u"Out of memory.");break;}
+        if(boot->CreateEvent(EVT_NOTIFY_SIGNAL,TPL_CALLBACK,OnSignal,nullptr,&event)!=EFI_SUCCESS) {why=T(u"Za mało pamięci RAM.",u"Not enough RAM.");break;}
         token.Event=event;Signalled()=false;
         status=http->Request(http,&token);
         if(status!=EFI_SUCCESS || !WaitSignal(30,http) || token.Status!=EFI_SUCCESS) {
             if(status==EFI_SUCCESS)status=token.Status;
             http->Cancel(http,nullptr);
-            why=(url[4]==u's' || url[4]==u'S')?T(u"Nie połączono. HTTPS wymaga certyfikatów w firmware; spróbuj adresu http.",u"Not connected. HTTPS needs certificates in the firmware; try an http address.")
+            why=(url[4]==u's' || url[4]==u'S')?T(u"Nie udało się połączyć. HTTPS wymaga certyfikatów w firmware; spróbuj adresu http.",u"Could not connect. HTTPS needs certificates in the firmware; try an http address.")
                 :T(u"Serwer nie odpowiada.",u"The server does not answer.");break;}
         // Response: headers with the first part of the body, then the rest.
         HttpResponse response{};HttpMessage answer{};answer.Data=&response;answer.BodyLength=sizeof(block);answer.Body=block;
@@ -382,7 +427,7 @@ inline bool Download(const char16_t* url,const FileRef& target,uint64_t* receive
         status=http->Response(http,&rx);
         if(status!=EFI_SUCCESS || !WaitSignal(30,http) || rx.Status!=EFI_SUCCESS) {if(status==EFI_SUCCESS)status=rx.Status;http->Cancel(http,nullptr);why=T(u"Brak odpowiedzi serwera.",u"No answer from the server.");break;}
         if(response.StatusCode!=3) {   // HTTP_STATUS_200_OK
-            static char16_t text[160];Set(text,160,response.StatusCode==21?T(u"Serwer: nie ma takiego pliku.",u"Server: no such file.")
+            static char16_t text[160];Set(text,160,response.StatusCode==21?T(u"Na serwerze nie ma takiego pliku.",u"There is no such file on the server.")
                 :T(u"Serwer odmówił; kod stanu UEFI ",u"The server refused; UEFI status code "));
             if(response.StatusCode!=21)CatN(text,160,response.StatusCode);
             why=text;status=EFI_SUCCESS;break;}
@@ -394,13 +439,13 @@ inline bool Download(const char16_t* url,const FileRef& target,uint64_t* receive
             if(same("transfer-encoding") && (value[0]=='c' || value[0]=='C'))chunked=true;
         }
         if(answer.Headers)boot->FreePool(answer.Headers);
-        if(chunked || length==UINT64_MAX) {why=T(u"Serwer nie podał rozmiaru pliku; taki transfer nie jest obsługiwany.",u"The server did not give the file size; that transfer is not supported.");status=EFI_SUCCESS;break;}
+        if(chunked || length==UINT64_MAX) {why=T(u"Serwer nie podał rozmiaru pliku; takie pobieranie nie jest obsługiwane.",u"The server did not give the file size; such a download is not supported.");status=EFI_SUCCESS;break;}
         if(memory) {
             if(!Reserve(*memory,size_t(length)+memory->extra+4096)) {why=T(u"Za mało pamięci RAM na ten plik.",u"Not enough RAM for this file.");status=EFI_SUCCESS;break;}
         } else {
-        if(OpenFile(target,EFI_FILE_MODE_READ|EFI_FILE_MODE_WRITE,0,&file)==EFI_SUCCESS) {if(file->Delete(file)!=EFI_SUCCESS) {file=nullptr;why=T(u"Nośnik tylko do odczytu.",u"The medium is read only.");break;}file=nullptr;}
+        if(OpenFile(target,EFI_FILE_MODE_READ|EFI_FILE_MODE_WRITE,0,&file)==EFI_SUCCESS) {if(file->Delete(file)!=EFI_SUCCESS) {file=nullptr;why=T(u"Nośnik jest tylko do odczytu.",u"The media is read-only.");break;}file=nullptr;}
         status=OpenFile(target,EFI_FILE_MODE_READ|EFI_FILE_MODE_WRITE|EFI_FILE_MODE_CREATE,0,&file);
-        if(status!=EFI_SUCCESS) {why=T(u"Nie utworzono pliku.",u"The file could not be created.");break;}
+        if(status!=EFI_SUCCESS) {why=T(u"Nie udało się utworzyć pliku.",u"The file could not be created.");break;}
         }
         const char16_t* label=what?what:T(u"Pobieranie",u"Downloading");
         uint64_t done=0;size_t part=answer.BodyLength;unsigned rounds=0;bool failed=false;
@@ -416,9 +461,9 @@ inline bool Download(const char16_t* url,const FileRef& target,uint64_t* receive
             HttpMessage more{};more.BodyLength=sizeof(block);more.Body=block;
             HttpToken next{};next.Event=event;next.Message=&more;Signalled()=false;
             status=http->Response(http,&next);
-            if(status!=EFI_SUCCESS || !WaitSignal(30,http) || next.Status!=EFI_SUCCESS) {if(status==EFI_SUCCESS)status=next.Status;http->Cancel(http,nullptr);why=T(u"Połączenie przerwane.",u"The connection broke.");failed=true;break;}
+            if(status!=EFI_SUCCESS || !WaitSignal(30,http) || next.Status!=EFI_SUCCESS) {if(status==EFI_SUCCESS)status=next.Status;http->Cancel(http,nullptr);why=T(u"Połączenie zostało przerwane.",u"The connection was lost.");failed=true;break;}
             part=more.BodyLength;
-            if(!part) {why=T(u"Połączenie przerwane.",u"The connection broke.");failed=true;break;}
+            if(!part) {why=T(u"Połączenie zostało przerwane.",u"The connection was lost.");failed=true;break;}
             if(++rounds%8==0) {
                 Progress(label,done,length);
             }

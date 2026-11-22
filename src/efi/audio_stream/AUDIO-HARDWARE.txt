@@ -1,0 +1,172 @@
+Charon audio hardware support (r406)
+====================================
+
+r408: codec families (Realtek, Conexant, IDT/SigmaTel, Analog Devices,
+Cirrus, VIA ...) and the machine quirk table generated from the Linux kernel
+are described in ../AUDIO-CODECS.txt. That file supersedes the paragraph
+"Amplifier GPIOs that Linux sets from its per-model quirk tables" below:
+Charon now carries those tables as far as they are data, plus a number of
+hand-ported functions. Smart amplifiers and SoundWire remain unsupported.
+
+Charon speaks through the first of these that it finds, in this order. A USB
+sound card that is present beside a built-in card gets the same sound as a
+second output.
+
+1. HD Audio (HDA)            EFI/HAK/AudioDxe.efi (modified OpenCore AudioDxe
+                             plus the HAK audio stream protocol)
+2. Intel-style AC'97         built into Charon (src/efi/CharonAc97.h)
+3. Ensoniq ES1371/ES1373     built into Charon (src/efi/CharonEs1371.h, r406,
+                             written separately from this document)
+4. USB Audio Class 1.0/2.0   built into Charon (src/efi/CharonUsbAudio.h),
+                             on xHCI controllers only
+
+
+1. HD Audio
+-----------
+
+Controllers
+
+- Every PCI function of class 04/03 (HD Audio), any vendor and any programming
+  interface (04/03/00 and 04/03/80): Intel ICH6 to current PCH, AMD/ATI,
+  NVIDIA, VIA, VMware, QEMU ... This is the binding OpenCore's AudioDxe always
+  had.
+- r406: Intel (vendor 8086) functions of class 04/01 and 04/80. Laptops from
+  Skylake on report 04/01 when the audio DSP is enabled in the firmware
+  (Linux, sound/hda/intel-dsp-config.c: "class=04 subclass 01 prog-if 00: DSP
+  is present"); Linux still runs them as plain HD Audio when the codec on the
+  link is an HD Audio codec, and so does this driver. Such a function is
+  taken only if
+    * BAR0 is an assigned memory BAR (Intel AC'97 is also 04/01 but has an
+      I/O BAR there and is left to the AC'97 output),
+    * the register block reads as an HD Audio 1.0 controller: VMAJ = 1,
+      VMIN = 0, the constant registers OUTPAY = 0x3C and INPAY = 0x1D, GCAP
+      with at least one output or bidirectional stream. Nothing is written to
+      the device before this check has passed (memory decoding is switched on
+      for the check and put back on refusal),
+    * after the link reset at least one codec answers. A link with no HD
+      Audio codec (SoundWire/SOF-only machine) is released again.
+  Charon's DisconnectFirmwareHda (CharonAc97.h) frees such a controller from
+  a firmware driver in the same way as a class 04/03 one.
+- PCI set-up: I/O, memory and bus-master decoding are enabled through
+  PciIo->Attributes and restored when the driver stops. Intel: traffic class
+  select (TCSEL, bits 0-2) is cleared; No Snoop Enable (DEVC) is cleared.
+  r406, as Linux azx_init_pci() does: snoop on for ATI SB450-SB900 and AMD
+  Hudson/X370/X570/Stoney/Raven controllers (config byte 0x42), coherence bits
+  for NVIDIA controllers (0x4e, 0x4d, 0x4c).
+- Reset: CRST low, wait for the controller to report it, r406: 1 ms in reset
+  (the specification asks for at least 100 us), CRST high, wait for the
+  controller, then 100 ms before codecs are addressed (the specification asks
+  for 521 us). r406: on Intel Skylake and newer PCH/SoC controllers (the PCI
+  IDs Linux lists as AZX_DRIVER_SKL) the "miscellaneous backbone dynamic clock
+  gating" bit (CGCTL, config 0x48 bit 6) is cleared for the duration of the
+  reset and then restored; Linux does the same because codecs are otherwise
+  not always detected.
+- CORB/RIRB: largest supported size, pointer reset (the CORB read pointer
+  reset is not waited for, which NVIDIA and VMware controllers need), DMA
+  below or above 4 GiB according to GCAP.
+
+Codecs and outputs
+
+- Any codec whose output pins are described by the pin default configuration:
+  line out, built-in speaker, headphones, S/PDIF, HDMI/DisplayPort.
+- Charon plays to EVERY analog output at once (line out, speakers and
+  headphones; r389). There is no jack sensing and nothing is muted when
+  headphones are plugged in: a blind user hears speech wherever it comes
+  out. A codec with analog outputs is tried before one with only digital
+  outputs (the graphics card's HDMI codec is often found first).
+- For each output pin: pin widget control OUT (r406: with the headphone
+  amplifier bit on headphone pins that have one), connection selects towards
+  the DAC, output amplifiers unmuted along the whole path (pin, mixer or
+  selector, DAC) at the top gain step, the path's mixer input unmuted and the
+  other inputs muted, converter format and stream.
+- Power: function group and every widget with power control are set to D0
+  when the codec is probed; r406: D0 is waited for and checked again before
+  each playback set-up.
+- External amplifier (EAPD): r406 switches EAPD on for every pin of the audio
+  function group that has the capability, not only for the pins being played
+  to (the speaker amplifier is often wired to another pin's EAPD line).
+- Realtek amplifier GPIO: r406 follows the generic rule of Linux
+  alc_subsystem_id(): when the codec's subsystem ID (or the pin default of
+  node 0x1d) carries a valid Realtek "assembly ID", its external-amplifier
+  field selects GPIO0, GPIO1 or GPIO2, which is enabled, made an output and
+  driven high. Other GPIOs keep the firmware's state.
+- OpenCore's driver options (--gpio-setup, --gpio-pins, --codec-setup-delay,
+  --force-device, --force-codec) are unchanged; Charon passes none of them.
+
+Not supported with HD Audio, and why
+
+- Speakers behind a separate "smart" amplifier on I2C or SPI: Cirrus Logic
+  CS35L41/CS35L51/CS35L56, Texas Instruments TAS2781/TAS2563 and similar
+  (many current Lenovo, HP, ASUS and Dell laptops). The amplifier needs its
+  own bus driver, calibration data and firmware from the operating system.
+  Headphones and line out of the same machine do work.
+- SoundWire and SOF-only machines (codec on SoundWire, e.g. Realtek
+  RT711/RT1316, Cirrus CS42L43; or only digital microphones on the DSP):
+  there is no HD Audio codec to talk to. The driver detects this and lets go
+  of the controller.
+- Amplifier GPIOs that Linux sets from its per-model quirk tables (keyed by
+  PCI or codec subsystem ID): many HP, Dell, Lenovo and ASUS Realtek models,
+  Apple machines with Cirrus CS420x, IDT/SigmaTel and Conexant GPIO
+  amplifiers, boards with inverted EAPD, vendor coefficient writes. Charon
+  does not carry those tables. The driver's "--gpio-setup" option (all GPIOs
+  enabled, output, high) exists for such machines, but Charon loads the
+  driver without options, so it is not reachable from Charon yet.
+- Automatic muting, volume keys, microphones/recording, more than two
+  channels, sample rates other than 48 kHz for speech.
+- HDMI/DisplayPort audio is used only when a codec has no analog output and
+  has not been tested; nothing is done for it beyond the generic pin set-up.
+
+
+2. AC'97
+--------
+
+Controllers with the Intel ICH register layout (class 04/01 with I/O BARs):
+Intel, NVIDIA nForce, AMD, SiS 7012; VirtualBox and QEMU "-device AC97".
+48 kHz stereo. Not supported: AC'97 controllers with another register layout
+(for example VIA), ISA and other pre-AC'97 cards.
+
+
+3. Ensoniq ES1371/ES1373
+------------------------
+
+Ensoniq AudioPCI 97, Creative CT5880 and EV1938: the default sound card of
+VMware virtual machines (sound.virtualDev = "es1371"). See CharonEs1371.h for
+its state and limits; that driver is being written separately.
+
+
+4. USB Audio
+------------
+
+USB Audio Class 1.0 (full-speed sound cards and headsets) and 2.0, PCM 16/24/32
+bit, 1 to 8 channels, 8 to 96 kHz, on xHCI controllers. Not supported:
+EHCI/UHCI/OHCI controllers, SuperSpeed audio devices, UAC 3.0-only devices,
+feedback for asynchronous endpoints. See CharonUsbAudio.h.
+
+
+Not supported at all
+--------------------
+
+Bluetooth audio; Thunderbolt/USB4 docks whose audio is not a USB Audio Class
+device; I2S codecs of tablets and ARM-style x86 machines (Bay Trail/Cherry
+Trail, Chromebooks); PC speaker (no speech possible); legacy BIOS boot.
+
+
+What was actually verified (r406)
+---------------------------------
+
+- VMware Workstation virtual machine (firmware = efi, sound.virtualDev =
+  hdaudio, class 04/03, 5 output ports): Charon disconnects VMware's own HDA
+  driver, AudioDxe-r406 binds, playback set-up and stream begin return 0, the
+  welcome and menu speech are submitted without error. VMware cannot record
+  the sound, so this is a serial-trace proof, not a measurement of audio.
+- QEMU ich9-intel-hda with hda-duplex (class 04/03): set-up and begin return
+  0 and the captured sound is not silent (2.5 s captured, RMS 1617 of 32768).
+- NOT verified on any hardware or virtual machine: the class 04/01 and 04/80
+  binding and its refusal paths, the Skylake clock-gating step, the ATI/AMD
+  and NVIDIA snoop bits, EAPD on additional pins, headphone amplifier bit,
+  the D0 wait and the Realtek GPIO rule. Neither virtual codec has EAPD, GPIO
+  or a power state other than D0, so in the virtual machines this code runs
+  but changes nothing. All of it was written from the Linux v6.12 sources
+  (hda_intel.c, hdac_controller.c, intel-dsp-config.c, patch_realtek.c,
+  patch_conexant.c, hda_generic.c) and the HD Audio specification 1.0a.
+- USB Audio Class 2.0 is untested (see CharonUsbAudio.h).

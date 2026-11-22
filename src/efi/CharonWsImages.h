@@ -78,14 +78,17 @@ inline void Reconnect(efi_handle disk) {
     auto* boot=U().host->boot;
     boot->DisconnectController(disk,nullptr,nullptr);
     boot->ConnectController(disk,nullptr,nullptr,true);
+    // r408a: the volume handles of that disk are new now (or gone); Charon's own files are read from the
+    // original medium only while it is still mounted, from the volume in memory otherwise.
+    if(hakefi::selfram::Active()) {const efi_handle original=hakefi::selfram::OriginalDevice();U().host->selfDevice=original?original:hakefi::selfram::Handle();}
 }
 // Writes the resource at `url` onto the whole disk `d`, from its first block.
 // `written` receives the image's size. False: said why.
 inline bool UrlToDisk(const char* url,const disks::Disk& d,const char16_t* what,uint64_t* written) {
     static https::Client client;static https::Response probe,answer;auto& j=J();
     if(written)*written=0;
-    if(d.hasCharon && !R().on) {Fail(T(u"To jest dysk, z którego działa Charon. Obrazu nie zapisuje się na własny dysk Charona.",u"This is the disk Charon runs from. An image is not written onto Charon's own disk."));return false;}
-    if(d.readOnly || !d.io || !d.io->WriteBlocks) {Fail(T(u"Tego dysku nie da się zapisać.",u"This disk cannot be written."));return false;}
+    if(d.hasCharon && !R().on && !hakefi::selfram::Active()) {Fail(T(u"To jest dysk, z którego działa Charon, a Charon nie jest jeszcze wczytany do pamięci. Zaczekaj chwilę i spróbuj ponownie.",u"This is the disk Charon is running from, and Charon is not yet loaded into memory. Wait a moment and try again."));return false;}
+    if(d.readOnly || !d.io || !d.io->WriteBlocks) {Fail(T(u"Na tym dysku nie da się zapisywać.",u"This disk cannot be written to."));return false;}
     client.transport=net::tcp::Transport();
     auto result=https::Probe(client,url,probe);
     if(result!=https::Result::ok) {net::HttpsFail(client,result);return false;}
@@ -94,7 +97,7 @@ inline bool UrlToDisk(const char* url,const disks::Disk& d,const char16_t* what,
     if(!R().on && total>disks::Bytes(d)) {
         static char16_t text[300];Set(text,300,T(u"Obraz jest większy niż dysk: ",u"The image is larger than the disk: "));systools::PutSize(text,300,total,Pl());Fail(text);return false;}
     static Memory memory;memory.reserved=false;memory.extra=0;
-    if(!Reserve(memory,chunkBytes+4096)) {Fail(T(u"Brak pamięci.",u"Out of memory."));return false;}
+    if(!Reserve(memory,chunkBytes+4096)) {Fail(T(u"Za mało pamięci RAM.",u"Not enough RAM."));return false;}
     j=Job{};j.io=d.io;j.blockSize=d.blockSize;j.blocks=d.blocks;j.buffer=memory.data;j.total=total;j.label=what;
     {static char16_t text[400];Set(text,400,T(u"Pobieram obraz i zapisuję go na dysk: ",u"Downloading the image and writing it to the disk: "));systools::PutSize(text,400,total,Pl());
      Cat(text,400,T(u". Escape przerywa; dysk zostaje wtedy z niepełnym obrazem.",u". Escape stops it; the disk is then left with an incomplete image."));Say(text);install::HearOut(100);}
@@ -106,8 +109,8 @@ inline bool UrlToDisk(const char* url,const disks::Disk& d,const char16_t* what,
     Free(memory);
     if(ok) {Progress(what,total,total);if(written)*written=total;return true;}
     if(j.cancelled)Fail(T(u"Przerwano. Na dysku jest niepełny obraz; nie da się z niego uruchomić systemu.",u"Stopped. The disk holds an incomplete image; no system can start from it."));
-    else if(R().on && R().failed)Fail(T(u"Tego obrazu nie da się wpisać w wolne miejsce: nie ma zwykłej tablicy partycji GPT z sektorami 512 bajtów albo jego partycje nie mieszczą się w wolnym miejscu. Na dysku nic nie zmieniono poza ewentualnie dodanymi pustymi partycjami.",
-        u"This image cannot be put into free space: it has no ordinary GPT partition table with 512-byte sectors, or its partitions do not fit the free space. Nothing on the disk was changed, except empty partitions that may have been added."));
+    else if(R().on && R().failed)Fail(T(u"Tego obrazu nie da się zapisać w wolnym miejscu: nie ma on zwykłej tablicy partycji GPT z sektorami po 512 bajtów albo jego partycje nie mieszczą się w wolnym miejscu. Na dysku nic się nie zmieniło; mogły tylko przybyć puste partycje.",
+        u"This image cannot be written into free space: it has no ordinary GPT partition table with 512-byte sectors, or its partitions do not fit in the free space. Nothing on the disk was changed, except that empty partitions may have been added."));
     else if(j.tooBig)Fail(T(u"Obraz nie zmieścił się na dysku.",u"The image did not fit on the disk."));
     else if(j.failed)Fail(T(u"Zapis na dysk nie powiódł się.",u"Writing to the disk failed."),j.status);
     else net::HttpsFail(client,result);
@@ -158,12 +161,19 @@ inline bool CharonOnto(efi_handle esp) {
     static FileRef from,to;from.volume=U().host->selfDevice;Set(from.path,pathUnits,u"\\EFI\\HAK");
     to.volume=esp;Set(to.path,pathUnits,u"\\EFI\\HAK");size_t copied=0;
     MakeFolders(esp,u"\\EFI\\HAK");
-    Say(T(u"Kopiuję Charona na partycję EFI nowego systemu.",u"Copying Charon to the new system's EFI partition."));
+    Say(T(u"Kopiuję Charona na partycję systemową EFI nowego systemu.",u"Copying Charon to the new system's EFI system partition."));
     if(CopyTree(from,to,0,&copied)!=EFI_SUCCESS)return false;
     // settings that belong to the stick, not to the installed copy
     static const char16_t* const stale[]={u"\\EFI\\HAK\\continue.bin",u"\\EFI\\HAK\\continue-set",u"\\EFI\\HAK\\installed-by.txt",u"\\EFI\\HAK\\reader-only",u"\\EFI\\HAK\\windows-iso-url.txt"};
     for(const auto* name:stale) {FileRef ref;ref.volume=esp;Set(ref.path,pathUnits,name);efi_file_protocol* file=nullptr;
         if(OpenFile(ref,EFI_FILE_MODE_READ|EFI_FILE_MODE_WRITE,0,&file)==EFI_SUCCESS && file)file->Delete(file);}
+    // r406: Charon run from its boot disc is \EFI\BOOT\BOOTX64.EFI and has no HAKBOOT.EFI in its
+    // folder; the installed copy gets the running program under that name (the boot entry
+    // "Charon" and the reader started through the boot manager both point there).
+    {FileRef manager;manager.volume=esp;Set(manager.path,pathUnits,u"\\EFI\\HAK\\HAKBOOT.EFI");efi_file_protocol* file=nullptr;
+     if(OpenFile(manager,EFI_FILE_MODE_READ,0,&file)==EFI_SUCCESS && file)file->Close(file);
+     else {static FileRef self;self.volume=U().host->selfDevice;Set(self.path,pathUnits,u"\\EFI\\BOOT\\BOOTX64.EFI");
+        if(CopyFile(self,manager)!=EFI_SUCCESS)return false;}}
     return install::WriteText(esp,u"\\EFI\\HAK\\install-charon.sh",install::charonScript,sizeof(install::charonScript)-1);
 }
 // A disk to erase: any writable one of at least `minimum` bytes that is not
@@ -173,31 +183,31 @@ inline bool ChooseDisk(uint64_t minimum,bool usbOnly,size_t& chosen) {
     static char16_t labels[disks::maxDisks][300];static ask::Choice list[disks::maxDisks];static size_t map[disks::maxDisks];size_t count=0;
     for(size_t i=0;i<s.count;++i) {
         const auto& d=s.list[i];
-        if(d.readOnly || d.hasCharon || disks::Bytes(d)<minimum)continue;
+        if(d.readOnly || (d.hasCharon && !hakefi::selfram::Active()) || disks::Bytes(d)<minimum)continue;   // r408: Charon's own disk can be wiped once Charon runs from RAM
         if(usbOnly && !d.usb && !d.removable)continue;
         disks::DiskLabel(d,i,labels[count],300);list[count]={labels[count],labels[count],""};map[count]=i;++count;
     }
     if(!count) {
         static char16_t text[400];
-        Set(text,400,usbOnly?T(u"Nie ma drugiego pendrive'a, który można wymazać: potrzeba co najmniej ",u"There is no second USB stick that may be erased: needed, at least ")
-            :T(u"Nie ma dysku, który można wymazać: potrzeba co najmniej ",u"There is no disk that may be erased: needed, at least "));
+        Set(text,400,usbOnly?T(u"Nie ma drugiego pendrive'a, który można wymazać: potrzeba co najmniej ",u"There is no second USB stick that can be erased: needed, at least ")
+            :T(u"Nie ma dysku, który można wymazać: potrzeba co najmniej ",u"There is no disk that can be erased: needed, at least "));
         systools::PutSize(text,400,minimum,Pl());
         Cat(text,400,T(u". Dysk, z którego działa Charon, się nie liczy.",u". The disk Charon runs from does not count."));Fail(text);return false;}
     size_t index=0;
-    if(!ask::Choose(usbOnly?T(u"Który pendrive wymazać?",u"Which USB stick to erase?"):T(u"Który dysk wymazać?",u"Which disk to erase?"),list,count,index))return false;
+    if(!ask::Choose(usbOnly?T(u"Który pendrive wymazać?",u"Which USB stick should be erased?"):T(u"Który dysk wymazać?",u"Which disk should be erased?"),list,count,index))return false;
     chosen=map[index];return true;
 }
 // The typed word before a disk is erased.
 inline bool ConfirmErase(const disks::Disk& d,size_t index,const char16_t* what) {
     static char16_t text[900];static char16_t label[300];disks::DiskLabel(d,index,label,300);
-    Set(text,900,d.blank?T(u"Ten pusty dysk zostanie użyty w całości: ",u"This empty disk will be used whole: ")
+    Set(text,900,d.blank?T(u"Ten pusty dysk zostanie użyty w całości: ",u"The whole of this empty disk will be used: ")
         :T(u"CAŁY ten dysk zostanie wymazany, ze wszystkimi systemami i danymi: ",u"This WHOLE disk will be erased, with every system and all data on it: "));
-    Cat(text,900,label);Cat(text,900,T(u". Trafi na niego: ",u". It receives: "));Cat(text,900,what);
-    Cat(text,900,T(u". Aby zacząć, wpisz słowo TAK i naciśnij Enter. Escape rezygnuje.",u". To start, type the word YES and press Enter. Escape gives up."));
+    Cat(text,900,label);Cat(text,900,T(u". Trafi na niego: ",u". It will receive: "));Cat(text,900,what);
+    Cat(text,900,T(u". Aby zacząć, wpisz słowo TAK i naciśnij Enter. Escape anuluje.",u". To start, type the word YES and press Enter. Escape cancels."));
     Say(text);
     static char16_t word[16];word[0]=0;
     if(!Prompt(T(u"Wpisz TAK, aby zacząć:",u"Type YES to start:"),word,15,nullptr,nullptr,false))return false;
-    if(!SameFold(word,T(u"tak",u"yes"))) {Say(T(u"Nie wpisano potwierdzenia. Nic nie zrobiono.",u"The confirmation was not typed. Nothing was done."));return false;}
+    if(!SameFold(word,T(u"tak",u"yes"))) {Say(T(u"Nie wpisano potwierdzenia. Nic nie zostało zmienione.",u"No confirmation was typed. Nothing was changed."));return false;}
     return true;
 }
 }  // namespace images

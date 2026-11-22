@@ -1,0 +1,52 @@
+--- a/src/drivers/bus/usb.c
++++ b/src/drivers/bus/usb.c
+@@ -1472,7 +1472,33 @@
+ 	if ( ( rc = usb_set_configuration ( usb, config->config ) ) != 0){
+ 		DBGC ( usb, "USB %s could not set configuration %d: %s\n",
+ 		       usb->name, config->config, strerror ( rc ) );
+-		goto err_set_configuration;
++		/* Charon driver pack: a host controller that works through
++		 * the firmware's EFI_USB_IO_PROTOCOL (usbio) cannot leave the
++		 * configuration the firmware selected.  Fall back to any
++		 * other configuration that a driver accepts and that the
++		 * host controller allows.
++		 */
++		for ( index = 0 ; index < usb->device.configurations ;
++		      index++ ) {
++			if ( index == preferred )
++				continue;
++			free ( config );
++			config = NULL;
++			if ( usb_config_descriptor ( usb, index,
++						     &config ) != 0 ) {
++				config = NULL;
++				continue;
++			}
++			if ( usb_score ( usb, config ) <= 0 )
++				continue;
++			if ( usb_set_configuration ( usb,
++						     config->config ) == 0 ) {
++				rc = 0;
++				break;
++			}
++		}
++		if ( rc != 0 )
++			goto err_set_configuration;
+ 	}
+ 
+ 	/* Probe USB device drivers */
+--- a/src/drivers/usb/usbio.c
++++ b/src/drivers/usb/usbio.c
+@@ -725,6 +725,12 @@
+ 	interval = ( ep->interval >> 3 /* microframes -> milliseconds */ );
+ 	if ( ! interval )
+ 		interval = 1; /* May not be zero */
++	/* Charon driver pack: EFI_USB_IO_PROTOCOL accepts 1 to 255 ms only
++	 * and refuses the transfer otherwise; polling more often than the
++	 * endpoint asks for is allowed.
++	 */
++	if ( interval > 255 )
++		interval = 255;
+ 
+ 	/* Add to periodic schedule */
+ 	if ( ( efirc = io->UsbAsyncInterruptTransfer ( io, ep->address, TRUE,

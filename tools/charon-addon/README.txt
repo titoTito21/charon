@@ -60,6 +60,69 @@ Installing
   and the add-on files; a full Charon installation on the same partition is
   left alone).
 
+Install-Charon.ps1 (boot manager and reader), r408
+- Zainstaluj-Charona.bat starts it. Modes: -Mode Reader (as above), Shim,
+  Manager (Charon boot manager plus the reader from power-on).
+- Boot order: without -Default the Charon boot manager is the SECOND boot
+  entry. The system stays first: the entry named by -FirstEntry when it
+  exists (an unattended Windows installation made by Charon passes
+  "Windows Boot Manager"), otherwise the entry that is first now. "Charon"
+  follows, the other entries keep their order, each entry once. Running the
+  installer again writes nothing. -Default puts Charon first; -FirstEntry
+  CharonDOS (Charon's CharonDOS dialogue) puts CharonDOS first.
+- Secure Boot on and no shimx64.efi / mmx64.efi next to the installer or in
+  EFI\HAK: the boot manager is installed anyway, without shim, signed with
+  this computer's certificate like the reader, as the second entry. Windows
+  starts as before; Charon works once the certificate is in db or Secure
+  Boot is off. (With -Default the installer still stops: a first entry the
+  firmware refuses would be in the way.)
+- The EFI partition is mounted on a letter that is no drive of any kind (or
+  the letter it already has); its number, first block and size for the
+  firmware entries are read from the GPT on the disk.
+- Log: %ProgramData%\Charon\install-charon.log (English). A boot entry that
+  cannot be written is reported and logged, the reader is still installed,
+  and the installer ends with exit code 1.
+
+Turning Secure Boot off with the maker's own interface (optional, r408)
+- Why: Charon is not signed by Microsoft, and a blind owner cannot use the
+  firmware setup screen. Makers of business computers publish an interface
+  for changing firmware settings from Windows with the firmware supervisor
+  password. Charon-SecureBoot.ps1 uses that and nothing else, for the one
+  setting "Secure Boot". It is not a way around Secure Boot: it never
+  writes the key databases (PK, KEK, db, dbx), never makes unsigned code
+  trusted, never sets or guesses a password, never acts silently.
+- How: Install-Charon.ps1 -DisableSecureBoot, or answer yes when the
+  installer asks at the end (default: no). Never in an unattended
+  installation. It explains the risks, asks for a typed word (DISABLE,
+  Polish: WYLACZ) and the supervisor password, suspends BitLocker for one
+  restart, calls the maker's interface once, and reads the setting back.
+  The change takes effect after a restart.
+- Before agreeing: some firmware asks for a confirmation on its own screen
+  at the next start (not read by Charon yet: a sighted person may be
+  needed); changing Secure Boot can make BitLocker ask for the recovery key
+  (aka.ms/myrecoverykey).
+- Lenovo ThinkPad, ThinkCentre, ThinkStation: supported, through Lenovo's
+  WMI interface built into the firmware (nothing is downloaded). Lenovo:
+  Secure Boot can be changed from Enable to Disable only when a supervisor
+  password exists, and a password cannot be created from Windows. Without
+  one the installer says so and changes nothing.
+      https://docs.lenovocdrt.com/ref/bios/wmi/wmi_guide/
+      https://docs.lenovocdrt.com/ref/bios/settings/thinkpad/secureboot/
+- Lenovo IdeaPad, Legion, Yoga, LOQ, ThinkBook: declined (Lenovo documents
+  the interface for the three Think lines only).
+- Dell: declined. Dell's own tool cannot do it: "The SecureBoot feature can
+  be disabled only from the BIOS setup screen."
+      https://dl.dell.com/topicspdf/command-powershell-provider_users-guide_en-us.pdf
+- HP: not implemented (a marked stub): the setting names and HP's
+  confirmation at the next start could not be confirmed from HP's
+  documentation. ASUS, Acer, MSI and others: declined, no documented
+  interface.
+- Declined means: the installer says why and does nothing. What remains is
+  firmware setup (sighted help, or a camera app that reads the screen) or
+  shim with a MOK key, which keeps Secure Boot on.
+- Not tried on a computer: the Lenovo calls themselves. Detection and the
+  dialogue were tried with stand-ins for the firmware interface.
+
 What was tested (QEMU/OVMF, no physical hardware)
 - The Driver#### entry built by the installer (-DryRun, short path
   HD(GPT partition)\EFI\HAK\CHARONVOICE.EFI, the same as under Windows)

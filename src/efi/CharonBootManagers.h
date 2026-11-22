@@ -4,7 +4,7 @@
 // The resident reader looks at every image passed to StartImage (by Charon,
 // firmware boot options or a chain loader) and names it when its code and data
 // carry a boot manager's own name: rEFInd, Windows Boot Manager, GRUB,
-// systemd-boot, OpenCore, Clover, Limine. Signatures are stored with every
+// systemd-boot, OpenCore, Clover, Limine, VeraCrypt. Signatures are stored with every
 // byte raised by one, so Charon's own image never matches itself.
 #pragma once
 #include <stddef.h>
@@ -25,6 +25,12 @@ inline constexpr BootManagerSignature bootManagerSignatures[]={
     // Clover carries OpenCore's libraries and other boot managers' names.
     {"Dmpwfs!sfwjtjpo",u"Clover"},  // "Clover revision"
     {"sFGJoe",u"rEFInd"},
+    // r407: VeraCrypt's loader (DCS). Its rescue disk program first (it holds
+    // the loader's paths too); both before Windows Boot Manager, which the
+    // loader starts afterwards and names in its messages. A VeraCrypt system
+    // disk holds DcsBoot.efi as \EFI\Microsoft\Boot\bootmgfw.efi.
+    {"Sftdvf!ejtl!gps!WfsbDszqu",u"VeraCrypt Rescue Disk"},  // "Rescue disk for VeraCrypt" (DcsRe.efi)
+    {"FGJ]WfsbDszqu]",u"VeraCrypt"},  // "EFI\VeraCrypt\" (DcsBoot.efi, DcsInt.dcs, DcsCfg.dcs)
     // systemd-boot names its automatic Windows entry, so it comes first.
     {"MpbefsJogp;!tztufne.cppu",u"systemd-boot"},  // "LoaderInfo: systemd-boot" (not the systemd-stub of kernels)
     {"Xjoepxt!Cppu!Nbobhfs",u"Windows Boot Manager"},

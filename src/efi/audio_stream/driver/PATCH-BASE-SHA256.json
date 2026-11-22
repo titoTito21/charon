@@ -2,5 +2,7 @@
   "HdaController/HdaController.h": "d479356a75c6a05f0418049219caaf9333c425dbc2f0b14969d756dfdad09bfc",
   "HdaController/HdaController.c": "ccf5a37bd5c9124338f517d4f70dfd90719caba8e7a01f4ca35cf1c26bee60ae",
   "HdaController\\HdaControllerHdaIo.c": "271bb307a4fdb85a43af5f6cfecb126b1e38b40e81cb6a274e73886fd43d06db",
+  "HdaCodec/HdaCodec.c": "f6c84d2c3a8681255b7c0666652c16a152ca2920e4d88865c8266716d235b586",
+  "HdaCodec/HdaCodecAudioIo.c": "ba6f53c47f9818029f79c2d76241a174d087f0299e1a2b6b63a33ccaf144b835",
   "AudioDxe.inf": "d4f67f5542d4e7aa28903735b4469068b3a8ba648bf8e394d58076eab349b184"
 }

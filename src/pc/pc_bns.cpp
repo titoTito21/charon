@@ -59,6 +59,7 @@ void Flush()
     size_t start = 0;
     while (text[start] == ' ') ++start;
     if (text[start]) {
+        pc::ReaderGuestSpoke();   // r407: a guest screen reader talks: Charon's control reader steps back
         const bool spoken = pc::Say(text + start);
         Log(spoken ? "BNS speak: " : "BNS (no voice): ", text + start);
     }

@@ -197,8 +197,8 @@ inline bool QcowProgress(void*,uint64_t done,uint64_t total) {
 inline bool QcowToDisk(const char* url,const disks::Disk& d,const char16_t* what,uint64_t* written) {
     auto& q=Q();static https::Response probe;static inflate::Decoder decoder;
     if(written)*written=0;
-    if(d.hasCharon && !R().on) {Fail(T(u"To jest dysk, z którego działa Charon. Obrazu nie zapisuje się na własny dysk Charona.",u"This is the disk Charon runs from. An image is not written onto Charon's own disk."));return false;}
-    if(d.readOnly || !d.io || !d.io->WriteBlocks) {Fail(T(u"Tego dysku nie da się zapisać.",u"This disk cannot be written."));return false;}
+    if(d.hasCharon && !R().on && !hakefi::selfram::Active()) {Fail(T(u"To jest dysk, z którego działa Charon, a Charon nie jest jeszcze wczytany do pamięci. Zaczekaj chwilę i spróbuj ponownie.",u"This is the disk Charon is running from, and Charon is not yet loaded into memory. Wait a moment and try again."));return false;}
+    if(d.readOnly || !d.io || !d.io->WriteBlocks) {Fail(T(u"Na tym dysku nie da się zapisywać.",u"This disk cannot be written to."));return false;}
     q.client.transport=net::tcp::Transport();
     auto result=https::Probe(q.client,url,probe);
     if(result!=https::Result::ok) {net::HttpsFail(q.client,result);return false;}
@@ -211,22 +211,22 @@ inline bool QcowToDisk(const char* url,const disks::Disk& d,const char16_t* what
     Memory* all[]={&windowMemory,&l1Memory,&l2Memory,&clusterMemory,&compressedMemory,&zeroMemory};
     for(auto* m:all) {m->data=nullptr;m->capacity=0;m->size=0;m->extra=0;m->reserved=false;}
     auto release=[&]() {for(auto* m:all)if(m->data)Free(*m);};
-    if(!Reserve(windowMemory,windowBytes)) {Fail(T(u"Brak pamięci.",u"Out of memory."));return false;}
+    if(!Reserve(windowMemory,windowBytes)) {Fail(T(u"Za mało pamięci RAM.",u"Not enough RAM."));return false;}
     q.window=windowMemory.data;
     qcow2::Source source{nullptr,QcowRead};qcow2::Image image{};
     auto error=qcow2::Open(source,image);
     if(error!=qcow2::Error::None) {
         release();
         if(q.failed)net::HttpsFail(q.client,q.last);
-        else Fail(T(u"Tego obrazu Charon nie umie odczytać: to nie jest zwykły obraz qcow2 ze zwykłą kompresją.",u"Charon cannot read this image: it is not a plain qcow2 image with plain compression."));
+        else Fail(T(u"Charon nie potrafi odczytać tego obrazu: to nie jest zwykły obraz qcow2 ze zwykłą kompresją.",u"Charon cannot read this image: it is not a plain qcow2 image with plain compression."));
         return false;}
     if(!R().on && image.virtualSize>disks::Bytes(d)) {
         release();static char16_t text[300];Set(text,300,T(u"System z tego obrazu potrzebuje większego dysku: ",u"The system in this image needs a larger disk: "));systools::PutSize(text,300,image.virtualSize,Pl());Fail(text);return false;}
     const size_t clusterBytes=image.clusterSize>chunkBytes?size_t(image.clusterSize):chunkBytes;
     if(!Reserve(l1Memory,size_t(qcow2::L1Bytes(image))+4096) || !Reserve(l2Memory,size_t(image.clusterSize)) || !Reserve(clusterMemory,clusterBytes)
-        || !Reserve(compressedMemory,clusterBytes*2) || !Reserve(zeroMemory,chunkBytes)) {release();Fail(T(u"Brak pamięci.",u"Out of memory."));return false;}
+        || !Reserve(compressedMemory,clusterBytes*2) || !Reserve(zeroMemory,chunkBytes)) {release();Fail(T(u"Za mało pamięci RAM.",u"Not enough RAM."));return false;}
     memset(zeroMemory.data,0,chunkBytes);q.zeros=zeroMemory.data;
-    {static char16_t text[400];Set(text,400,T(u"Pobieram obraz, rozpakowuję go i zapisuję na dysk. System zajmie ",u"Downloading the image, unpacking it and writing it to the disk. The system takes "));systools::PutSize(text,400,image.virtualSize,Pl());
+    {static char16_t text[400];Set(text,400,T(u"Pobieram obraz, rozpakowuję go i zapisuję na dysk. System zajmie ",u"Downloading the image, unpacking it and writing it to the disk. The system will take "));systools::PutSize(text,400,image.virtualSize,Pl());
      Cat(text,400,T(u". Escape przerywa; dysk zostaje wtedy z niepełnym obrazem.",u". Escape stops it; the disk is then left with an incomplete image."));Say(text);install::HearOut(100);}
     qcow2::Work work{};work.l1=l1Memory.data;work.l1Bytes=size_t(qcow2::L1Bytes(image));work.l2=l2Memory.data;work.l2Bytes=size_t(image.clusterSize);
     work.cluster=clusterMemory.data;work.clusterBytes=clusterBytes;work.compressed=compressedMemory.data;work.compressedBytes=clusterBytes*2;work.decoder=&decoder;work.fileSize=q.fileSize;
@@ -237,11 +237,11 @@ inline bool QcowToDisk(const char* url,const disks::Disk& d,const char16_t* what
     release();
     if(error==qcow2::Error::None) {Progress(what,image.virtualSize,image.virtualSize);if(written)*written=image.virtualSize;return true;}
     if(q.cancelled)Fail(T(u"Przerwano. Na dysku jest niepełny obraz; nie da się z niego uruchomić systemu.",u"Stopped. The disk holds an incomplete image; no system can start from it."));
-    else if(R().on && R().failed)Fail(T(u"Tego obrazu nie da się wpisać w wolne miejsce: nie ma zwykłej tablicy partycji GPT z sektorami 512 bajtów albo jego partycje nie mieszczą się w wolnym miejscu.",
-        u"This image cannot be put into free space: it has no ordinary GPT partition table with 512-byte sectors, or its partitions do not fit the free space."));
+    else if(R().on && R().failed)Fail(T(u"Tego obrazu nie da się zapisać w wolnym miejscu: nie ma on zwykłej tablicy partycji GPT z sektorami po 512 bajtów albo jego partycje nie mieszczą się w wolnym miejscu.",
+        u"This image cannot be written into free space: it has no ordinary GPT partition table with 512-byte sectors, or its partitions do not fit in the free space."));
     else if(q.failed && q.status!=EFI_SUCCESS)Fail(T(u"Zapis na dysk nie powiódł się.",u"Writing to the disk failed."),q.status);
     else if(q.failed)net::HttpsFail(q.client,q.last);
-    else Fail(T(u"Obraz jest uszkodzony albo ma budowę, której Charon nie zna.",u"The image is damaged or built in a way Charon does not know."));
+    else Fail(T(u"Obraz jest uszkodzony albo ma budowę, której Charon nie zna.",u"The image is damaged or has a structure Charon does not know."));
     return false;
 }
 }  // namespace images

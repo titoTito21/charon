@@ -1,0 +1,223 @@
+--- a/src/interface/efi/efi_snp.c
++++ b/src/interface/efi/efi_snp.c
+@@ -39,11 +39,47 @@
+ #include <ipxe/efi/efi_watchdog.h>
+ #include <ipxe/efi/efi_null.h>
+ #include <ipxe/efi/efi_snp.h>
++#include <ipxe/efi/efi_wifi.h>
++#include <ipxe/if_ether.h>
++#include <ipxe/if_arp.h>
+ #include <usr/autoboot.h>
+ #include <config/general.h>
+ 
+ /** List of SNP devices */
+ static LIST_HEAD ( efi_snp_devices );
++
++/** Receive hook: frames the driver itself must consume (Charon, efi_wifi.c) */
++int ( * efi_snp_rx_hook ) ( struct net_device *netdev,
++			    struct io_buffer *iobuf );
++
++/**
++ * Check for an 802.11 device, presented with Ethernet framing (Charon)
++ *
++ * @v netdev		Network device
++ * @ret is_80211	Device has 802.11 link-layer headers
++ *
++ * The firmware's network stack (MNP) parses Ethernet headers itself,
++ * so an 802.11 device must look like an Ethernet device through SNP.
++ */
++static int efi_snp_eth_emul ( struct net_device *netdev ) {
++	struct ll_protocol *ll_protocol = netdev->ll_protocol;
++
++	return ( ( ll_protocol->ll_proto == htons ( ARPHRD_ETHER ) ) &&
++		 ( ll_protocol->ll_addr_len == ETH_ALEN ) &&
++		 ( ll_protocol->ll_header_len > ETH_HLEN ) );
++}
++
++/**
++ * Get link-layer header length as seen through SNP
++ *
++ * @v netdev		Network device
++ * @ret len		Header length
++ */
++static size_t efi_snp_ll_header_len ( struct net_device *netdev ) {
++
++	return ( efi_snp_eth_emul ( netdev ) ?
++		 ( ( size_t ) ETH_HLEN ) : netdev->ll_protocol->ll_header_len );
++}
+ 
+ /** Network devices are currently claimed for use by iPXE */
+ static int efi_snp_claimed;
+@@ -125,7 +161,7 @@
+ 	unsigned int ll_addr_len = ll_protocol->ll_addr_len;
+ 
+ 	mode->HwAddressSize = ll_addr_len;
+-	mode->MediaHeaderSize = ll_protocol->ll_header_len;
++	mode->MediaHeaderSize = efi_snp_ll_header_len ( netdev );
+ 	mode->MaxPacketSize = netdev->mtu;
+ 	mode->ReceiveFilterMask = ( EFI_SIMPLE_NETWORK_RECEIVE_UNICAST |
+ 				    EFI_SIMPLE_NETWORK_RECEIVE_MULTICAST |
+@@ -174,6 +210,9 @@
+ 
+ 	/* Retrieve any received packets */
+ 	while ( ( iobuf = netdev_rx_dequeue ( snpdev->netdev ) ) ) {
++		if ( efi_snp_rx_hook &&
++		     efi_snp_rx_hook ( snpdev->netdev, iobuf ) )
++			continue;
+ 		list_add_tail ( &iobuf->list, &snpdev->rx );
+ 		snpdev->interrupts |= EFI_SIMPLE_NETWORK_RECEIVE_INTERRUPT;
+ 		bs->SignalEvent ( snpdev->snp.WaitForPacket );
+@@ -649,7 +688,8 @@
+ 
+ 	/* Sanity checks */
+ 	if ( ll_header_len ) {
+-		if ( ll_header_len != ll_protocol->ll_header_len ) {
++		if ( ll_header_len !=
++		     efi_snp_ll_header_len ( snpdev->netdev ) ) {
+ 			DBGC ( snpdev, "SNPDEV %p TX invalid header length "
+ 			       "%ld\n", snpdev,
+ 			       ( ( unsigned long ) ll_header_len ) );
+@@ -678,6 +718,44 @@
+ 			ll_src = &snpdev->mode.CurrentAddress;
+ 	}
+ 
++	/* 802.11 device presented with Ethernet framing (Charon):
++	 * the caller's frame has, or expects, an Ethernet header.
++	 */
++	if ( efi_snp_eth_emul ( snpdev->netdev ) ) {
++		const uint8_t *eth = data;
++		const void *eth_dest = eth;
++		const void *eth_src = ( eth + ETH_ALEN );
++		uint16_t eth_proto;
++
++		if ( len < ETH_HLEN ) {
++			rc = -EINVAL;
++			goto err_sanity;
++		}
++		memcpy ( &eth_proto, ( eth + ( 2 * ETH_ALEN ) ),
++			 sizeof ( eth_proto ) );
++		if ( ll_header_len ) {
++			eth_dest = ll_dest;
++			eth_src = ll_src;
++			eth_proto = htons ( *net_proto );
++		}
++		payload_len = ( len - ETH_HLEN );
++		iobuf = alloc_iob ( MAX_LL_HEADER_LEN +
++				    ( ( payload_len > IOB_ZLEN ) ?
++				      payload_len : IOB_ZLEN ) );
++		if ( ! iobuf ) {
++			rc = -ENOMEM;
++			goto err_alloc_iob;
++		}
++		iob_reserve ( iobuf, MAX_LL_HEADER_LEN );
++		memcpy ( iob_put ( iobuf, payload_len ), ( eth + ETH_HLEN ),
++			 payload_len );
++		if ( ( rc = ll_protocol->push ( snpdev->netdev, iobuf,
++						eth_dest, eth_src,
++						eth_proto ) ) != 0 )
++			goto err_ll_push;
++		goto ll_done;
++	}
++
+ 	/* Allocate buffer */
+ 	payload_len = ( len - ll_protocol->ll_header_len );
+ 	iobuf = alloc_iob ( MAX_LL_HEADER_LEN + ( ( payload_len > IOB_ZLEN ) ?
+@@ -704,6 +782,7 @@
+ 		}
+ 	}
+ 
++ ll_done:
+ 	/* Transmit packet */
+ 	if ( ( rc = netdev_tx ( snpdev->netdev, iob_disown ( iobuf ) ) ) != 0){
+ 		DBGC ( snpdev, "SNPDEV %p TX could not transmit: %s\n",
+@@ -800,6 +879,46 @@
+ 
+ 	/* Dequeue packet */
+ 	list_del ( &iobuf->list );
++
++	/* 802.11 device presented with Ethernet framing (Charon):
++	 * replace the 802.11 and LLC headers with an Ethernet header.
++	 */
++	if ( efi_snp_eth_emul ( snpdev->netdev ) ) {
++		uint8_t eth[ETH_HLEN];
++		size_t frame_len;
++
++		if ( ( rc = ll_protocol->pull ( snpdev->netdev, iobuf,
++						&iob_ll_dest, &iob_ll_src,
++						&iob_net_proto,
++						&iob_flags ) ) != 0 )
++			goto out_bad_ll_header;
++		memcpy ( eth, iob_ll_dest, ETH_ALEN );
++		memcpy ( ( eth + ETH_ALEN ), iob_ll_src, ETH_ALEN );
++		memcpy ( ( eth + ( 2 * ETH_ALEN ) ), &iob_net_proto,
++			 sizeof ( iob_net_proto ) );
++		frame_len = ( ETH_HLEN + iob_len ( iobuf ) );
++		copy_len = frame_len;
++		if ( copy_len > *len )
++			copy_len = *len;
++		if ( copy_len >= ETH_HLEN ) {
++			memcpy ( data, eth, ETH_HLEN );
++			memcpy ( ( data + ETH_HLEN ), iobuf->data,
++				 ( copy_len - ETH_HLEN ) );
++		} else {
++			memcpy ( data, eth, copy_len );
++		}
++		*len = frame_len;
++		if ( ll_header_len )
++			*ll_header_len = ETH_HLEN;
++		if ( ll_src )
++			memcpy ( ll_src, iob_ll_src, ETH_ALEN );
++		if ( ll_dest )
++			memcpy ( ll_dest, iob_ll_dest, ETH_ALEN );
++		if ( net_proto )
++			*net_proto = ntohs ( iob_net_proto );
++		rc = ( ( copy_len == frame_len ) ? 0 : -ERANGE );
++		goto out_bad_ll_header;
++	}
+ 
+ 	/* Return packet to caller, truncating to buffer length */
+ 	copy_len = iob_len ( iobuf );
+@@ -2150,3 +2269,43 @@
+ 	if ( ! efi_snp_claimed )
+ 		efi_restore_tpl ( &efi_snp_saved_tpl );
+ }
++
++/**
++ * Get SNP handle of a network device (Charon, efi_wifi.c)
++ *
++ * @v netdev		Network device
++ * @ret handle		SNP handle, or NULL
++ */
++EFI_HANDLE efi_snp_netdev_handle ( struct net_device *netdev ) {
++	struct efi_snp_device *snpdev = efi_snp_demux ( netdev );
++
++	return ( snpdev ? snpdev->handle : NULL );
++}
++
++/**
++ * Poll a network device on behalf of its SNP consumer (Charon, efi_wifi.c)
++ *
++ * @v netdev		Network device
++ * @v max_rx		Maximum number of received frames to keep
++ *
++ * Used where nothing may be polling SNP (a Wi-Fi handshake must go on
++ * regardless); the oldest frames are dropped beyond max_rx.
++ */
++void efi_snp_netdev_poll ( struct net_device *netdev, unsigned int max_rx ) {
++	struct efi_snp_device *snpdev = efi_snp_demux ( netdev );
++	struct io_buffer *iobuf;
++	unsigned int count = 0;
++
++	if ( ( ! snpdev ) || efi_snp_claimed )
++		return;
++	efi_snp_poll ( snpdev );
++	list_for_each_entry ( iobuf, &snpdev->rx, list )
++		count++;
++	while ( count > max_rx ) {
++		iobuf = list_first_entry ( &snpdev->rx, struct io_buffer,
++					   list );
++		list_del ( &iobuf->list );
++		free_iob ( iobuf );
++		count--;
++	}
++}

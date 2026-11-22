@@ -1,4 +1,4 @@
-<#
+﻿<#
 Charon: screen readers for the installed Windows (first logon). GPL-2.0-or-later.
 
 Runs once, elevated, from the answer file's FirstLogonCommands, BEFORE the
@@ -25,8 +25,10 @@ Windows profile, and installs the screen readers the user checked in Charon:
   -First    the reader that starts after logon and on the logon screen; the
             others stay installed and are started by their own keys
             (NVDA: Control+Alt+N, Narrator: Control+Windows+Enter, JAWS: its
-            desktop shortcut). Narrator, started by Setup, is stopped once
-            another first reader is speaking, so two readers never talk at once.
+            desktop shortcut). Narrator is stopped once another first reader
+            is really running, and taken off Windows' start lists, so two
+            readers never talk at once. If the first reader cannot be started,
+            Narrator is switched on and started instead: never silence.
 Progress is spoken with System.Speech (SAPI) and written to
 %ProgramData%\Charon\readers.log. Exit codes: 0 success, 1 a reader could
 not be installed (the others are), 2 bad arguments.
@@ -46,7 +48,8 @@ if (-not $Source) { $Source = Split-Path -Parent $MyInvocation.MyCommand.Path }
 if (-not $Language) { $Language = (Get-UICulture).Name }
 $IsPolish = $Language -like 'pl*'
 $Chosen = @($Readers.Split(',') | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
-foreach ($r in $Chosen) { if ($r -notin 'nvda', 'jaws', 'narrator') { Write-Error "unknown reader $r"; exit 2 } }
+# (Write-Host, not Write-Error: with $ErrorActionPreference Stop that ended the script with code 1, not the documented 2.)
+foreach ($r in $Chosen) { if ($r -notin 'nvda', 'jaws', 'narrator') { Write-Host "Charon-Readers: unknown reader $r"; exit 2 } }
 if ($First -notin $Chosen) { $Chosen += $First }
 
 # Pinned: NVDA 2026.3 (SHA-256 checked by Charon's maintainer against the
@@ -68,6 +71,7 @@ function Write-Log([string]$Text) {
     if (-not $DryRun) { Add-Content -LiteralPath $LogPath -Value $line -Encoding UTF8 }
 }
 $script:Synth = $null
+$script:UserToken = ''
 function Speak([string]$TextPl, [string]$TextEn) {
     $text = if ($IsPolish) { $TextPl } else { $TextEn }
     Write-Log $text
@@ -121,14 +125,69 @@ function Get-WingetInstaller([string]$PackagePath, [string]$Architecture) {
     } catch { Write-Log "winget repository lookup failed: $($_.Exception.Message)" }
     return $null
 }
+# r407: "start after sign-in" (HKCU) and "on the sign-in screen" (HKLM) are each one comma-separated
+# list of assistive programs, the value Configuration; a program's name in it is its key under
+# Accessibility\ATs. NVDA's check boxes "Start NVDA after I sign in" and "Use NVDA during sign-in"
+# and Narrator's own two settings write exactly these lists (NVDA: source/easeOfAccess.py,
+# setAutoStart). The chosen reader is put on both and the other screen readers are taken off, so
+# two readers never start together; what else is on the lists (Magnifier ...) stays.
 function Set-AtStart([string]$Token) {
-    # The token list Windows reads for "start after sign-in" and "on the sign-in screen".
     $paths = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Accessibility', 'HKLM:\Software\Microsoft\Windows NT\CurrentVersion\Accessibility'
+    $readers = @('narrator', 'nvda_nvda_v1', (Get-AtToken 'nvda' ''), (Get-AtToken 'jaws|jfw' ''), $Token) | Where-Object { $_ }
     foreach ($p in $paths) {
-        if ($DryRun) { Write-Log "dry run: $p Configuration = $Token"; continue }
+        $old = ''
+        try { $old = [string](Get-ItemProperty -Path $p -Name Configuration -ErrorAction Stop).Configuration } catch { }
+        $list = @($old.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ -and ($readers -notcontains $_) })
+        if ($Token) { $list += $Token }
+        $new = $list -join ','
+        if ($DryRun) { Write-Log "dry run: $p Configuration = $new"; continue }
         if (-not (Test-Path $p)) { New-Item -Path $p -Force | Out-Null }
-        Set-ItemProperty -Path $p -Name Configuration -Value $Token -Type String
+        Set-ItemProperty -Path $p -Name Configuration -Value $new -Type String
+        Write-Log "$p Configuration: '$old' -> '$new'"
     }
+    # r407: at the first sign-in Windows empties the user's list once (its "Narrator after sign-in"
+    # reset) and then sets this mark; on a fresh installation that happened after this script and
+    # took NVDA off the list again. With the mark set, Windows leaves the list alone.
+    if (-not $DryRun) {
+        try { Set-ItemProperty -Path $paths[0] -Name NarratorAfterSigninResetCompleted -Value 1 -Type DWord } catch { Write-Log "setting the reset mark failed: $($_.Exception.Message)" }
+    }
+    $script:UserToken = $Token
+}
+# r407: said list is looked at once more when everything is done; if Windows emptied it meanwhile, it is put back.
+function Confirm-AtStart {
+    if ($DryRun -or -not $script:UserToken) { return }
+    $p = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Accessibility'
+    $now = ''
+    try { $now = [string](Get-ItemProperty -Path $p -Name Configuration -ErrorAction Stop).Configuration } catch { }
+    if (@($now.Split(',') | ForEach-Object { $_.Trim() }) -contains $script:UserToken) { Write-Log "start after sign-in: '$now' (kept)"; return }
+    Write-Log "start after sign-in was changed to '$now' meanwhile; putting $($script:UserToken) back"
+    Set-AtStart $script:UserToken
+}
+# r407: the installed NVDA is started the way Windows starts it after sign-in: not elevated. (This
+# script is elevated; NV Access's installer does not start NVDA from an elevated process either.)
+# A one-time task with limited rights does that; if the task fails, NVDA is started directly.
+# True only when an nvda.exe process is really there afterwards.
+function Test-NvdaRuns { return [bool](Get-Process -Name nvda -ErrorAction SilentlyContinue) }
+function Start-Nvda([string]$Exe) {
+    if (Test-NvdaRuns) { return $true }
+    $task = 'CharonStartNVDA'
+    try {
+        $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/c start "" "{0}"' -f $Exe)
+        $principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
+        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+        Register-ScheduledTask -TaskName $task -Action $action -Principal $principal -Settings $settings -Force | Out-Null
+        Start-ScheduledTask -TaskName $task
+        for ($i = 0; $i -lt 20 -and -not (Test-NvdaRuns); $i++) { Start-Sleep -Seconds 1 }
+    } catch { Write-Log "starting NVDA by a task failed: $($_.Exception.Message)" }
+    try { Unregister-ScheduledTask -TaskName $task -Confirm:$false -ErrorAction Stop } catch { }
+    if (-not (Test-NvdaRuns)) {
+        Write-Log 'NVDA did not start by the task; starting it directly'
+        try { Start-Process -FilePath $Exe } catch { Write-Log "starting NVDA failed: $($_.Exception.Message)" }
+        for ($i = 0; $i -lt 20 -and -not (Test-NvdaRuns); $i++) { Start-Sleep -Seconds 1 }
+    }
+    $runs = Test-NvdaRuns
+    Write-Log "NVDA process running: $runs"
+    return $runs
 }
 $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }
 $work = Join-Path $LogDir 'readers'
@@ -137,8 +196,33 @@ $failed = $false
 Write-Log ("---- Charon-Readers: readers {0}, first {1}, language {2}, source {3}" -f ($Chosen -join ','), $First, $Language, $Source)
 
 # ---- NVDA ----------------------------------------------------------------------
-$nvdaExe = Join-Path ${env:ProgramFiles(x86)} 'NVDA\nvda.exe'
-if ('nvda' -in $Chosen -and -not (Test-Path $nvdaExe)) {
+# r406: NVDA 2026 is a 64-bit program in Program Files; older ones are in Program Files (x86).
+# (Looking only in the old place made a successful installation count as failed.)
+function Find-Nvda {
+    foreach ($root in @($env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:ProgramW6432)) {
+        if (-not $root) { continue }
+        $exe = Join-Path $root 'NVDA\nvda.exe'
+        if (Test-Path -LiteralPath $exe) { return $exe }
+    }
+    foreach ($key in 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\NVDA', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\NVDA') {
+        try {
+            $dir = (Get-ItemProperty -Path $key -Name UninstallDirectory -ErrorAction Stop).UninstallDirectory
+            if ($dir -and (Test-Path -LiteralPath (Join-Path $dir 'nvda.exe'))) { return (Join-Path $dir 'nvda.exe') }
+        } catch { }
+    }
+    return $null
+}
+# The name Windows starts an installed assistive program by: its key under Accessibility\ATs.
+function Get-AtToken([string]$Match, [string]$Default) {
+    try {
+        $key = Get-ChildItem -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Accessibility\ATs' -ErrorAction Stop |
+            Where-Object { $_.PSChildName -match "(?i)$Match" } | Select-Object -First 1
+        if ($key) { return $key.PSChildName }
+    } catch { }
+    return $Default
+}
+$nvdaExe = Find-Nvda
+if ('nvda' -in $Chosen -and -not $nvdaExe) {
     Speak 'Instaluję NVDA.' 'Installing NVDA.'
     $installer = $null
     $local = Get-ChildItem -LiteralPath (Join-Path $Source 'readers') -Filter 'nvda_*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -147,15 +231,26 @@ if ('nvda' -in $Chosen -and -not (Test-Path $nvdaExe)) {
         $target = Join-Path $work 'nvda.exe'
         if (Get-Download $Nvda.Url $Nvda.Sha256 $target) { $installer = $target }
         else {
-            $newer = Get-WingetInstaller 'n/NVAccess/NVDA' 'x86'
+            $newer = Get-WingetInstaller 'n/NVAccess/NVDA' 'x64'
+            if (-not $newer) { $newer = Get-WingetInstaller 'n/NVAccess/NVDA' 'x86' }
             if ($newer -and (Get-Download $newer.Url $newer.Sha256 $target)) { $installer = $target }
         }
     }
     if ($installer -and -not $DryRun) {
-        $p = Start-Process -FilePath $installer -ArgumentList '--install-silent' -Wait -PassThru
-        Write-Log "NVDA installer exit code $($p.ExitCode)"
+        # --enable-start-on-logon: NVDA also speaks on the sign-in screen.
+        $p = Start-Process -FilePath $installer -ArgumentList '--install-silent', '--enable-start-on-logon=True' -PassThru
+        $null = $p.Handle        # keeps ExitCode readable after the process ends (Windows PowerShell 5.1)
+        # r407: with a limit. When the installation fails, NVDA shows an error dialog and waits for OK
+        # (seen in Setup's specialize pass); nobody may be able to see it.
+        if (-not $p.WaitForExit(600000)) {
+            Write-Log 'NVDA installer still running after 10 minutes; stopped'
+            try { $p.Kill() } catch { }
+            Get-Process -Name nvda_noUIAccess, nvda_uiAccess, nvda -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        } else { Write-Log "NVDA installer exit code $($p.ExitCode)" }
+        for ($i = 0; $i -lt 30 -and -not ($nvdaExe = Find-Nvda); $i++) { Start-Sleep -Seconds 2 }   # the installer may finish in the background
+        Write-Log "NVDA found at: $nvdaExe"
     }
-    if ($DryRun -or (Test-Path $nvdaExe)) { Speak 'NVDA jest zainstalowane. Włącza je Control, Alt, N.' 'NVDA is installed. Control, Alt, N starts it.' }
+    if ($DryRun -or $nvdaExe) { Speak 'NVDA jest zainstalowane. Włącza je Control, Alt, N.' 'NVDA is installed. Control, Alt, N starts it.' }
     else { $failed = $true; Speak 'Nie udało się zainstalować NVDA.' 'NVDA could not be installed.' }
 }
 
@@ -196,18 +291,44 @@ if ('jaws' -in $Chosen -and -not $jawsExe) {
 # ---- the first reader ---------------------------------------------------------------
 $started = $false
 switch ($First) {
-    'nvda' { if ($DryRun -or (Test-Path $nvdaExe)) { Set-AtStart 'nvda'; if (-not $DryRun) { Start-Process -FilePath $nvdaExe; $started = $true } } }
-    'jaws' { if ($DryRun -or $jawsExe) { Set-AtStart ''; if (-not $DryRun) { Start-Process -FilePath $jawsExe.FullName; $started = $true } } }   # JAWS starts itself after sign-in
+    'nvda' {
+        if ($DryRun -or $nvdaExe) {
+            # r406: Windows starts an assistive program by the name of its key under Accessibility\ATs;
+            # NVDA registers itself there as nvda_nvda_v1 (the token "nvda" started nothing).
+            Set-AtStart (Get-AtToken 'nvda' 'nvda_nvda_v1')
+            if (-not $DryRun) { $started = Start-Nvda $nvdaExe }
+        }
+    }
+    'jaws' {
+        if ($DryRun -or $jawsExe) {
+            # JAWS: its own key under Accessibility\ATs when it registered one; otherwise a Run entry.
+            $token = Get-AtToken 'jaws' ''
+            Set-AtStart $token
+            if (-not $DryRun) {
+                if (-not $token) {
+                    $run = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
+                    $has = (Get-ItemProperty -Path $run -ErrorAction SilentlyContinue).PSObject.Properties | Where-Object { "$($_.Value)" -match '(?i)jfw\.exe' }
+                    if (-not $has) { Set-ItemProperty -Path $run -Name 'CharonJAWS' -Value ('"{0}"' -f $jawsExe.FullName) -Type String }
+                }
+                try { Start-Process -FilePath $jawsExe.FullName; $started = $true } catch { Write-Log "starting JAWS failed: $($_.Exception.Message)" }
+            }
+        }
+    }
     'narrator' { Set-AtStart 'narrator' }
 }
 if ($First -ne 'narrator' -and -not $started -and -not $DryRun) {
+    # r407: never silence: the first reader did not start, so Narrator is switched on and started now.
     Set-AtStart 'narrator'
+    if (-not (Get-Process -Name Narrator -ErrorAction SilentlyContinue)) {
+        try { Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\Narrator.exe') } catch { Write-Log "starting Narrator failed: $($_.Exception.Message)" }
+    }
     Speak 'Pierwszy wybrany czytnik nie jest zainstalowany, więc po zalogowaniu dalej mówi Narrator.' 'The first chosen reader is not installed, so Narrator keeps speaking after sign-in.'
 }
 if ($started) {
     Start-Sleep -Seconds 8
     Get-Process -Name Narrator -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 }
+Confirm-AtStart
 Write-Log ("---- Charon-Readers: done, first {0} started {1}, failures {2}" -f $First, $started, $failed)
 if ($failed) { exit 1 }
 exit 0

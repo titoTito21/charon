@@ -54,7 +54,7 @@ inline bool Secret(const char16_t* label,char16_t* out,size_t cap) {
     static char16_t first[80],second[80];
     for(int pass=0;pass<2;++pass) {
         char16_t* text=pass?second:first;size_t n=0;text[0]=0;
-        static char16_t line[300];Set(line,300,pass?T(u"Powtórz:",u"Again:"):label);Say(line);
+        static char16_t line[300];Set(line,300,pass?T(u"Powtórz hasło:",u"Type the password again:"):label);Say(line);
         for(;;) {
             static char16_t shown[300];Set(shown,300,line);Cat(shown,300,u" ");for(size_t i=0;i<n && i<60;++i)CatC(shown,300,u'*');
             Echo(shown);Cursor(true,Len(shown),U().rows-1);
@@ -68,7 +68,7 @@ inline bool Secret(const char16_t* label,char16_t* out,size_t cap) {
     }
     Echo(u"");
     bool same=true;for(size_t i=0;;++i) {if(first[i]!=second[i]) {same=false;break;}if(!first[i])break;}
-    if(!same) {for(auto& c:first)c=0;for(auto& c:second)c=0;Fail(T(u"Wpisy się różnią. Jeszcze raz.",u"The two entries differ. Once more."));return Secret(label,out,cap);}
+    if(!same) {for(auto& c:first)c=0;for(auto& c:second)c=0;Fail(T(u"Hasła się różnią. Wpisz hasło jeszcze raz.",u"The passwords differ. Type the password again."));return Secret(label,out,cap);}
     Set(out,cap,first);for(auto& c:first)c=0;for(auto& c:second)c=0;
     return true;
 }
@@ -114,7 +114,7 @@ inline bool Pick(const char16_t* label,const Choice* choices,size_t count,bool* 
         Cat(line,500,Pl()?choices[index].pl:choices[index].en);
         Cat(line,500,on[index]?T(u", zaznaczone, ",u", checked, "):T(u", niezaznaczone, ",u", not checked, "));
         CatN(line,500,index+1);Cat(line,500,T(u" z ",u" of "));CatN(line,500,count);
-        if(withLabel)Cat(line,500,T(u". Spacja zaznacza, Enter zatwierdza.",u". Space checks, Enter accepts."));
+        if(withLabel)Cat(line,500,T(u". Spacja zaznacza, Enter zatwierdza.",u". Space checks, Enter confirms."));
         static char16_t shown[500];Set(shown,500,label);Cat(shown,500,on[index]?u"  [x] ":u"  [ ] ");Cat(shown,500,Pl()?choices[index].pl:choices[index].en);Echo(shown);
         Say(line);
     };
@@ -188,7 +188,7 @@ inline bool Run(const Question* questions,size_t count,bool quick) {
             if(ok && q.kind==Kind::name) {
                 bool good=wide[0]>=u'a' && wide[0]<=u'z';
                 for(size_t i=0;wide[i];++i) {wide[i]=speechtext::LowerCase(wide[i]);if(!((wide[i]>=u'a' && wide[i]<=u'z') || (wide[i]>=u'0' && wide[i]<=u'9') || wide[i]==u'-'))good=false;}
-                if(!good || Len(wide)>31) {Fail(T(u"Dozwolone są małe litery bez ogonków, cyfry i myślnik; pierwsza musi być litera.",u"Only lower-case plain letters, digits and a hyphen; it must start with a letter."));continue;}
+                if(!good || Len(wide)>31) {Fail(T(u"Dozwolone są małe litery bez polskich znaków, cyfry i myślnik; pierwszym znakiem musi być litera.",u"Only lower-case letters without accents, digits and the hyphen are allowed; the first character must be a letter."));continue;}
             }
             if(ok) {static uint8_t utf8[valueUnits];const size_t n=Utf16ToUtf8(wide,Len(wide),utf8,valueUnits-1);utf8[n]=0;Put(q.key,reinterpret_cast<const char*>(utf8));}
         }

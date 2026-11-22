@@ -45,12 +45,26 @@ to the folder of CHARONPC.CFG unless they start with '\' (volume root).
   profile=WIN98          name shown in logs (free text)
   cpu=p2_klamath         Bochs CPU model: i486dx4, pentium, pentium_mmx,
                          p2_klamath, p3_katmai, p4_willamette,
-                         amd_k6_2_chomper, athlon_xp   (default p2_klamath)
+                         amd_k6_2_chomper, athlon_xp   (r407 default:
+                         p3_katmai, the Pentium III; profile WIN95 keeps
+                         p2_klamath, Windows 95 fails on fast processors)
   memory=64              guest RAM in MB, 1..2048 (default 64)
-  ips=60000000           emulated instructions per second for timing
-                         (Bochs "ips"; default 60 M)
-  sync=both              realtime | both | slowdown | none (default both:
-                         PIT and CMOS clock follow real time)
+  ips=60000000           emulated instructions per second (Bochs "ips").
+                         r407 default: measured at start (pc_config.cpp
+                         HostIps: two thirds of what this computer
+                         manages, 20 M .. 400 M; WIN95: 60 M). Bochs slows
+                         the machine down to ips, and when the computer
+                         cannot keep up with it the machine later "catches
+                         up": the sound card then plays faster than real
+                         time and sound is cut (measured 2026-11-21: 150 M
+                         at most alone, 73 M under Charon with the reader;
+                         100 M gave 27 % skipped sound, 70 M none).
+  sync=slowdown          realtime | both | slowdown | none. r407 default
+                         slowdown: the machine never runs faster than
+                         real time and never "catches up" (with both, a
+                         machine that had fallen behind ran its sound card
+                         up to 1.26 times too fast: cut sound). The guest's
+                         clock falls behind while the computer is too slow.
   disk=WIN98.IMG         first hard disk (ATA 0 master)
   disk_format=raw        raw|img|flat, vhd|vpc (fixed and dynamic VHD),
                          vmdk (VMware 4 sparse), vmdk3, vdi (VirtualBox),
@@ -60,8 +74,13 @@ to the folder of CHARONPC.CFG unless they start with '\' (volume root).
   floppy=BOOT.IMG        1.44 MB floppy A:
   boot=cdrom,disk        boot order: disk, cdrom, floppy (comma separated)
   com1=bns               bns (Braille 'n Speak -> Charon's voice, default),
-                         none, file:<name> (raw COM1 output into a file)
-  sound=sb16             sb16 | none   (stage 2, see 3.; ignored now)
+                         none, file:<name> (raw COM1 output into a file).
+                         r407: a JAWS profile (reader=jfw...) with sound=sb16
+                         never has the BNS: JAWS speaks with Eloquence
+                         through the sound card, and JAWS 4.02 stops the
+                         whole guest at its start when COM1 has a
+                         synthesizer as well (cause not found).
+  sound=sb16             sb16 | none   (r407: Sound Blaster 16 and PC speaker, see 3.)
   net=ne2000             ne2000 | none (stage 3, see 4.; ignored now)
   reader=jfw             guest screen reader of the profile (see 6.):
                          charon | jdos | provox | asap | jfw | weyes | none
@@ -69,6 +88,35 @@ to the folder of CHARONPC.CFG unless they start with '\' (volume root).
                          speech language (overrides the " pl" option)
   log=CHARONPC.LOG       write the Bochs log into this file (debugging)
   debugcon=1             also mirror the log to I/O port 0x402 (QEMU tests)
+
+  state=install          install | no-media | ready (written by Charon's installer)
+  disk_create_mb=2048    make the empty raw disk at the first start (max 4095)
+  reader_setup=READER\J40252.EXE   the guest reader's installer in the profile
+  setup_auto=yes         r407: Windows 98 / ME Setup without questions (below)
+  setup_key=XXXXX-...    product key typed in Charon's dialogue ("" = Setup asks)
+  setup_name=, setup_org=, setup_computer=, setup_zone=   the wizard's other answers
+
+Setup without questions (r407, pc_unattend.cpp). With state=install, a cdrom,
+no floppy and an untouched disk, CharonPC prepares what Microsoft's Setup
+itself understands: the El Torito start floppy of the user's disc is copied to
+SETUP.IMG with MSBATCH.INF added (answers above; a RunOnce entry starts
+C:\READER\<installer> at the first desktop), "FDISK /MBR" and "/IS
+A:\MSBATCH.INF" on the Setup line of AUTOEXEC.BAT, and the menu wait of
+CONFIG.SYS cut to 2 s; the disk gets one active, formatted FAT32 partition
+with the reader's installer already in C:\READER. The machine starts from
+SETUP.IMG until the disk holds IO.SYS, then from the disk (pc_gui.cc
+FollowSetup). Enter on Setup's text welcome is pressed by CharonPC. A disc
+without such a floppy, or a disk with a partition table, is left to the
+interactive way. Verified with Windows ME (OEM, English): no wizard page asks.
+
+Control reader (r407, pc_reader.cpp + pc_winread + pc_winfonts.cpp). While the
+guest is in a graphics mode and no guest screen reader has spoken on COM1,
+CharonPC reads the Windows 9x picture itself: window title, texts and
+controls with role, state and position, the focused control after Tab or
+arrows. The fonts needed for that are read from the user's own disc
+(MINI.CAB) or installed system (\WINDOWS\FONTS), never shipped. Keys with
+Ctrl+Shift: F9 whole window, F10 focused control, Up/Down review, F8 on/off.
+The resident reader stays out of the picture meanwhile (graphicsOwnerGuid).
 
 Example profiles the installer can write:
 
@@ -167,6 +215,39 @@ Latency target 40-80 ms (one 1 ms tick feeds 48 frames; a 4096-frame
 ring). Sample-rate conversion stays in Bochs's resampler (linear without
 libsamplerate). Volume: SB16 mixer registers are emulated by sb16.cc.
 
+State r407 (built; measured in QEMU with work/charon-sbtest):
+- sound=sb16 writes "sound: driver=charon", "sb16: enabled=1, midimode=0,
+  wavemode=1, dmatimer=1000000" and "speaker: enabled=1, mode=sound": SB16
+  at 220h, IRQ 5, DMA 1 and 5, MPU-401 330h, FM 388h; the PC speaker goes
+  the same way. sound=none: no sound devices.
+- pc_sound.cc does not use Bochs's mixer_common: packets are converted to
+  48 kHz in sendwavepacket into a FIFO, pc::SoundTick (handle_events)
+  renders the frames of the real time that passed. pc_audio.cpp chooses
+  the route: a) Charon's PCM sink (src/efi/CharonPcmSink.h, GUID
+  8c4e2f1a-3b7d-4e65-a19c-52d8076eb341, published by VoiceProvider),
+  b) CharonPC's own card (charonaudioefi::Device, AudioDxe loaded from
+  \EFI\HAK when no stream is there). pc::PumpVoice raises to TPL_CALLBACK
+  so a resident reader's timer pump cannot run inside it.
+- The build script rounds the PC speaker's half period to the nearest
+  sample (speaker.cc). Known properties of Bochs's SB16: a DMA block whose
+  length is not a multiple of 512 bytes plays about 13 % slow (its DMA
+  timer moves 512 bytes per period, also for the short rest of a block);
+  the DMA timer counts emulated time, so a host slower than ips= gives
+  sound with gaps; direct DAC (10h) is sampled every 45 us of emulated time.
+- Windows ME does not find the card by itself: on this ACPI machine Setup's
+  legacy detection ends early (DETLOG.TXT: error in DETECTVGA, MSDISP.INF is
+  not on the ME disc) and never probes ISA sound cards. With sound=sb16 the
+  answer file therefore adds a root device (MSBATCH.INF [Charon.Sound]:
+  HKLM Enum/Root/*PNPB003/0000 with HardwareID *PNPB003 and ConfigFlags 20h =
+  reinstall). Windows installs its in-box driver for it from its own cabinets
+  (WDMA_CTL.INF, "Sound Blaster 16 or AWE32 or compatible (WDM)" + Kernel
+  Audio Mixer), asks once for a restart ("System Settings Change") and then
+  plays 22050 Hz 16 bit stereo over the 16-bit DMA channel. An installed
+  system gets the same from a .reg file with these two values.
+- sounddebug=1..5 in the profile: the SB16's own log lines in the Bochs log.
+  With debugserial/debugcon the driver logs what the guest played (packets,
+  format, highest sample) also when there is no output.
+
 4. NE2000 -> network (design)
 -----------------------------
 Bochs side: BX_SUPPORT_NE2K=1, BX_NETWORKING=1, ne2k.cc (ISA NE2000 or PCI
@@ -210,6 +291,27 @@ Charon's own downloads must not run while CHARONPC owns the NIC.
 
 6. Which reader speaks
 ----------------------
+r407 (pc_reader.cpp), in short:
+- Charon's control reader reads the guest's graphical Windows until a guest
+  screen reader is heard. Heard = text on the emulated Braille 'n Speak, or
+  the reader's program seen on the screen (taskbar button or window called
+  JAWS, Window-Eyes, Hal, outSPOKEN) AND sound played by the guest after it
+  appeared. Then the control reader says so once and is quiet; it comes back
+  when the program is gone from the desktop for 6 s (JAWS without an
+  authorization ends after 40 minutes) and at the next Windows start.
+  Ctrl+Shift+F8 turns it on again by hand and it then stays on.
+- The reader's installer is started and led by Charon (SteerReader, JAWS
+  4.02: wizard pages, the Q269244 update, "Run as Demo", autostart "Yes").
+  A fresh installation gets it through RunOnce from C:\READER (MSBATCH.INF);
+  a system that is already installed gets it on a disc of its own,
+  READER.ISO on the second CD drive, started with Start -> Run (GuestRun).
+  The guest's disk is never written from outside: that was tried
+  (2026-11-21) and Windows lost the new file's chain.
+- Charon's voice is called from two levels (the emulator and the resident
+  reader's timer): CharonAudioDevice.h ignores a call nested into another,
+  and pc::Say/StopVoice/PumpVoice raise the TPL. Before that the stream was
+  declared faulty and restarted, and the guest's sound was lost under Charon.
+
 - Text modes (DOS, Windows setup's blue text screens, XP text setup):
   Charon's resident reader reads the UEFI console that CHARONPC writes
   (verified with CHARONVOICE.EFI resident). Nothing is needed in the guest.

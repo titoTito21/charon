@@ -1,0 +1,10 @@
+--- a/src/include/ipxe/errfile.h
++++ b/src/include/ipxe/errfile.h
+@@ -461,6 +461,7 @@
+ #define ERRFILE_tlskey		      ( ERRFILE_OTHER | 0x006e0000 )
+ #define ERRFILE_gcm		      ( ERRFILE_OTHER | 0x006f0000 )
+ #define ERRFILE_tlsfmt		      ( ERRFILE_OTHER | 0x00700000 )
++#define ERRFILE_efi_wifi	      ( ERRFILE_OTHER | 0x00710000 )
+ 
+ /** @} */
+ 

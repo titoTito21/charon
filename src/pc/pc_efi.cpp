@@ -26,6 +26,7 @@ efi_system_table* ST;
 efi_boot_services* BS;
 efi_simple_text_output_protocol* Out;
 InputEx* InEx;
+efi_handle Image;
 bool polish;
 size_t consoleColumns = 80, consoleRows = 25;
 GlueSettings settings;
@@ -326,6 +327,7 @@ extern "C" void pc_stall(uint32_t microseconds)
         uint32_t slice = microseconds > 2000 ? 2000 : microseconds;
         BS->Stall(slice);
         microseconds -= slice;
+        AudioService();   // r407: the guest's sound keeps flowing to CharonPC's own card
         PumpVoice();
     }
 }
@@ -336,10 +338,23 @@ extern "C" void pc_log_write(const char* text, size_t bytes)
     KeepTail(text, bytes);
     if (settings.debugcon)
         for (size_t i = 0; i < bytes; ++i) __asm__ volatile("outb %0, %1" : : "a"((uint8_t)text[i]), "Nd"((uint16_t)0x402));
+    if (settings.debugserial)
+        for (size_t i = 0; i < bytes; ++i) {
+            uint8_t status = 0;
+            for (unsigned spin = 0; spin < 20000; ++spin) {
+                __asm__ volatile("inb %1, %0" : "=a"(status) : "Nd"((uint16_t)0x3FD));
+                if (status & 0x20) break;
+            }
+            __asm__ volatile("outb %0, %1" : : "a"((uint8_t)text[i]), "Nd"((uint16_t)0x3F8));
+        }
     OpenLogFile();
     if (logHandle) {
         long n = pc_vol_write(logHandle, logPosition, text, bytes);
         if (n > 0) logPosition += (uint64_t)n;
+        // r406: the log reaches the disk every two seconds, so a run that is switched off still leaves it.
+        static uint64_t flushed;
+        const uint64_t now = tscPerUs ? pc_usec() : 0;
+        if (now - flushed > 2000000) { flushed = now; pc_vol_flush(logHandle); }
     }
 }
 
@@ -356,17 +371,30 @@ hakefi::MenuVoice* pc::Voice()
 void pc::PumpVoice()
 {
     hakefi::MenuVoice* v = voice;
-    if (v && !hakefi::VoiceSwitching()) v->Pump(v, 2048);
+    if (!v || hakefi::VoiceSwitching()) return;
+    // r407: a resident reader pumps the same voice from its timer (TPL_CALLBACK). That notification must not
+    // interrupt this call: two pumps inside each other wrote the sound card's ring out of order (the guest's
+    // tone lost and repeated pieces). The emulator runs at TPL_APPLICATION.
+    const efi_tpl old = BS->RaiseTPL(TPL_CALLBACK);
+    v->Pump(v, 2048);
+    BS->RestoreTPL(old);
 }
 bool pc::Say(const char* utf8)
 {
     hakefi::MenuVoice* v = Voice();
     if (!v || hakefi::VoiceSwitching()) return false;
-    return v->SpeakUtf8(v, polish ? "pl" : "en", utf8) == EFI_SUCCESS;
+    // r407: like the pump, not to be interrupted by the resident reader's timer (see PumpVoice)
+    const efi_tpl old = BS->RaiseTPL(TPL_CALLBACK);
+    const bool ok = v->SpeakUtf8(v, polish ? "pl" : "en", utf8) == EFI_SUCCESS;
+    BS->RestoreTPL(old);
+    return ok;
 }
 void pc::StopVoice()
 {
-    if (voice) voice->Stop(voice);
+    if (!voice) return;
+    const efi_tpl old = BS->RaiseTPL(TPL_CALLBACK);
+    voice->Stop(voice);
+    BS->RestoreTPL(old);
 }
 
 // ---- the Bochs run ---------------------------------------------------------
@@ -464,6 +492,14 @@ void PrepareConsole()
     if (Out->QueryMode(Out, (size_t)Out->Mode->Mode, &columns, &rows) == EFI_SUCCESS) { consoleColumns = columns; consoleRows = rows; }
     Out->SetAttribute(Out, 0x07);
     Out->ClearScreen(Out);
+    if (settings.debugserial || settings.debugcon) {
+        char line[160];
+        snprintf(line, sizeof line, "CharonPC: console mode %d of %d, switched %d, now %d (%ux%u)\n", (int)savedMode, (int)Out->Mode->MaxMode, (int)modeSwitched,
+                 (int)Out->Mode->Mode, (unsigned)consoleColumns, (unsigned)consoleRows);
+        pc_log_write(line, strlen(line));
+        Print(u"CharonPC console test line 0123456789\r\n");
+        BS->Stall(4000000);
+    }
 }
 
 void RestoreConsole()
@@ -480,6 +516,7 @@ extern "C" EFIAPI efi_status efi_main(efi_handle image, efi_system_table* system
     ST = system;
     BS = system->BootServices;
     Out = system->ConOut;
+    Image = image;
     // An emulated session runs for hours; the boot watchdog must not reset the machine.
     BS->SetWatchdogTimer(0, 0, 0, nullptr);
     efi_guid loadedGuid = EFI_LOADED_IMAGE_PROTOCOL_GUID;
@@ -569,6 +606,7 @@ extern "C" EFIAPI efi_status efi_main(efi_handle image, efi_system_table* system
         snprintf(line, sizeof line, "CharonPC: Bochs returned %d, coroutine state %d, user quit %d\n", bochsResult, state, (int)userQuit);
         pc_log_write(line, strlen(line));
     }
+    AudioClose();   // r407: the guest's sound ends; CharonPC's own sound card is stopped
     pc_rt_close_all();
     ReleaseEverything();
     if (logHandle) { pc_vol_flush(logHandle); pc_vol_close(logHandle); logHandle = nullptr; }

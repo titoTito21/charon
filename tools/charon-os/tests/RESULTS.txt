@@ -1,0 +1,122 @@
+Charon OS companion programs: host test run of 2026-11-22
+(python tests/run-tests.py; Python 3.15, Windows PowerShell 5.1.26100, Clang of work/llvm-23.1.5).
+No firmware variable and no EFI system partition of the host was touched: scratch folders and a
+firmware stand-in only.
+
+work folder: <work>
+Charon-BootManager.ps1: parsed by PowerShell 5.1.26100.9818, no errors
+Charon-Settings.ps1: parsed by PowerShell 5.1.26100.9818, no errors
+CharonOs.Common.ps1: parsed by PowerShell 5.1.26100.9818, no errors
+CharonOs.Fields.ps1: parsed by PowerShell 5.1.26100.9818, no errors
+Install-CharonTools.ps1: parsed by PowerShell 5.1.26100.9818, no errors
+PASS syntax: every .ps1 parses with Windows PowerShell 5.1
+PASS form: Windows files are UTF-8 with BOM (.ps1) and CRLF
+PASS form: CharonOs.Fields.ps1 matches charon_fields.py
+PASS syntax: linux/charon-settings compiles with Python 3.15
+PASS form: linux/charon-settings has LF line ends, no BOM, a python3 shebang
+PASS syntax: linux/charon-bootmanager compiles with Python 3.15
+PASS form: linux/charon-bootmanager has LF line ends, no BOM, a python3 shebang
+PASS form: the settings table in linux/charon-settings is the one in charon_fields.py (51 rows)
+PASS syntax: sh -n linux/install-charon-tools.sh
+host harness built from src/efi with work/llvm-23.1.5/bin/clang++.exe
+PASS python: 40 records written by the program are byte-identical to Charon's EncodeSettings and load with LoadCharSettings
+PASS python: 40 records written by Charon's SaveCharSettings are read identically by the program
+PASS python: the program and Charon write in turns (sequences 1-4, slot a odd, slot b even, the other slot untouched)
+PASS python: changing one setting changes only its byte and the sequence (bytes 8 and 22)
+PASS python: a damaged newest slot falls back to the other one, as LoadCharSettings does
+PASS python: two unreadable slots are reported as invalid (exit 4), as LoadCharSettings does
+PASS python: nothing is written over invalid settings without a repair
+PASS python: a record of a newer format (CHARS00D) makes the program refuse to write (exit 6), files untouched
+PASS python: a boot manager that writes a newer format makes the program refuse to write (exit 6)
+PASS python: a bit format B does not store (formatFlags 128) is refused (exit 5), nothing written
+PASS python: with a boot manager that writes format B the record is CHARS00B and Charon loads it
+PASS python: members a format B record cannot hold in full (defaults 255 and 153) are cut to its bits, and Charon loads the record
+PASS python: records in the older formats 1-9, A, B have Charon's sizes and decode in Charon to the values set
+PASS python: a setting the target format does not store is refused (exit 5), nothing written
+PASS python: a value EncodeSettings rejects (rate 21) is refused (exit 5), nothing written
+PASS python: the record SaveCharSettings leaves behind with its default byte 41 = 153 is reported invalid and repaired; Charon loads the repair
+PASS python: restore defaults writes Charon's defaults (byte 41 without bit 7)
+PASS python: the reader-only marker is created (as the installers write it) and removed
+PASS python: nothing but the two settings slots was created in EFI/HAK
+PASS python: synthesizer add-ons are listed with the keys of Charon's synths::KeyOf; manifests without module or voice are left out
+PASS python: the chosen synthesizer and voice are stored in bytes 42 and 43
+PASS python: the reader add-on is not turned on when CHARONVOICE.EFI is not on the partition
+PASS python: turning the reader add-on on creates the driver option "Charon voice" (attributes 3, first in DriverOrder) and reads it back
+PASS python: turning it off removes only that option; the other driver stays
+PASS python: without a yes the firmware variables stay as they are
+PASS python: without firmware access the add-on request is refused (exit 7)
+PASS python boot manager: lists BootOrder with Charon marked, Secure Boot state, no Continue target
+PASS python boot manager: a change that is not confirmed changes nothing
+PASS python boot manager: entries move up and down; moving the first one up is refused
+PASS python boot manager: Charon first, second, removed from the order (its Boot0001 entry stays)
+PASS python boot manager: Charon is put back into the order
+PASS python boot manager: the Continue target file is what Charon's SaveContinue writes and ParseContinueTarget accepts it
+PASS python boot manager: the list shows the Continue target
+PASS python boot manager: Charon itself or an entry outside BootOrder is refused as Continue target
+PASS python boot manager: "Charon's menu at the next restart only" sets BootNext to Charon's entry and reads it back
+PASS python boot manager: "restart into firmware setup" sets bit 0 of OsIndications
+PASS python boot manager: restart on the stand-in only says what it would do
+PASS python boot manager: without firmware access it says so (exit 7)
+PASS python boot manager: Secure Boot off and the entry Boot0000 (BootOrder and BootNext of zero bytes) are read correctly
+PASS python boot manager: only continue.bin and continue-set were written to EFI/HAK
+PASS python: a text-menu session (rate 80%, language Polish, symbol level all, save) is stored
+PASS python: the text menus use no escape sequences or cursor addressing
+PASS python boot manager: a text-menu session (list, Charon first, yes, list) changes BootOrder
+PASS powershell: 14 records written by the program are byte-identical to Charon's EncodeSettings and load with LoadCharSettings
+PASS powershell: 14 records written by Charon's SaveCharSettings are read identically by the program
+PASS powershell: the program and Charon write in turns (sequences 1-4, slot a odd, slot b even, the other slot untouched)
+PASS powershell: changing one setting changes only its byte and the sequence (bytes 8 and 22)
+PASS powershell: a damaged newest slot falls back to the other one, as LoadCharSettings does
+PASS powershell: two unreadable slots are reported as invalid (exit 4), as LoadCharSettings does
+PASS powershell: nothing is written over invalid settings without a repair
+PASS powershell: a record of a newer format (CHARS00D) makes the program refuse to write (exit 6), files untouched
+PASS powershell: a boot manager that writes a newer format makes the program refuse to write (exit 6)
+PASS powershell: a bit format B does not store (formatFlags 128) is refused (exit 5), nothing written
+PASS powershell: with a boot manager that writes format B the record is CHARS00B and Charon loads it
+PASS powershell: members a format B record cannot hold in full (defaults 255 and 153) are cut to its bits, and Charon loads the record
+PASS powershell: records in the older formats 1-9, A, B have Charon's sizes and decode in Charon to the values set
+PASS powershell: a setting the target format does not store is refused (exit 5), nothing written
+PASS powershell: a value EncodeSettings rejects (rate 21) is refused (exit 5), nothing written
+PASS powershell: the record SaveCharSettings leaves behind with its default byte 41 = 153 is reported invalid and repaired; Charon loads the repair
+PASS powershell: restore defaults writes Charon's defaults (byte 41 without bit 7)
+PASS powershell: the reader-only marker is created (as the installers write it) and removed
+PASS powershell: nothing but the two settings slots was created in EFI/HAK
+PASS powershell: synthesizer add-ons are listed with the keys of Charon's synths::KeyOf; manifests without module or voice are left out
+PASS powershell: the chosen synthesizer and voice are stored in bytes 42 and 43
+PASS powershell: the reader add-on is not turned on when CHARONVOICE.EFI is not on the partition
+PASS powershell: turning the reader add-on on creates the driver option "Charon voice" (attributes 3, first in DriverOrder) and reads it back
+PASS powershell: turning it off removes only that option; the other driver stays
+PASS powershell: without a yes the firmware variables stay as they are
+PASS powershell: without firmware access the add-on request is refused (exit 7)
+PASS powershell boot manager: lists BootOrder with Charon marked, Secure Boot state, no Continue target
+PASS powershell boot manager: a change that is not confirmed changes nothing
+PASS powershell boot manager: entries move up and down; moving the first one up is refused
+PASS powershell boot manager: Charon first, second, removed from the order (its Boot0001 entry stays)
+PASS powershell boot manager: Charon is put back into the order
+PASS powershell boot manager: the Continue target file is what Charon's SaveContinue writes and ParseContinueTarget accepts it
+PASS powershell boot manager: the list shows the Continue target
+PASS powershell boot manager: Charon itself or an entry outside BootOrder is refused as Continue target
+PASS powershell boot manager: "Charon's menu at the next restart only" sets BootNext to Charon's entry and reads it back
+PASS powershell boot manager: "restart into firmware setup" sets bit 0 of OsIndications
+PASS powershell boot manager: restart on the stand-in only says what it would do
+PASS powershell boot manager: without firmware access it says so (exit 7)
+PASS powershell boot manager: Secure Boot off and the entry Boot0000 (BootOrder and BootNext of zero bytes) are read correctly
+PASS powershell boot manager: only continue.bin and continue-set were written to EFI/HAK
+PASS powershell: a text-menu session (rate 80%, language Polish, symbol level all, save) is stored
+PASS powershell: the text menus use no escape sequences or cursor addressing
+PASS powershell boot manager: a text-menu session (list, Charon first, yes, list) changes BootOrder
+PASS dialog settings: operating its check boxes, drop-down lists and track bars and saving gives the record Charon loads
+PASS dialog settings (en): 103 controls, every one named, each field directly after its label in the tab order, 9 track bars with spoken values, access keys unique, default and cancel button
+PASS dialog bootmanager (en): 18 controls, every one named, each field directly after its label in the tab order, 0 track bars with spoken values, access keys unique, default and cancel button
+PASS dialog settings (pl): 103 controls, every one named, each field directly after its label in the tab order, 9 track bars with spoken values, access keys unique, default and cancel button
+PASS dialog bootmanager (pl): 18 controls, every one named, each field directly after its label in the tab order, 0 track bars with spoken values, access keys unique, default and cancel button
+PASS powershell boot manager: with Charon-SecureBoot.ps1 beside it the Secure Boot item calls Get-CharonSecureBootState and Disable-CharonSecureBoot (trial mode on the stand-in), passing its questions through; firmware files untouched
+PASS powershell boot manager: without Charon-SecureBoot.ps1 the Secure Boot item only shows the state
+PASS Install-CharonTools.ps1: copies the programs and creates the two shortcuts, twice with the same result
+PASS Install-CharonTools.ps1 -Uninstall: removes them again
+PASS install-charon-tools.sh: installs the two programs and the two .desktop files under DESTDIR, twice with the same result
+PASS install-charon-tools.sh --uninstall: removes them again
+PASS linux/charon-settings.desktop: Terminal=true, names in English and Polish
+PASS linux/charon-bootmanager.desktop: Terminal=true, names in English and Polish
+
+108 passed, 0 failed

@@ -1,0 +1,480 @@
+Charon HD Audio codec support (r408)
+====================================
+
+This file describes what the pre-boot HD Audio driver (EFI/HAK/AudioDxe.efi)
+does for each codec family, where that knowledge comes from, what is not
+done and why, and the licences involved. Controllers, AC'97, ES1371 and the
+order in which Charon picks an output are in audio_stream/AUDIO-HARDWARE.txt.
+USB sound cards are in USB-AUDIO.txt (CharonUsbAudio.h).
+
+STATE OF THE EVIDENCE. The driver was built (AudioDxe-r408.efi) and run in
+ONE QEMU machine with the emulated HD Audio card (see "What was verified").
+That run proves that nothing regressed for virtual machines. NO PHYSICAL
+CODEC WAS EXERCISED: everything below that names a real codec or laptop was
+written from the Linux kernel sources and has never played a sound on that
+hardware. Treat every per-family and per-machine statement as "implemented
+from source, untested on hardware".
+
+
+1. Sources
+----------
+
+Linux kernel, tag v7.3, commit c03c1a14507dfaf8b856c2608f9ac216021fc222
+  https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
+  (checked out from https://github.com/torvalds/linux, sparse: sound/hda,
+  include/sound, sound/soc/sof, sound/soc/amd/acp; kept in
+  work/linux-hda-v7.3/src)
+  Since v6.17 the HD Audio code lives in sound/hda/ (codecs/, common/,
+  controllers/, core/); older trees have it in sound/pci/hda/patch_*.c.
+
+  Read and used (all "SPDX-License-Identifier: GPL-2.0-or-later"):
+    sound/hda/common/auto_parser.c    pin parsing, fixup pick, fixup chains
+    sound/hda/common/codec.c          snd_hda_codec_set_gpio
+    sound/hda/common/hda_local.h      PIN_*, AMP_* macros, quirk macros
+    sound/hda/codecs/generic.c        the generic parser (paths, amplifiers,
+                                      EAPD, inv_eapd)
+    sound/hda/codecs/realtek/realtek.c, realtek.h, alc269.c, alc882.c,
+      alc662.c, alc880.c, alc260.c, alc262.c, alc268.c, alc861.c, alc861vd.c
+    sound/hda/codecs/conexant.c, senarytech.c, sigmatel.c, via.c, analog.c
+    sound/hda/codecs/cirrus/cs420x.c, cs421x.c
+  Read, NOT used, because they are GPL-2.0-only ("GPL-2.0" in the kernel's
+  SPDX notation) and Charon is GPL-2.0-or-later; mixing them in would make
+  the driver GPL-2.0-only, which is a decision for the project, not for a
+  build script:
+    include/sound/hda_verbs.h         (only numbers of the HD Audio
+                                      specification; the generator carries
+                                      its own list taken from the
+                                      specification rev. 1.0a instead)
+    sound/hda/codecs/cirrus/cs8409-tables.c   (CS8409 + CS42L42/CS42L83:
+                                      Dell Inspiron/Vostro "Cirrus" models,
+                                      Apple 2017+; cs8409.c itself is
+                                      GPL-2.0-or-later but useless without
+                                      the tables)
+    sound/hda/codecs/helpers/ideapad_s740.c   (Lenovo IdeaPad S740, Legion
+                                      Y9000X 2019/2020 speaker coefficients)
+    sound/hda/codecs/helpers/hp_x360.c        (HP Spectre x360 eb1/eu0/aa0)
+    sound/hda/codecs/helpers/thinkpad.c, ideapad_hotkey_led.c (LEDs only)
+    sound/hda/codecs/side-codecs/*    cs35l41_hda*, cs35l56_hda*,
+                                      tas2781_hda*, aw88399_hda*
+                                      (hda_component.[ch] are or-later)
+  Read for facts only: sound/hda/codecs/ca0132.c, cm9825.c, cmedia.c,
+  hdmi/*.c (all GPL-2.0-or-later), sound/soc/sof/intel/*.c
+  ("GPL-2.0-only OR BSD-3-Clause").
+
+High Definition Audio Specification, revision 1.0a (Intel, 2010): verb
+  numbers, pin widget control, amplifier, EAPD and GPIO verbs.
+
+OpenCore AudioDxe (acidanthera/OpenCorePkg 1.0.8, Staging/AudioDxe), the
+  base of this driver. Its files carry the MIT licence (Copyright (c) 2018
+  John Davis), OpenCorePkg as a whole is BSD-3-Clause.
+
+linux-firmware WHENCE (git.kernel.org/pub/scm/linux/kernel/git/firmware/
+  linux-firmware.git, file WHENCE, SHA-256 5e32c30708571f4af0f2912379f37ab0
+  2f8124ff5dc285e45abdae7a113fa310 on 2026-11-22), for the firmware licence
+  lines quoted in section 6.
+
+NOT consulted in this pass (planned, not done): Acidanthera AppleALC
+  (BSD-3-Clause; per-codec pin configurations and verbs for macOS layouts),
+  the OpenCore AudioDxe documentation, sof-bin, the licence texts
+  LICENSE.cirrus and LICENCE.ti-tspa themselves, coreboot and depthcharge.
+  Nothing in this file relies on them.
+
+
+2. What the driver does for EVERY codec (generic bring-up)
+----------------------------------------------------------
+
+Compared with the kernel's generic parser (generic.c, auto_parser.c):
+
+  kernel generic parser                 this driver
+  ------------------------------------  ------------------------------------
+  function group and widgets to D0      at probe (AudioDxe); r406: checked
+                                        again and waited for before playback
+  output pins from the pin default      line out, speaker, headphone, S/PDIF,
+  configuration                         other digital out (AudioDxe)
+  speaker/headphone pins with           r408: accepted (association set to
+  association 0 are outputs             15 in the driver's copy); AudioDxe
+                                        ignored them
+  pin widget control OUT, HP for        OUT (AudioDxe); HP_EN on headphone
+  headphone pins                        pins with a headphone amplifier (r406)
+  path pin -> (mixer/selector) -> DAC,  first DAC found depth-first; every
+  one DAC per output                    output gets the same stream (speech
+                                        is sent to all outputs at once)
+  connection selects on the path        yes (AudioDxe)
+  output amplifiers unmuted with a      yes, on pin, mixer/selector and DAC,
+  gain, mixer input unmuted             gain from the caller, clamped to the
+                                        amplifier's range (AudioDxe)
+  EAPD on                               on every pin with the capability,
+                                        not only the pins played to (r406)
+  44.1 kHz / 48 kHz families            both, taken from the DAC's or the
+                                        function group's capabilities
+  several codecs on one link            one device per codec; Charon tries a
+                                        codec with analog outputs first
+  automatic muting on headphone plug,   NOT done, on purpose: a blind user
+  jack detection, volume keys           hears speech on every output
+  microphones, recording, more than     not done
+  two channels, surround, S/PDIF
+  status bits, HDMI channel maps/ELD
+
+A codec that no table knows (unknown vendors, future IDs) gets exactly this
+and nothing else.
+
+
+3. What is done per codec family (r408, ported initialisation)
+--------------------------------------------------------------
+
+Family (codec IDs)              Done                                Kernel source
+------------------------------  ----------------------------------  ---------------------------
+Realtek ALC2xx/3xx/6xx/7xx/     "EAPD by verb" coefficients for 59  realtek.c alc_fill_eapd_coef
+8xx/9xx/1xxx (vendor 10ec;      codec IDs, written once when the
+19e5:8326 Huawei)               codec is bound
+                                amplifier GPIO named by the         realtek.c alc_subsystem_id
+                                "assembly ID" (GPIO0/1/2), r406
+                                default amplifier coefficient for   realtek.c alc_auto_init_amp
+                                ALC260/880/882/883/885/888 when     (ALC_INIT_DEFAULT)
+                                the assembly ID names no GPIO
+                                NOT ported: alc_fix_pll (click-noise PLL gating), the
+                                per-codec init hooks (alc256_init, alc225_init,
+                                alc294_init ...: headphone de-pop sequences that depend
+                                on jack sensing), headset type detection, shut-up paths
+Conexant CX2xxxx, CX11880,      EAPD on every pin that has it, which  conexant.c cx_auto_parse_eapd
+CX8200, CX11970; Synaptics/     is the whole of the kernel's own      / cx_auto_turn_eapd
+Senary SN6140/SN6180/SN6186     output initialisation (generic, r406)
+(vendors 14f1, 1fa8)            NOT ported: SN6140/CX11880 headset
+                                recognition, GPIO mute LEDs
+IDT/SigmaTel 92HD73xx, 92HD89,  GPIO0 = amplifier enable: enabled,    sigmatel.c probe_stac92hd73xx,
+92HD71Bxx, 92HD75, STAC927x,    output, high, with the IDT "GPIO as   _92hd71bxx, _927x, _9205,
+STAC9205/9204/925x (vendors     CMOS" verb 7E7 (kernel default for    stac_init, stac_gpio_set
+111d, 8384)                     these four sub-families)
+                                NOT ported: the power map verb, HP mute-LED GPIO
+                                discovery from the BIOS, 92HD83xxx/9200/922x/925x defaults
+                                (they have none)
+Analog Devices AD1986A          inverted EAPD: the bit is CLEARED to  analog.c ad1986a_probe
+                                switch the amplifier on (r406 set     ("inverted EAPD
+                                it and so switched it off)            implementation")
+Analog Devices AD1884/1984/     generic only; HP models get their     analog.c
+1981/1988/1882/1989             GPIO through the machine table
+Cirrus CS4206/4207/4208/        generic; Apple machines get their     cs420x.c, cs421x.c
+4210/4213                       amplifier GPIOs through the machine
+                                table. NOT ported: the coefficient
+                                init verb tables (cs_coef_init_verbs,
+                                cs421x_coef_init_verbs: S/PDIF and
+                                silicon errata), CS4210 pin mux
+Cirrus CS8409 (+CS42L42/L83)    NOT supported. The codec is an I2C bridge; its tables are
+                                GPL-2.0-only (see section 1). Generic bring-up finds no
+                                usable analog path on it.
+VIA VT17xx/VT18xx/VT20xx        generic (the kernel adds no output    via.c
+                                initialisation beyond EAPD kept on)
+C-Media CM9825/CMI9880/8888,    generic. CM9825 needs its own verb tables (not ported).
+CA0110
+Creative CA0132 (Sound Blaster  generic only. The kernel downloads a DSP image
+Z, Recon3D, Alienware)          (ctefx.bin) and runs the outputs through the DSP; without
+                                it only the plain DAC path works, which the kernel also
+                                falls back to. Not tested.
+HDMI/DisplayPort (Intel, AMD,   generic pin set-up only, used when a codec has no analog
+NVIDIA)                         output. Not ported: ELD/infoframe handling, Intel
+                                "enable all pins/DP1.2" vendor verbs, the i915/amdgfx
+                                audio component hand-shake. HDMI audio before the
+                                operating system needs a mode set by the firmware's
+                                graphics driver and is not a goal.
+
+
+4. Machine quirks (r408, generated table)
+-----------------------------------------
+
+Charon carries the kernel's subsystem-ID quirk lists as DATA. The table
+audio_stream/driver/HakHdaQuirkTable.h is generated by
+
+    python3 -I tools/gen-charon-hda-quirks.py <linux tree> \
+        src/efi/audio_stream/driver/HakHdaQuirkTable.h --tag v7.3 --commit <sha>
+
+from kernel v7.3. The generated header records the kernel tag and commit,
+every input file with its SHA-256 and licence, and the list of function
+fixups that were not ported. The generator refuses any input file that is
+not GPL-2.0-or-later.
+
+What is imported: for 31 fixup tables (the nine Realtek drivers; Conexant
+5045/5047/5051/5066; Senary SN6186; Cirrus CS420x, CS4208, CS421x; ten
+IDT/SigmaTel sub-families; VIA VT2002P/VT1802; Analog Devices AD1986A,
+AD1981, AD1884) the codec IDs the kernel driver binds to, the subsystem-ID
+rows in the kernel's order, and of the fixups those rows reach: pin
+configuration lists (HDA_FIXUP_PINS), verb lists (HDA_FIXUP_VERBS), pin
+control lists (HDA_FIXUP_PINCTLS) and their chains.
+
+    subsystem-ID rows imported                    1897
+    rows whose chain contains at least one
+      action this driver performs                 1128
+    fixups kept                                    493
+      pin configuration lists                      252
+      verb lists                                    58
+    by subsystem vendor (rows / with an action):
+      Dell 1028    215 / 183      HP 103c      604 / 133
+      ASUS 1043    211 / 141      Lenovo 17aa  243 / 179
+
+"With an action" does not mean "speakers fixed": most pin lists of recent
+laptops describe a headset microphone, which Charon does not use. The rows
+without an action are kept so that the first-match order is the kernel's.
+
+Matching is the kernel's (auto_parser.c snd_hda_pick_fixup): each row
+against the PCI subsystem ID of the controller (rows written with
+HDA_CODEC_QUIRK against the codec's subsystem ID), then all rows against the
+codec subsystem ID; a table is consulted only for the codec IDs (and
+revisions) of its kernel driver. Pin overrides are applied to the driver's
+copy of the pin configuration before the outputs are chosen; the codec's
+own pin defaults are never written. Verb lists are sent after the output
+paths are up, as the kernel does at init.
+
+Function fixups ported by hand (tools/gen-charon-hda-quirks.py FUNC_PORTS,
+HakHdaQuirks.c):
+    alc_fixup_gpio1..4, alc885_fixup_macpro_gpio     amplifier GPIO high
+    alc_fixup_sku_ignore                             assembly ID not trusted
+    alc245_fixup_hp_x360_amp                         GPIO0 pulse (HP Spectre x360 14/15-eb)
+    alc285_fixup_hp_gpio_amp_init                    COEF 0x65 = 0 after 100 ms (HP ZBook G6 ...)
+    alc1220_fixup_clevo_p950, ..._pb51ed             COEF 7 |= 0x3c3 (Clevo/MSI/Gigabyte ALC1220)
+    alc287_fixup_yoga9_14iap7_bass_spk_pin           pin 0x17 = bass speakers (Yoga 9, Legion Pro 5)
+    cs420x_fixup_gpio_13/_23, cs4208_fixup_gpio0,    Apple amplifier GPIOs (both headphone and
+      cs4208_fixup_mac                               speaker amplifier on: no jack switching)
+    ad1986a_fixup_eapd                               EAPD not inverted on this board
+    ad1884_fixup_hp_eapd                             HP: GPIO1 low = not muted
+    stac92hd83xxx_fixup_gpio10_eapd, stac922x_fixup_intel_mac_gpio,
+      stac9205_fixup_dell_m43, stac9200_fixup_panasonic, stac927x_fixup_dell_dmic,
+      stac*_fixup_ref                                IDT/SigmaTel amplifier GPIO variants
+
+Examples (walked through the generated table with the driver's rules; none
+of these machines was available):
+    Lenovo Legion 7i 15IMHG05 / S7 15IMH05 (ALC287, 17aa:3813 / 3811):
+        the 24-verb speaker amplifier sequence ALC287_FIXUP_LEGION_15IMHG05_SPEAKERS
+    Lenovo Legion Pro 5 16ADR10 (codec SSID 17aa:3926): pin 0x17 bass speakers
+    Lenovo Legion Y9000X 2019/2020 (17aa:383d / 3824): only "assembly ID not
+        trusted"; its speaker coefficients are in GPL-2.0-only ideapad_s740.c
+    Lenovo Legion 7 16ACHG6/16ITHG6, Slim 7, Pro 7i 16IAX7 ...: Cirrus CS35L41
+        speakers (section 6); headphones through the ALC287 work generically
+    HP ProBook 640 G2 / G4, EliteBook 820/840 G3 (Conexant, 103c:80fd ...):
+        dock pins 0x16 headphone, 0x18 microphone (CXT_FIXUP_HP_DOCK)
+    HP ProBook 440/450/460 G8-G11 and most recent EliteBooks (ALC236/245):
+        the kernel's rows are mute-LED functions only; nothing is needed for
+        sound beyond the Realtek family initialisation
+    HP ZBook 15/17 G6 (103c:860f / 860c): amplifier coefficient after 100 ms
+    HP Spectre x360 14 (103c:87f6 / 87f7): amplifier GPIO pulse
+    Dell: 183 rows, mostly headset-microphone pins and the "speaker noise"
+        coefficient verbs (e.g. Inspiron 3162, 1028:0725)
+    ASUS UX391UA / K6500ZC (1043:10a1 / 10d3): speaker coefficient verbs
+        (ALC294_FIXUP_ASUS_SPK); Zephyrus S/M GX502 (1043:1881): pins + verbs
+    MSI GE63/GP63, Clevo P95x (ALC1220): amplifier coefficient
+
+NOT imported, and why:
+  * 215 function fixups were not ported (complete list with the number of
+    rows reaching each: comment at the top of HakHdaQuirkTable.h). Groups:
+      - smart amplifiers: cs35l41_fixup_i2c_two/spi_two/..., tas2781_fixup_*,
+        aw88399_fixup_i2c_two, alc287_fixup_legion_16achg6/16ithg6_speakers ...
+        (about 320 rows; section 6)
+      - LEDs, hot keys, ACPI: alc_fixup_micmute_led, alc_fixup_thinkpad_acpi,
+        alc285/236/245/287_fixup_hp_gpio_led, *_mute_led* ... (several hundred
+        rows; no sound function)
+      - microphones and headset jacks: alc_fixup_headset_mode*,
+        alc_fixup_headset_mic, alc269_fixup_limit_int_mic_boost,
+        alc_fixup_inv_dmic, cxt_fixup_stereo_dmic ...
+      - DAC assignment and volume controls: alc285_fixup_speaker2_to_dac1,
+        alc_fixup_disable_aamix, alc295_fixup_disable_dac3,
+        alc274_fixup_bind_dacs, alc_fixup_tpt470_dacs ... (not needed: every
+        output gets the same stream at the gain the caller asks for)
+      - speaker amplifiers reached through the codec that need more than a
+        verb list: alc298_fixup_samsung_amp and _v2 (Samsung Galaxy Book, 23
+        rows), alc285_fixup_ideapad_s740_coef and the hp_x360 helpers
+        (GPL-2.0-only), alc298_fixup_razer_blade16_2025,
+        alc294_fixup_gx502_hp/gu502_hp, alc289_fixup_asus_ga401,
+        alc1220_fixup_gb_dual_codecs, alc_fixup_dual_codecs,
+        alc889_fixup_mbp_vref / imac91_vref / mba11_vref (AudioDxe's own VREF
+        rule covers the MacBook cases it was written for)
+      - IDT HP models: stac92hd83xxx_fixup_hp, stac92hd71bxx_fixup_hp* (mute
+        LED discovery; the family GPIO default still applies)
+  * the pin-configuration quirk lists (snd_hda_pin_quirk: alc269_pin_fixup_tbl,
+    alc269_fallback_pin_fixup_tbl, alc662_pin_fixup_tbl, alc882_pin_fixup_tbl),
+    which match by the BIOS pin configuration instead of an ID: they select
+    headset-microphone fixes almost exclusively.
+  * alc269_fixup_vendor_tbl (vendor-wide LED/ACPI fixups), the "model=" name
+    lists, Creative CA0132 board types, cs4208_mac_fixup_tbl sub-models (the
+    GPIO is applied, the MacBook Air 6 pin list is not).
+  * A function fixup that is not ported is skipped and its chain continues,
+    exactly as the kernel continues after a function that does nothing.
+
+
+5. Safety rules and the off-switch
+----------------------------------
+
+  * Virtual machines: nothing of r408 runs for a QEMU codec (vendor 1af4), a
+    VMware codec (vendor 15ad), or on any machine whose processor reports a
+    hypervisor (CPUID leaf 1, ECX bit 31). There the driver behaves as r407.
+  * Vendor verbs (Realtek coefficients on node 0x20, the IDT verb 7E7) are
+    sent only to codecs whose ID the kernel lists for them. Machine verb
+    lists are sent only when codec ID AND subsystem ID match, and only to
+    nodes the codec has.
+  * GPIOs outside the mask of a fixup keep the firmware's state.
+  * The codec's pin defaults, which survive a reset, are never written.
+  * Nothing in the quirk code returns an error to the playback path.
+  * OFF-SWITCH: create an empty file \EFI\HAK\audio-noquirks on any file
+    system the firmware has connected (the Charon stick is enough). The
+    driver looks for it once, when the first codec is bound; with the file
+    present it does only the generic bring-up of section 2 without the
+    association-0 rule (that is: r407 behaviour). A build with
+    HAK_HDA_NO_QUIRKS defined (set "_CL_=/DHAK_HDA_NO_QUIRKS" as
+    build-host-baseline.cmd does for HAK_AUDIO_TRACE) has the switch
+    permanently off.
+  * A trace build (HAK_AUDIO_TRACE=1) prints on COM1 the codec ID, both
+    subsystem IDs, the matched table row, every pin override and GPIO write.
+
+
+6. Smart amplifiers, SoundWire, SOF, AMD ACP
+--------------------------------------------
+
+Nothing of this section is implemented. The facts were read in the kernel
+tree named in section 1; "not verified" marks what was not.
+
+Smart amplifiers beside an HD Audio codec (Lenovo Legion/Yoga/ThinkPad,
+ASUS ROG/Zenbook, HP, Dell XPS; about 320 of the 1236 rows of the ALC269
+table):
+  * Cirrus CS35L41 (ACPI CSC3551, CLSA0100, CLSA0101). The Realtek codec
+    sends I2S to the amplifiers; they are controlled over I2C or SPI.
+    cs35l41_hda.c contains a complete path WITHOUT DSP firmware:
+    cs35l41_hda_config[] (PLL from the 3.072 MHz bit clock, 48 kHz, 32-bit
+    I2S slots) plus cs35l41_hda_config_no_dsp[] ("DACPCM1_SRC = ASPRX1"),
+    cs35l41_hda_unmute[] and the amplifier enable bit; the driver itself
+    uses it ("Bypassing Firmware.") when the SPI bus is too slow for a
+    download. That is roughly 25 register writes per amplifier, plus the
+    revision errata sequence and the boost set-up (cs35l41_init_boost in
+    sound/soc/codecs/cs35l41-lib.c, not in the checkout, not verified).
+    What a UEFI driver needs: (1) an I2C host driver for the SoC's Synopsys
+    DesignWare controller (Intel LPSS, AMD AMDI0010) or an SPI host driver;
+    (2) the amplifier's bus address, reset GPIO, boost type (internal /
+    external / shared), inductor, capacitor and peak current: from ACPI
+    _DSD ("cirrus,dev-index", "cirrus,boost-peak-milliamp",
+    "cirrus,boost-ind-nanohenry", "cirrus,boost-cap-microfarad",
+    "cirrus,gpio1-func" ..., "reset" GPIO), which needs an AML reader, or
+    from the kernel's table for machines whose ACPI lacks them
+    (cs35l41_hda_property.c); (3) a driver for the SoC GPIO block that holds
+    the reset line. Risk: the boost parameters are electrical; a wrong
+    inductor/current setting on an external-boost design can overheat the
+    converter, and without the speaker-protection firmware nothing limits
+    excursion and temperature: a UEFI path must play at a low fixed gain.
+    Licence: every cs35l41_hda*.c file is GPL-2.0-only, so a port needs the
+    project to accept GPL-2.0-only for that driver or a clean
+    implementation from the datasheet. Firmware (not needed for the
+    no-DSP path): linux-firmware WHENCE "License: Redistributable. See
+    LICENSE.cirrus for details." (the licence text itself was not read).
+  * Cirrus CS35L56/CS35L57 (cs35l56_hda.c, GPL-2.0-only). The chip runs
+    firmware from ROM; the kernel says "If the BIOS didn't patch the
+    firmware a wmfw and bin file are mandatory": on these laptops the
+    vendor firmware may already have patched and configured the amplifier
+    before Charon starts. Whether sound then passes with only the codec
+    side enabled was not verified and is the first thing to try on such a
+    machine: it costs nothing.
+  * Texas Instruments TAS2781/TAS2563 (tas2781_hda_i2c.c, _spi.c,
+    GPL-2.0-only; ACPI TIAS2781, TXNW2781, INT8866). The driver requires
+    its register configuration file (TAS2XXX<ssid>.bin "RCA" profile) and
+    normally a DSP program; calibration is read from UEFI variables
+    ("CALI_DATA" / "SmartAmpCalibrationData", three vendor GUIDs in
+    tas2781_hda.c), which a UEFI program can read directly. Firmware:
+    WHENCE "Licence: Redistributable. See LICENCE.ti-tspa for details"
+    (text not read). A firmware-free register sequence was not found in
+    the driver; not verified whether the chip plays in its reset default.
+  * Awinic AW88399 (aw88399_hda*.c, GPL-2.0-only; Legion Pro 7i 16IAX10H,
+    R9000P): needs its firmware profile; not examined further.
+  * Headphones on all of these machines are an ordinary pin of the Realtek
+    codec (the kernel's fixups only add the amplifiers as components), so
+    the generic path plus the family initialisation applies to the jack.
+  * Published UEFI code for any of these amplifiers: none known to this
+    pass; coreboot/depthcharge were not searched (see section 1).
+
+Concrete plan for CS35L41, smallest useful step first:
+  1. Read-only probe: find the DesignWare I2C controllers (PCI class 0C/80
+     Intel LPSS IDs, or ACPI AMDI0010/80860F41... through EFI_ACPI_SDT),
+     read the CS35L41 device ID register at the addresses 0x40-0x43, and
+     report it in Charon's hardware inventory. No writes to the amplifier.
+  2. Decide the licence question (GPL-2.0-only port or datasheet rewrite).
+  3. Bring-up for INTERNAL-boost designs only, parameters from _DSD or the
+     property table, fixed low gain, behind an explicit user opt-in, on one
+     known laptop at a time.
+
+Machines without any HD Audio codec:
+  * Intel SoundWire (RT711/RT712/RT713/RT722 jack codecs, RT1316/RT1318,
+    CS35L56, CS42L43 amplifiers; Tiger Lake and newer, most 2023+ Dell XPS /
+    Latitude and many ThinkPads). In the kernel the SoundWire data ports are
+    DAIs of the SOF driver: sound/soc/sof/intel/hda-dai.c
+    sdw_hda_dai_hw_params() configures an IPC4 "copier" in the DSP
+    firmware. So playback needs the DSP firmware image (sof-*.ri, signed
+    for the platform) and a topology to be loaded and the IPC protocol
+    spoken, besides a SoundWire bus master driver (Cadence IP), device
+    enumeration and each codec's register set-up. The SOF Intel sources
+    are "GPL-2.0-only OR BSD-3-Clause". Whether Lunar Lake and later can
+    move SoundWire PCM with HD Audio DMA and no firmware (hda-sdw-bpt.c,
+    lnl.c exist) was not verified. This is months of work, not a quirk.
+  * AMD ACP (ACP 6.x/7.x with SoundWire or I2S codecs). The tree has a
+    "legacy" (non-SOF) machine path beside the SOF one
+    (sound/soc/amd/acp/acp-sdw-legacy-mach.c, acp-legacy-common.c), which
+    suggests PCM without DSP firmware is possible there; not verified.
+    Firmware for the SOF path: WHENCE "Licence: Redistributable. See
+    LICENSE.amdsof for details."
+  * Until then such machines speak through a USB sound card or headset
+    (USB-AUDIO.txt). The HD Audio driver recognises a link without codecs
+    and releases the controller (r406).
+
+
+7. Licences of the result
+-------------------------
+
+  AudioDxe (OpenCore)                       MIT (file notices), BSD-3-Clause package
+  HakAudioStream.c, HakAudioRing.h,         as before (Charon's stream extension)
+    HAKAudioStream.h
+  HakHdaCompat.[ch], HakHdaCodecCompat.c    BSD-2-Clause notices (r406/r407)
+  HakHdaQuirks.[ch], HakHdaQuirkMatch.h,    GPL-2.0-or-later (logic and data from
+    HakHdaQuirkTable.h (generated),           the Linux kernel, files under
+    tools/gen-charon-hda-quirks.py            GPL-2.0-or-later only)
+
+  AudioDxe-r408.efi links all of them, so the binary as a whole is
+  distributed under GPL-2.0-or-later; the MIT/BSD notices stay in the
+  sources. A release that ships AudioDxe-r408.efi must say so and offer the
+  sources of the driver (this directory, the generator, the pinned OpenCore
+  tree), as Charon already does for its own GPL parts. r407 and earlier
+  were MIT/BSD-only.
+
+
+8. What was verified
+--------------------
+
+Build
+  work/charon-audio-driver-r408/AudioDxe-r408.efi, 208896 bytes, SHA-256
+  910ada692e0cf72ceed7d2f6c3809b25b51fe3f5db17205f8dc155d89a84726b
+  (r407: 163840 bytes). Built on 2026-11-22 with MSVC 14.51 from the pinned
+  OpenCore 1.0.8 tree plus audio_stream/driver/apply-driver-extension.py,
+  no compiler warnings; log work/charon-audio-driver-r408/
+  build-audiodxe-r408.log. Unsigned.
+
+Virtual machine (one run, 2026-11-22)
+  QEMU q35, WHPX, OVMF, ich9-intel-hda + hda-micro (codec vendor 1af4),
+  Charon trace build work/charon-win-r407si1/CHARON.EFI, driver
+  AudioDxe-r408.efi, harness work/charon-vm.py (QMP port 4495, DirectSound
+  output on the host speakers, HMP wavcapture of the same stream).
+  Serial log (kept as work/charon-audio-driver-r408/
+  qemu-hda-micro-serial.log): "CHARON audio driver started=0", "audio
+  ports=1", "audio setup=0", "audio begin=0", "CHARON speak status=0",
+  "CHARON first PCM=0000000000000300" for the welcome message, and the same
+  sequence again for the reader after the hand-over to the UEFI Shell.
+  Captured sound: 22.3 s, 56 % non-zero samples, RMS 1406, loudest second
+  RMS 2542, peak 18449 of 32768 (the r406 reference run: RMS 1617).
+  The machine was stopped and its folder deleted afterwards.
+  What this proves: Charon still speaks through the emulated HD Audio card
+  with r408. In this machine the r408 code is switched off by design
+  (virtual codec, hypervisor), so the run does NOT exercise the family
+  initialisation, the machine table or the GPIO code.
+
+Table walk on the host
+  The generated table was read back by a Python model of
+  HakHdaQuirkMatch.h (same rules) for the example machines of section 4;
+  the rows and actions printed there are the ones quoted. This checks the
+  generator and the table, not the C code on a codec.
+
+Not verified
+  Every codec-specific action on real hardware; the C matching code at run
+  time (it compiled; it has not run against a codec with a matching ID);
+  the off-switch file; the association-0 rule; the inverted EAPD of the
+  AD1986A; all GPIO writes; VMware (r407 was checked there, r408 was not
+  run in VMware).

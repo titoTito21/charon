@@ -1,0 +1,123 @@
+Charon r408 - results (2026-11-22). Release; r405, r406 and r407 were never released, their records
+are charon-r405-results.txt, charon-r406-results.txt, charon-r407-results.txt and
+charon-r407-usb-audio-results.txt.
+Nothing below ran on a physical computer. Machines: VMware Workstation (HD Audio) and QEMU 11.1 with
+OVMF; sound on the host's speakers. Evidence folders named below are in the work area, not in the package.
+
+Builds
+------
+Final: charon-win-r408final (CHARON.EFI), charon-win-r408final-drv (CHARONVOICE.EFI), sound driver
+charon-audio-driver-r408/AudioDxe-r408.efi, CharonDOS charondos-r408, PC emulator charon-pc-build-r407zf.
+Trace builds of the same sources: charon-win-r408u, charon-win-r408u-drv. All with -Wall -Wextra -Werror.
+The regression (1.) and the trials 2.-4. ran on earlier trace builds of the day (r408t, r408a3, r408b5t);
+the fixes they led to are in the final sources, and 5. ran on the final sources.
+
+Host tests
+----------
+- CharonDOS (tests/CharonDosTests.py, charondos-r408 host program): 44 of 44, including the CHARON command.
+- Programs for the running system (tools/charon-os/tests/run-tests.py): 108 of 108. They compile Charon's
+  own settings code (CharSettings.h, the functions SettingsSlot..SaveCharSettings of BootMenu.h) on the host
+  and compare records byte for byte. The harness now leaves out the r408 copy of the record to the start
+  medium, which needs running firmware.
+
+1. Regression of the boot managers (QEMU, tcg, r408t, AudioDxe-r408; work/r396-regression.sh)
+--------------------------------------------------------------------------------------------
+14 of 14 started from Charon's device list and were read: GRUB, systemd-boot, Limine, OpenCore, Clover,
+Windows Boot Manager, rEFInd, Memtest86+, Syslinux, iPXE, Ventoy, Haiku loader, FreeBSD loader, Debian
+installer GRUB. No fault. Output: regression-r408-tcg.out (docs/results/charon-r408-regression.txt in the
+source tree). Compared with r403's output (format markers removed) three places differ: in the OpenCore run
+the lines "Timeout" / "Choose the Operating System" and the chained GRUB menu come in another order and one
+step later, and the Debian run has one more line ("Debian test two, 2 z 3"). They look like the timing of
+the emulated machine; this was not examined further. The regression was not repeated after the fixes of
+2. and 3. (they touch the workspace, the RAM volume and the network driver loader, not the reader).
+
+2. Charon running from memory and "Install Charon on this computer" (evidence work/r408a-evidence)
+---------------------------------------------------------------------------------------------------
+a. Start medium removed after the switch to memory: PASS in QEMU with a USB stick (device_del): menu speaks
+   and moves, a setting was changed twice without a fault, the workspace opens, the installer refuses by
+   voice when no target exists. Not run: ejecting a CD (VMware cannot disconnect a device of a running
+   machine from the command line).
+b. Clean installation onto the disk Charon was started from: PASS in VMware with CharonDOS on the whole
+   disk ("Dysk 1, 2,9 GB, NVMe, z niego działa Charon"); Charon kept speaking; after the restart the reader
+   driver loaded and CharonDOS started; one 1024 MB partition on the disk.
+c. Self-installer: reader alone (62 files), spare entry (87 files, last in the boot order, machine starts
+   Charon from the disk without the disc), EFI partition too small (40 MB: "potrzeba 47 MB, wolne jest
+   37 MB" -> own 96 MB EFI partition in free space; machine starts Charon from it): PASS. The other
+   partitions have the same SHA-256 before and after; the old EFI partition is byte-identical.
+d. Second installation over an older one: PASS - one "Charon voice" and one "Charon" option afterwards.
+Defects found there and fixed:
+- After the switch Charon kept the handle of the start medium; a wipe of Charon's own disk would have
+  erased the disk and then failed to copy CharonDOS and Charon back. The medium is now found by its device
+  path at every use, the copy in memory is the fallback (CharonSelfRam.h, BootMenu.h, CharonWsImages.h,
+  CharonWsDosSystem.h).
+- The volume in memory was offered as an installation target; skipped (CharonWsSelfInstall.h).
+- FormatFat32 used 4 KiB clusters on small partitions (not valid FAT32; firmware did not mount the new
+  partition). The cluster size now shrinks until the count is valid, otherwise the format is refused before
+  anything is written. This also concerned CharonDOS partitions below about 260 MB.
+- After these trials: the volume in memory is never chosen for the installer's work files
+  (CharonWsInstall.h), and the program list does not show every program twice (CharonWorkspace.h).
+Not run: wiping Charon's own disk with a ready image (same changed code path), the own partition on
+Charon's own disk, Secure Boot. Known: if a later step fails after the new partition was added, an empty
+"Charon" partition stays; a CharonDOS target below 66 MB would get a new partition table and then fail.
+
+3. Driver pack (charon-drivers-r408; evidence work/r408-driverpack-evidence; QEMU, WHPX)
+----------------------------------------------------------------------------------------
+Pack: 117 drivers, 10.8 MB; 81 loaded by rule (nic- 11, nic-usb- 7, wifi- 2, net- 11, fs- 20, disk- 11,
+usb- 5, virt- 12, input- 2), manual\ 32, experimental\ 4. Every file is a PE32+ x64 EFI image whose SHA-256
+and size match MANIFEST.json. The five network card files of r400-r404 were replaced by newer ones covering
+the same cards.
+- File systems: PASS. "Systemy plików: wczytano sterowników 20, nowych woluminów 4" in 0.3 s; a text file
+  read on ext4, NTFS, exFAT and btrfs, on NVMe and on an SD card.
+- Disk controllers: PASS for an SD host controller (0.13 s) and PVSCSI. UFS: controller driven, the test
+  image was not readable (512-byte GPT on a 4 K unit: the image's fault).
+- Network, PCI: PASS for e1000 and RTL8139 without option ROM (20 files in 0.5-1.7 s, then an address by
+  DHCP).
+- Network, USB adapter (QEMU usb-net): FAIL without a fault - the adapter is listed, DHCP gets no answer
+  in 30 s. Cause not examined.
+- Second visit of a view and second start: PASS, nothing is loaded twice.
+- Boot manager menu and Continue after the loads: PASS on three machines.
+- Longest silence caused by a load: 1.7 s.
+- Not run: the input- and usb- files (OVMF drives every keyboard and controller itself), the net- files
+  and their guards (OVMF has the IPv4 stack), a virtio network card, every experimental\ file with its
+  hardware, Wi-Fi.
+Defects found there and fixed: every driver file started once per volume holding the folder and again at
+every L key (CharonWsNet.h: once per run now); the second listing of the root of an ext4, exFAT or btrfs
+volume was empty (CharonWsCore.h, CharonFileBrowser.h: rewind); the pack filled the program list
+(CharonWorkspace.h: the drivers folder is skipped except manual\).
+Known: ext4, exFAT and btrfs volumes are announced without a label; there is no menu yet for the manual\
+list (the files can be started from the program list).
+
+4. Sound (records of the day)
+-----------------------------
+AudioDxe-r408 (codec families, machine table): Charon speaks on QEMU's HD Audio as before; no row of the
+machine table met its machine. USB sound: charon-r407-usb-audio-results.txt. AC'97 and ES1371 liveness
+guards, the settings save fix and the Wi-Fi scan token fix: compiled and covered by the runs above only as
+far as those runs use them (QEMU HD Audio; settings saved in 2.a).
+
+5. Final sources (r408u trace build, QEMU, WHPX, driver pack on the disk)
+-------------------------------------------------------------------------
+Menu spoken and moved, hints spoken, "CHARON selfram move" = active, workspace opened (LoadInput), program
+list "Programy UEFI, 41 pozycji" (no duplicates), files view 3 volumes (LoadStorage, nothing to load),
+0 fault lines. Boot disc: see the release checks below.
+
+Release checks
+--------------
+- Charon-r408.iso started in QEMU/OVMF without a hard disk, as a CD and written raw to a USB stick
+  (work/test-charon-iso-r408.py): 22 seconds with speech in 79 s each, peak 18819 / 19380, menu reacts to
+  Down, no assert or exception line.
+- Charon-testvm-r408-all-managers.zip started as its launcher starts it (work/test-testvm-r408all.py):
+  Charon's device list has 17 entries, the last "Memtest86+ (built in, memory test), 17 of 17"; no assert
+  or exception line.
+- The GitHub tree export refuses to finish when a file holds a path of the build computer; it finished.
+- Not checked: the Windows and Linux installers of the package (they change firmware variables and are
+  never run on the build computer), the launcher .bat itself by hand.
+
+Open
+----
+- Real hardware: nothing was run on any. First trial of the sound driver on a laptop: trace build and, if
+  sound is worse than r404, the empty file \EFI\HAK\audio-noquirks.
+- USB network adapters; input-/usb-/net- driver files; experimental drivers; Wi-Fi.
+- Smart amplifiers and SoundWire (speakers of many recent laptops).
+- Charon-SecureBoot.ps1 was never run against firmware (Lenovo WMI path written from the documentation).
+- Linux desktop scripts: syntax only. Windows 95/98 profiles and readers other than JAWS 4.02: not run.
+- JAWS first-start windows not answered by Charon; JAWS with a COM1 synthesizer stops the guest.

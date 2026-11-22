@@ -83,6 +83,17 @@ bool plat_readdir(void* dir, PlatDirEnt* out);
 void plat_closedir(void* dir);
 bool plat_disk_space(int drive, uint64_t* total, uint64_t* free_bytes);
 
+// ---- sound (r407) ---------------------------------------------------------
+// Output of sound.cpp (PC speaker, Sound Blaster): 48000 Hz, two channels,
+// signed 16 bit. A sound is opened with plat_pcm_begin (false: there is no
+// output now; the next sound asks again), written in small pieces as time
+// passes, and closed with plat_pcm_end after its silent tail. Writing never
+// blocks; the return value is the number of frames taken.
+bool plat_pcm_begin(void);
+size_t plat_pcm_write(const int16_t* stereo, size_t frames);
+size_t plat_pcm_queued(void);             // frames taken and not yet played
+void plat_pcm_end(void);
+
 // ---- leaving CharonDOS for another program -------------------------------
 // WINNT starts the installed Windows (its own Windows Boot Manager,
 // \EFI\Microsoft\Boot\bootmgfw.efi on any volume); CharonDOS ends and does

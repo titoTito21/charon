@@ -14,6 +14,7 @@
 #include <efi/protocol/simple-text-input.h>
 #include <efi/protocol/simple-text-output.h>
 #include "dos_platform.h"
+#include "charon_cmd.h"
 
 namespace {
 
@@ -63,6 +64,18 @@ struct MenuVoiceV1 {
     efi_status (EFIAPI *Pump)(MenuVoiceV1*, uint32_t);
     efi_status (EFIAPI *Stop)(MenuVoiceV1*);
 };
+// r407: Charon's PCM sink (src/efi/CharonPcmSink.h, version 1): the sound of sound.cpp, mixed
+// under the speech by the voice that owns the sound card. Without it CharonDOS is silent.
+efi_guid g_pcm_sink = {0x8c4e2f1a, 0x3b7d, 0x4e65, {0xa1, 0x9c, 0x52, 0xd8, 0x07, 0x6e, 0xb3, 0x41}};
+struct PcmSinkV1 {
+    uint32_t version, size, rate, channels;
+    efi_status (EFIAPI *Open)(PcmSinkV1*, uint32_t, uint32_t);
+    efi_status (EFIAPI *Write)(PcmSinkV1*, const int16_t*, size_t, size_t*);
+    efi_status (EFIAPI *Queued)(PcmSinkV1*, size_t*);
+    efi_status (EFIAPI *Close)(PcmSinkV1*);
+};
+PcmSinkV1* g_pcm;                        // open sink, or null
+void pcm_close() { if (g_pcm) { g_pcm->Close(g_pcm); g_pcm = nullptr; } }
 int g_launch_kind;                       // 0, PL_WINNT, PL_WIN
 efi_handle g_launch_device;              // volume that holds the program
 char16_t g_launch_file[300];             // its path on that volume
@@ -452,6 +465,30 @@ void* plat_alloc(size_t bytes)
     return p;
 }
 
+// ---- sound (r407) ---------------------------------------------------------------------------
+bool plat_pcm_begin(void)
+{
+    pcm_close();
+    PcmSinkV1* sink = nullptr;
+    if (BS->LocateProtocol(&g_pcm_sink, nullptr, (void**)&sink) != EFI_SUCCESS || !sink) return false;
+    if (sink->version < 1 || sink->size < sizeof(PcmSinkV1) || !sink->Open || !sink->Write || !sink->Queued || !sink->Close) return false;
+    if (sink->Open(sink, 48000, 2) != EFI_SUCCESS) return false;
+    g_pcm = sink;
+    return true;
+}
+size_t plat_pcm_write(const int16_t* stereo, size_t frames)
+{
+    size_t accepted = 0;
+    if (!g_pcm || g_pcm->Write(g_pcm, stereo, frames, &accepted) != EFI_SUCCESS || accepted > frames) return 0;
+    return accepted;
+}
+size_t plat_pcm_queued(void)
+{
+    size_t frames = 0;
+    return g_pcm && g_pcm->Queued(g_pcm, &frames) == EFI_SUCCESS ? frames : 0;
+}
+void plat_pcm_end(void) { pcm_close(); }
+
 // ---- files ----------------------------------------------------------------------------------
 bool plat_drive_ok(int drive) { return drive >= 0 && drive < 26 && g_root[drive]; }
 
@@ -625,6 +662,218 @@ bool plat_disk_space(int drive, uint64_t* total, uint64_t* free_bytes)
     return true;
 }
 
+// ---- the CHARON command: CharonDOS -> Charon, through the same layer as WIN ----
+// A CharonDOS program cannot call a UEFI protocol; the shell built-in CHARON
+// does, from here (native, like plat_request_launch). Live speech uses Charon's
+// published MenuVoice (g_menu_voice, above). Reader settings persist into the
+// CharSettings record on the boot volume's \EFI\HAK; the boot-manager actions
+// use the standard firmware variables (BootOrder / Boot#### / BootNext /
+// OsIndications) and ResetSystem. Nothing here touches Secure Boot keys.
+namespace {
+efi_guid g_global_var = EFI_GLOBAL_VARIABLE;
+// CharonReaderControl.h: readerControlGuid (read its `release` field only).
+efi_guid g_reader_control = {0x5f0c2c8e, 0x8a2d, 0x4c8b, {0x9e, 0x31, 0x6a, 0x0d, 0x71, 0x2b, 0x44, 0x55}};
+struct ReaderCtrlHdr { uint32_t version, size, release, reserved; };
+
+// The boot volume's root (where \EFI\HAK lives). Caller closes it.
+efi_file_protocol* hak_root()
+{
+    if (!g_self_device) return nullptr;
+    efi_simple_file_system_protocol* fs = nullptr;
+    efi_file_protocol* vol = nullptr;
+    if (BS->HandleProtocol(g_self_device, &g_sfs, (void**)&fs) != EFI_SUCCESS || !fs) return nullptr;
+    if (fs->OpenVolume(fs, &vol) != EFI_SUCCESS || !vol) return nullptr;
+    return vol;
+}
+// "EFI\HAK\<name>" (name ASCII, may contain '\').
+void hak_path(const char* name, char16_t* out, size_t cap)
+{
+    size_t n = 0;
+    for (const char16_t* p = u"EFI\\HAK\\"; *p && n + 1 < cap; p++) out[n++] = *p;
+    for (const char* s = name; *s && n + 1 < cap; s++) out[n++] = (char16_t)(uint8_t)*s;
+    out[n] = 0;
+}
+void boot_var_name(uint16_t id, char16_t* out)   // "Boot####"
+{
+    static const char16_t hex[] = u"0123456789ABCDEF";
+    out[0] = u'B'; out[1] = u'o'; out[2] = u'o'; out[3] = u't';
+    for (int i = 0; i < 4; i++) out[4 + i] = hex[(id >> (12 - 4 * i)) & 15];
+    out[8] = 0;
+}
+// Description of a Boot#### option (UTF-16 at offset 6) to ASCII.
+void option_desc(const uint8_t* opt, size_t size, char* out, size_t cap)
+{
+    size_t o = 0;
+    for (size_t i = 6; i + 1 < size && o + 1 < cap; i += 2) {
+        const uint16_t c = (uint16_t)(opt[i] | (opt[i + 1] << 8));
+        if (!c) break;
+        out[o++] = c < 128 ? (char)c : '?';
+    }
+    out[o] = 0;
+}
+uint16_t g_boot_order[256];
+size_t read_boot_order()
+{
+    size_t sz = sizeof g_boot_order;
+    if (ST->RuntimeServices->GetVariable((char16_t*)u"BootOrder", &g_global_var, nullptr, &sz, g_boot_order) != EFI_SUCCESS || sz % 2 || sz > sizeof g_boot_order) return 0;
+    return sz / 2;
+}
+}  // namespace
+
+void charon_plat_info(CharonInfo* out)
+{
+    out->release = 0; out->have_voice = 0; out->have_reader = 0; out->secure_boot = -1;
+    MenuVoiceV1* v = nullptr;
+    if (BS->LocateProtocol(&g_menu_voice, nullptr, (void**)&v) == EFI_SUCCESS && v && v->SpeakUtf8) out->have_voice = 1;
+    ReaderCtrlHdr* rc = nullptr;
+    if (BS->LocateProtocol(&g_reader_control, nullptr, (void**)&rc) == EFI_SUCCESS && rc && rc->version == 1) { out->have_reader = 1; out->release = rc->release; }
+    uint8_t sb = 0; size_t sz = sizeof sb;
+    if (ST->RuntimeServices->GetVariable((char16_t*)u"SecureBoot", &g_global_var, nullptr, &sz, &sb) == EFI_SUCCESS && sz >= 1) out->secure_boot = sb ? 1 : 0;
+}
+
+int charon_plat_speak(const char* lang, const char* text)
+{
+    MenuVoiceV1* v = nullptr;
+    if (BS->LocateProtocol(&g_menu_voice, nullptr, (void**)&v) != EFI_SUCCESS || !v || !v->SpeakUtf8 || v->version < 1) return 0;
+    return v->SpeakUtf8(v, lang, text) == EFI_SUCCESS ? 1 : 0;   // the resident reader pumps it
+}
+
+long charon_plat_hak_read(const char* name, void* buf, unsigned long cap)
+{
+    efi_file_protocol* root = hak_root();
+    if (!root) return -2;
+    char16_t path[200]; hak_path(name, path, 200);
+    efi_file_protocol* f = nullptr;
+    const efi_status st = root->Open(root, &f, path, EFI_FILE_MODE_READ, 0);
+    if (st != EFI_SUCCESS || !f) { root->Close(root); return st == EFI_NOT_FOUND ? -1 : -2; }
+    size_t n = cap;
+    const efi_status rst = f->Read(f, &n, buf);
+    f->Close(f); root->Close(root);
+    return rst == EFI_SUCCESS ? (long)n : -2;
+}
+
+int charon_plat_hak_write(const char* name, const void* buf, unsigned long len)
+{
+    efi_file_protocol* root = hak_root();
+    if (!root) return 0;
+    char16_t path[200]; hak_path(name, path, 200);
+    efi_file_protocol* f = nullptr;
+    if (root->Open(root, &f, path, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE, 0) == EFI_SUCCESS && f) { f->Delete(f); f = nullptr; }
+    if (root->Open(root, &f, path, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0) != EFI_SUCCESS || !f) { root->Close(root); return 0; }
+    size_t n = len;
+    const bool ok = f->Write(f, &n, (void*)buf) == EFI_SUCCESS && n == len && f->Flush(f) == EFI_SUCCESS;
+    f->Close(f); root->Close(root);
+    return ok ? 1 : 0;
+}
+
+int charon_plat_boot_list(CharonBootEntry* out, int cap)
+{
+    const size_t n = read_boot_order();
+    if (!n) return -1;
+    static uint8_t opt[4096];
+    int count = 0;
+    for (size_t i = 0; i < n && count < cap; i++) {
+        char16_t name[9]; boot_var_name(g_boot_order[i], name);
+        size_t os = sizeof opt;
+        if (ST->RuntimeServices->GetVariable(name, &g_global_var, nullptr, &os, opt) != EFI_SUCCESS || os < 6) continue;
+        out[count].id = g_boot_order[i];
+        option_desc(opt, os, out[count].desc, sizeof out[count].desc);
+        count++;
+    }
+    return count;
+}
+
+int charon_plat_set_continue(uint16_t id)
+{
+    const size_t n = read_boot_order();
+    if (!n) return 1;
+    bool in = false; for (size_t i = 0; i < n; i++) if (g_boot_order[i] == id) in = true;
+    if (!in) return 1;
+    char16_t name[9]; boot_var_name(id, name);
+    static uint8_t opt[4096]; size_t os = sizeof opt;
+    if (ST->RuntimeServices->GetVariable(name, &g_global_var, nullptr, &os, opt) != EFI_SUCCESS || !os || os > 4000) return 1;
+    static uint8_t rec[4096 + 32];
+    static const uint8_t magic[8] = {'H', 'A', 'K', 'C', 'O', 'N', 'T', '1'};
+    for (int i = 0; i < 8; i++) rec[i] = magic[i];
+    rec[8] = (uint8_t)id; rec[9] = (uint8_t)(id >> 8);
+    for (int i = 0; i < 4; i++) rec[10 + i] = (uint8_t)(os >> (8 * i));
+    for (size_t i = 0; i < os; i++) rec[14 + i] = opt[i];
+    rec[14 + os] = 'H'; rec[15 + os] = 'E'; rec[16 + os] = 'N'; rec[17 + os] = 'D';
+    const uint8_t marker = 1;                                    // durable intent first (as Charon's SaveContinue)
+    if (!charon_plat_hak_write("continue-set", &marker, 1)) return 2;
+    if (!charon_plat_hak_write("continue.bin", rec, (unsigned long)(18 + os))) return 2;
+    return 0;
+}
+
+int charon_plat_boot_next_charon(void)
+{
+    const size_t n = read_boot_order();
+    if (!n) return 1;
+    static uint8_t opt[4096];
+    bool found = false; uint16_t id = 0;
+    for (size_t i = 0; i < n && !found; i++) {
+        char16_t name[9]; boot_var_name(g_boot_order[i], name);
+        size_t os = sizeof opt;
+        if (ST->RuntimeServices->GetVariable(name, &g_global_var, nullptr, &os, opt) != EFI_SUCCESS || os < 6) continue;
+        char desc[64]; option_desc(opt, os, desc, sizeof desc);
+        const char* c = "Charon";
+        bool same = true; int k = 0; for (; c[k]; k++) if (desc[k] != c[k]) same = false;
+        if (same && desc[k] == 0) { id = g_boot_order[i]; found = true; }
+    }
+    if (!found) return 1;
+    uint16_t next = id;
+    const efi_status st = ST->RuntimeServices->SetVariable((char16_t*)u"BootNext", &g_global_var,
+        EFI_VARIABLE_NON_VOLATILE | EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS, sizeof next, &next);
+    return st == EFI_SUCCESS ? 0 : 2;
+}
+
+int charon_plat_firmware_setup(void)
+{
+    uint64_t supported = 0; size_t sz = sizeof supported;
+    if (ST->RuntimeServices->GetVariable((char16_t*)u"OsIndicationsSupported", &g_global_var, nullptr, &sz, &supported) != EFI_SUCCESS
+        || !(supported & EFI_OS_INDICATIONS_BOOT_TO_FW_UI)) return 1;
+    uint64_t indications = 0; sz = sizeof indications;
+    ST->RuntimeServices->GetVariable((char16_t*)u"OsIndications", &g_global_var, nullptr, &sz, &indications);
+    indications |= EFI_OS_INDICATIONS_BOOT_TO_FW_UI;
+    const efi_status st = ST->RuntimeServices->SetVariable((char16_t*)u"OsIndications", &g_global_var,
+        EFI_VARIABLE_NON_VOLATILE | EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS, sizeof indications, &indications);
+    return st == EFI_SUCCESS ? 0 : 2;
+}
+
+void charon_plat_reset(int mode)
+{
+    MenuVoiceV1* v = nullptr;                                    // stop the voice before leaving, as Charon does
+    if (BS->LocateProtocol(&g_menu_voice, nullptr, (void**)&v) == EFI_SUCCESS && v && v->Stop) v->Stop(v);
+    ST->RuntimeServices->ResetSystem(mode ? EfiResetShutdown : EfiResetWarm, EFI_SUCCESS, 0, nullptr);
+}
+
+int charon_plat_synth_list(char out[][64], int cap)
+{
+    efi_file_protocol* root = hak_root();
+    if (!root) return -1;
+    efi_file_protocol* dir = nullptr;
+    if (root->Open(root, &dir, (char16_t*)u"EFI\\HAK\\synths", EFI_FILE_MODE_READ, 0) != EFI_SUCCESS || !dir) { root->Close(root); return 0; }
+    int count = 0;
+    alignas(8) static uint8_t entry[1100];
+    for (int guard = 0; guard < 128 && count < cap; guard++) {
+        size_t bytes = sizeof entry;
+        if (dir->Read(dir, &bytes, entry) != EFI_SUCCESS || !bytes) break;
+        const efi_file_info* info = (const efi_file_info*)entry;
+        if (info->Attribute & EFI_FILE_DIRECTORY) continue;
+        size_t len = 0; while (info->FileName[len] && len < 62) len++;
+        static const char16_t ext[] = u".manifest"; const size_t el = 9;
+        if (len <= el) continue;
+        bool match = true;
+        for (size_t i = 0; i < el && match; i++) { char16_t c = info->FileName[len - el + i]; if (c >= u'A' && c <= u'Z') c = (char16_t)(c + 32); if (c != ext[i]) match = false; }
+        if (!match) continue;
+        size_t o = 0; for (size_t i = 0; i < len && o + 1 < 64; i++) out[count][o++] = info->FileName[i] < 128 ? (char)info->FileName[i] : '?';
+        out[count][o] = 0;
+        count++;
+    }
+    dir->Close(dir); root->Close(root);
+    return count;
+}
+
 // ---- entry ----------------------------------------------------------------------------------
 extern "C" efi_status EFIAPI efi_main(efi_handle image, efi_system_table* table)
 {
@@ -679,6 +928,7 @@ extern "C" efi_status EFIAPI efi_main(efi_handle image, efi_system_table* table)
         dos_main(&options);
         if (!g_launch_kind) break;
         // Leave nothing open while another program owns the machine.
+        pcm_close();   // r407: the emulator opens the sink for itself
         if (timer) BS->SetTimer(timer, TimerCancel, 0);
         for (int i = 0; i < 26; i++) if (g_root[i]) { g_root[i]->Close(g_root[i]); g_root[i] = nullptr; g_prefix[i][0] = 0; }
         Out->SetAttribute(Out, (size_t)(old_attr & 0x7F));
@@ -702,6 +952,7 @@ extern "C" efi_status EFIAPI efi_main(efi_handle image, efi_system_table* table)
         find_drives(image);
     }
 
+    pcm_close();   // r407
     if (timer) { BS->SetTimer(timer, TimerCancel, 0); BS->CloseEvent(timer); }
     for (int i = 0; i < 26; i++) if (g_root[i]) g_root[i]->Close(g_root[i]);
     Out->SetAttribute(Out, (size_t)(old_attr & 0x7F));

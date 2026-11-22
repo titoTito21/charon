@@ -245,6 +245,7 @@ inline void FindMedia(efi_boot_services* boot,const uint8_t* const* paths,const 
             uint8_t* own=nullptr;
             if(boot->HandleProtocol(handles[i],&pathGuid,(void**)&own)!=EFI_SUCCESS || !own)continue;
             const size_t bytes=PathLength(own);if(bytes==SIZE_MAX || !bytes)continue;
+            if(bytes>=4 && own[0]==1 && own[1]==3)continue;   // r408: skip Charon's own RAM volume (memory-mapped device path)
             efi_simple_file_system_protocol* fs=nullptr;efi_file_protocol* root=nullptr;
             if(boot->HandleProtocol(handles[i],&fsGuid,(void**)&fs)!=EFI_SUCCESS || !fs || fs->OpenVolume(fs,&root)!=EFI_SUCCESS || !root)continue;
             efi_file_protocol* file=nullptr;
@@ -300,6 +301,7 @@ inline void FindMedia(efi_boot_services* boot,const uint8_t* const* paths,const 
             if(boot->HandleProtocol(handles[i],&blockIoGuid,(void**)&io)!=EFI_SUCCESS || !io || !io->Media || io->Media->LogicalPartition)continue;
             if(boot->HandleProtocol(handles[i],&pathGuid,(void**)&own)!=EFI_SUCCESS || !own)continue;
             const size_t bytes=PathLength(own);if(bytes==SIZE_MAX || !bytes || bytes>1024)continue;
+            if(bytes>=4 && own[0]==1 && own[1]==3)continue;   // r408: skip Charon's own RAM volume (memory-mapped device path)
             bool uefi=false;
             for(size_t b=0;b<bootables && !uefi;++b)uefi=Prefix(own,bytes,bootable[b],bootableBytes[b]);
             if(uefi)continue;

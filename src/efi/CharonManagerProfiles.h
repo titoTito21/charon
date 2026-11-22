@@ -20,6 +20,7 @@ struct Profile {
     const keyhelp::Entry* keys;size_t keyCount;
     uint16_t revealScan;char16_t revealChar;   // key that shows a hidden menu (0/0: none Charon can send)
     const keyhelp::Entry* hiddenHint;  // how a person shows it
+    bool secretInput=false;            // r407: what is typed into it is secret unless the prompt says otherwise (CharonSecretInput.h)
 };
 inline constexpr keyhelp::Entry grubKeys[]={
     {u"GRUB: strzałki w górę i w dół wybierają pozycję, Enter uruchamia, Home i End pierwsza i ostatnia",u"GRUB: Up and Down choose an entry, Enter starts it, Home and End first and last"},
@@ -71,6 +72,29 @@ inline constexpr keyhelp::Entry freebsdKeys[]={
 inline constexpr keyhelp::Entry haikuKeys[]={
     {u"Program rozruchowy Haiku: przytrzymaj spację albo Shift podczas startu, aby otworzyć menu; strzałki i Enter",u"Haiku loader: hold Space or Shift during start to open the menu; arrows and Enter"},
 };
+// r407: VeraCrypt's loader (DCS: DcsBoot.efi starts DcsInt.dcs, which asks on
+// the text console). Keys from VeraCrypt-DCS Library/PasswordLib/ConsolePassword.c,
+// Library/VeraCryptLib/DcsVeraCrypt.c, DcsBoot/DcsBoot.c and DcsRe/DcsRe.c.
+inline constexpr keyhelp::Entry veraCryptKeys[]={
+    {u"VeraCrypt: wpisz hasło i naciśnij Enter; potem PIM, sam Enter oznacza wartość domyślną. Charon nie czyta wpisywanych znaków: po każdym przyjętym znaku mówi gwiazdka, po Backspace usunięto",
+     u"VeraCrypt: type the password and press Enter; then the PIM, Enter alone means the default. Charon does not read typed characters: it says star for every accepted character and deleted after Backspace"},
+    {u"VeraCrypt: wpisuj powoli, klawisze naciśnięte szybciej niż co jedną dziesiątą sekundy program odrzuca; brak gwiazdki oznacza, że znak nie został przyjęty",
+     u"VeraCrypt: type slowly, the loader drops keys pressed less than a tenth of a second apart; no star means the character was not accepted"},
+    {u"VeraCrypt: F5 pokazuje albo ukrywa wpisywane hasło na ekranie; Charon sam go nie czyta, pokazane znaki czytają tylko klawisze przeglądu, na przykład Insert numpad 8 albo Control Alt I",
+     u"VeraCrypt: F5 shows or hides the typed password on the screen; Charon never reads it by itself, only the review keys read shown characters, for example Insert numpad 8 or Control Alt I"},
+    {u"VeraCrypt: Escape pomija hasło i uruchamia program rozruchowy Windows, zaszyfrowany system się wtedy nie uruchomi; F2 zamiast Enter loguje i pyta o nowe hasło",
+     u"VeraCrypt: Escape skips the password and starts the Windows boot loader, an encrypted system will not start then; F2 instead of Enter logs in and asks for a new password"},
+    {u"VeraCrypt: po błędnym haśle komunikat Authorization failed i ponowne pytanie o hasło; bez żadnego klawisza przez kilka minut komputer może się wyłączyć; F7 blokada platformy, F8 blokada TPM, F9 karta",
+     u"VeraCrypt: after a wrong password the message Authorization failed and the password prompt again; with no key for a few minutes the computer may shut down; F7 platform lock, F8 TPM lock, F9 smart card"},
+};
+inline constexpr keyhelp::Entry veraCryptRescueKeys[]={
+    {u"Płyta ratunkowa VeraCrypt: naciśnij literę pozycji, litery są przed nawiasem każdej pozycji i w nawiasie kwadratowym na końcu menu; Insert numpad plus czyta menu od kursora przeglądu",
+     u"VeraCrypt Rescue Disk: press the letter of an entry, the letters stand before each entry and in the square brackets at the end of the menu; Insert numpad plus reads the menu from the review cursor"},
+    {u"Płyta ratunkowa VeraCrypt: d odszyfruj system, k przywróć klucze nagłówka, r przywróć pliki programu rozruchowego, m dodaj go do menu rozruchu, z usuń z menu, c przywróć konfigurację",
+     u"VeraCrypt Rescue Disk: d decrypt the system, k restore the header keys, r restore the loader's files, m add it to the boot menu, z remove it from the menu, c restore the configuration"},
+    {u"Płyta ratunkowa VeraCrypt: b program VeraCrypt z dysku systemowego, v z płyty ratunkowej, o oryginalny program rozruchowy Windows, w Windows PE, s powłoka, h pomoc, e wyjście",
+     u"VeraCrypt Rescue Disk: b the VeraCrypt loader from the system disk, v from the rescue disk, o the original Windows loader, w Windows PE, s the shell, h help, e exit"},
+};
 inline constexpr keyhelp::Entry grubHidden={u"Menu GRUB jest ukryte.",u"The GRUB menu is hidden."};
 inline constexpr keyhelp::Entry sdbootHidden={u"Menu systemd-boot jest ukryte.",u"The systemd-boot menu is hidden."};
 inline constexpr keyhelp::Entry refindHidden={u"Menu rEFInd jest ukryte.",u"The rEFInd menu is hidden."};
@@ -91,6 +115,8 @@ inline constexpr Profile profiles[]={
     {u"iPXE",CHARON_KEYS(ipxeKeys),0,0,nullptr},
     {u"FreeBSD loader",CHARON_KEYS(freebsdKeys),0,0,nullptr},
     {u"Haiku loader",CHARON_KEYS(haikuKeys),0,u' ',nullptr},
+    {u"VeraCrypt",CHARON_KEYS(veraCryptKeys),0,0,nullptr,true},   // r407
+    {u"VeraCrypt Rescue Disk",CHARON_KEYS(veraCryptRescueKeys),0,0,nullptr,true},
 };
 #undef CHARON_KEYS
 inline bool SameName(const char16_t* a,const char16_t* b) {if(!a || !b)return false;size_t i=0;for(;a[i] && a[i]==b[i];++i) {}return a[i]==b[i];}
@@ -106,6 +132,8 @@ inline bool SameName(const char16_t* a,const char16_t* b) {if(!a || !b)return fa
 //   screenkey=Edit Options :: F10 zapisuje | F10 saves   (r397) a key of the
 //            screen that shows "Edit Options"; said first in the key list
 //            while that text is on the screen (up to 8)
+//   secretinput=yes                (r407) what is typed into the program is
+//            secret: typed characters are never read, one "star" per character
 // A built-in signature always wins; the files only add managers.
 struct UserProfile {
     char signature[64]={};size_t signatureLength=0;char16_t name[48]={};
@@ -160,6 +188,7 @@ inline bool ParseUserProfile(const char* text,size_t length,UserProfile& u) {
                 if(mn && tn) {Utf8To16(m,mn,u.screenMarker[k],48);SplitLanguages(t,tn,u.screenPl[k],u.screenEn[k],160);u.screenKeys[k]={u.screenPl[k],u.screenEn[k]};++u.screenKeyCount;}
             }
         }
+        else if(KeyWord(key,kn,"secretinput"))u.profile.secretInput=KeyWord(v,vn,"yes") || KeyWord(v,vn,"1") || KeyWord(v,vn,"true");   // r407
         else if(KeyWord(key,kn,"hidden")) {SplitLanguages(v,vn,u.hintPl,u.hintEn,160);u.hint={u.hintPl,u.hintEn};hidden=true;}
         else if(KeyWord(key,kn,"reveal")) {
             static const struct {const char* word;uint16_t scan;char16_t ch;} keys[]={{"esc",0x17,0},{"escape",0x17,0},{"space",0,u' '},{"enter",0,u'\r'},
@@ -225,6 +254,11 @@ struct ScreenKeys {
     uint8_t group;
     keyhelp::Entry name;
     const keyhelp::Entry* keys;size_t keyCount;
+    // r407: where the marker must stand. A prompt is the screen only while the
+    // caret is on its row (old prompts stay on a scrolling console); a message
+    // is the answer to the last entry while it is the text row above the caret.
+    enum : uint8_t {anywhere=0,caretRow=1,aboveCaret=2};
+    uint8_t where=anywhere;
 };
 inline constexpr keyhelp::Entry grubCommandKeys[]={
     {u"help wypisuje polecenia, help i nazwa opisuje polecenie, ls pokazuje dyski i pliki, set zmienne, boot uruchamia, normal wraca do menu",u"help lists commands, help and a name describes one, ls shows disks and files, set variables, boot starts, normal returns to the menu"},
@@ -282,11 +316,48 @@ inline constexpr keyhelp::Entry bsdPromptKeys[]={
 inline constexpr keyhelp::Entry syslinuxPromptKeys[]={
     {u"Wpisz nazwę pozycji i opcje, Enter uruchamia, Tab wypisuje pozycje, klawisze F1 do F10 ekrany pomocy",u"Type an entry name and options, Enter starts it, Tab lists the entries, F1 to F10 show help screens"},
 };
+inline constexpr keyhelp::Entry veraCryptPasswordKeys[]={
+    {u"Wpisz hasło i naciśnij Enter. Charon mówi gwiazdka po każdym przyjętym znaku i usunięto po Backspace; samych znaków nie czyta",
+     u"Type the password and press Enter. Charon says star for every accepted character and deleted after Backspace; it does not read the characters"},
+    {u"F5 pokazuje albo ukrywa hasło na ekranie, Escape pomija hasło i uruchamia program rozruchowy Windows, F2 loguje i pyta o nowe hasło",
+     u"F5 shows or hides the password on the screen, Escape skips the password and starts the Windows boot loader, F2 logs in and asks for a new password"},
+};
+inline constexpr keyhelp::Entry veraCryptPimKeys[]={
+    {u"Wpisz PIM cyframi i naciśnij Enter; sam Enter oznacza wartość domyślną. Cyfr Charon nie czyta: mówi gwiazdka po każdej przyjętej",
+     u"Type the PIM in digits and press Enter; Enter alone means the default. Charon does not read the digits: it says star for every accepted one"},
+};
+inline constexpr keyhelp::Entry veraCryptHashKeys[]={
+    {u"Wpisz numer algorytmu skrótu z listy nad polem i naciśnij Enter; 0 albo sam Enter sprawdza wszystkie",
+     u"Type the number of the hash algorithm from the list above and press Enter; 0 or Enter alone tries them all"},
+};
+inline constexpr keyhelp::Entry veraCryptFailedKeys[]={
+    {u"Hasło, PIM albo algorytm nie pasują. Wpisz hasło jeszcze raz i naciśnij Enter; Escape pomija hasło i uruchamia program rozruchowy Windows",
+     u"The password, PIM or hash did not match. Type the password again and press Enter; Escape skips the password and starts the Windows boot loader"},
+    {u"F5 pokazuje hasło na ekranie; sprawdź je klawiszami przeglądu, Charon sam go nie przeczyta",
+     u"F5 shows the password on the screen; check it with the review keys, Charon will not read it by itself"},
+};
+inline constexpr keyhelp::Entry veraCryptRescueMenuKeys[]={
+    {u"Naciśnij literę pozycji: d odszyfruj system, k przywróć klucze nagłówka, r przywróć pliki programu rozruchowego, m dodaj go do menu rozruchu, z usuń z menu, c przywróć konfigurację",
+     u"Press the letter of an entry: d decrypt the system, k restore the header keys, r restore the loader's files, m add it to the boot menu, z remove it from the menu, c restore the configuration"},
+    {u"b program VeraCrypt z dysku systemowego, v z płyty ratunkowej, o oryginalny program rozruchowy Windows, w Windows PE, s powłoka, h pomoc, e wyjście",
+     u"b the VeraCrypt loader from the system disk, v from the rescue disk, o the original Windows loader, w Windows PE, s the shell, h help, e exit"},
+};
 inline constexpr keyhelp::Entry haikuOptionsKeys[]={
     {u"Strzałki wybierają, Enter przełącza pole wyboru, Escape albo pozycja Return to main menu wraca",u"Arrows choose, Enter toggles a check box, Escape or the Return to main menu entry goes back"},
 };
 #define CHARON_KEYS(a) a,sizeof(a)/sizeof(a[0])
 inline constexpr ScreenKeys screens[]={
+    // r407 VeraCrypt (DCS). Prompts count on the caret's row only; the failure
+    // message while it is the answer to the last entry. PasswordMsg and PimMsg
+    // can be changed in DcsProp: then only the manager's keys are listed.
+    {u"Authorization failed",1,{u"VeraCrypt: uwierzytelnianie nieudane, ponowne pytanie o hasło",u"VeraCrypt: authorization failed, the password prompt again"},CHARON_KEYS(veraCryptFailedKeys),ScreenKeys::aboveCaret},
+    {u"PIM",1,{u"VeraCrypt: pytanie o PIM",u"VeraCrypt: PIM prompt"},CHARON_KEYS(veraCryptPimKeys),ScreenKeys::caretRow},
+    {u"Pim:",1,{u"VeraCrypt: pytanie o PIM",u"VeraCrypt: PIM prompt"},CHARON_KEYS(veraCryptPimKeys),ScreenKeys::caretRow},
+    {u"Hash:",1,{u"VeraCrypt: wybór algorytmu skrótu",u"VeraCrypt: hash algorithm choice"},CHARON_KEYS(veraCryptHashKeys),ScreenKeys::caretRow},
+    {u"New password:",1,{u"VeraCrypt: nowe hasło",u"VeraCrypt: new password"},CHARON_KEYS(veraCryptPasswordKeys),ScreenKeys::caretRow},
+    {u"Confirm password:",1,{u"VeraCrypt: potwierdzenie nowego hasła",u"VeraCrypt: confirm the new password"},CHARON_KEYS(veraCryptPasswordKeys),ScreenKeys::caretRow},
+    {u"Password:",1,{u"VeraCrypt: pytanie o hasło",u"VeraCrypt: password prompt"},CHARON_KEYS(veraCryptPasswordKeys),ScreenKeys::caretRow},
+    {u"Restore VeraCrypt loader",1,{u"Menu płyty ratunkowej VeraCrypt",u"VeraCrypt Rescue Disk menu"},CHARON_KEYS(veraCryptRescueMenuKeys)},
     {u"Minimal BASH-like line editing",1,{u"Wiersz poleceń GRUB",u"GRUB command line"},CHARON_KEYS(grubCommandKeys)},
     {u"Minimum Emacs-like screen editing",1,{u"Edytor pozycji GRUB",u"GRUB entry editor"},CHARON_KEYS(grubEditorKeys)},
     {u"Discard and Exit",1,{u"Edytor pozycji Limine",u"Limine entry editor"},CHARON_KEYS(limineEditorKeys)},

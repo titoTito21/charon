@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Charon boot manager
+Name[pl]=Menedżer rozruchu Charon
+GenericName=Boot order and boot manager settings
+GenericName[pl]=Kolejność rozruchu i ustawienia menedżera rozruchu
+Comment=Change the firmware boot order, Charon's place in it and what Charon starts by itself (text menu in a terminal)
+Comment[pl]=Zmień kolejność rozruchu firmware, miejsce Charona w niej i to, co Charon uruchamia sam (menu tekstowe w terminalu)
+Exec=charon-bootmanager
+Terminal=true
+Icon=preferences-system
+Categories=Settings;System;Accessibility;
+Keywords=Charon;UEFI;boot;boot order;firmware;accessibility;
+Keywords[pl]=Charon;UEFI;rozruch;kolejność rozruchu;firmware;dostępność;

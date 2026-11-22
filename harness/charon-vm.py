@@ -235,6 +235,8 @@ def prepare(name,efi,wav=False,grub=None,paused=False):
         # r400: optional UEFI drivers (EFI/HAK/drivers/*.efi), e.g. CHARON_DRIVERS=charon-drivers-r400
         if os.environ.get('CHARON_DRIVERS'):
             for p in sorted((base/os.environ['CHARON_DRIVERS']).resolve().glob('*.efi')):parts['EFI/HAK/drivers/'+p.name]=p
+            for sub in ('manual','experimental'):   # r408: the pack's sub-folders (never loaded by a rule)
+                for p in sorted(((base/os.environ['CHARON_DRIVERS']).resolve()/sub).glob('*.efi')):parts['EFI/HAK/drivers/'+sub+'/'+p.name]=p
         # r396: boot-manager profile files (EFI/HAK/profiles/*.txt) from a directory.
         if os.environ.get('CHARON_PROFILES'):
             for p in sorted(Path(os.environ['CHARON_PROFILES']).resolve().glob('*.txt')):
@@ -312,7 +314,7 @@ def prepare(name,efi,wav=False,grub=None,paused=False):
     # r386: removable media. --usb adds an xHCI controller (hot-plug with
     # 'usbplug'); CHARON_USB=img[,img] attaches sticks at power-on;
     # CHARON_CDROM=iso adds a SATA CD drive (media swap with 'cdchange').
-    if not os.environ.get('CHARON_BOOT_USB') and ('--usb' in sys.argv or os.environ.get('CHARON_USB') or os.environ.get('CHARON_USBKBD') or os.environ.get('CHARON_BRAILLE')):command+=['-device','qemu-xhci,id=xhci']
+    if not os.environ.get('CHARON_BOOT_USB') and ('--usb' in sys.argv or os.environ.get('CHARON_USB') or os.environ.get('CHARON_USBKBD') or os.environ.get('CHARON_BRAILLE') or os.environ.get('CHARON_USBAUDIO')):command+=['-device','qemu-xhci,id=xhci']
     # r390: CHARON_USBKBD=1 adds a USB keyboard (numpad review needs its HID reports; QEMU sends keys to the newest keyboard).
     if os.environ.get('CHARON_USBKBD'):command+=['-device','usb-kbd,bus=xhci.0']
     # r390: CHARON_BRAILLE=1 adds a Baum braille display (QEMU usb-braille, FTDI) on a socket for work/charon-braille-sim.py.
@@ -331,8 +333,11 @@ def prepare(name,efi,wav=False,grub=None,paused=False):
         iso=os.environ['CHARON_CDROM'];spec=f',file={Path(iso).resolve()}' if iso else ''
         command+=['-drive',f'if=none,id=cd0,media=cdrom,readonly=on{spec}','-device','ide-cd,bus=ide.4,drive=cd0']
     command+=['-audiodev',('wav,id=charon_audio,path=live.wav' if wav else 'dsound,id=charon_audio'),
-     *(['-device','AC97,audiodev=charon_audio'] if os.environ.get('CHARON_SOUNDCARD')=='ac97' else ['-device','ich9-intel-hda','-device',os.environ.get('CHARON_SOUNDCARD','hda-duplex')+',audiodev=charon_audio']),   # r389: CHARON_SOUNDCARD=ac97|hda-micro|hda-output
+     # r405: CHARON_USBAUDIO=1 adds a USB sound card (QEMU usb-audio, UAC1) on the xHCI; CHARON_SOUNDCARD=none leaves the machine without a built-in card
+     *(['-device','usb-audio,bus=xhci.0,audiodev=charon_audio'] if os.environ.get('CHARON_USBAUDIO') else []),
+     *([] if os.environ.get('CHARON_SOUNDCARD')=='none' else ['-device','AC97,audiodev=charon_audio'] if os.environ.get('CHARON_SOUNDCARD')=='ac97' else['-device','ich9-intel-hda','-device',os.environ.get('CHARON_SOUNDCARD','hda-duplex')+',audiodev=charon_audio']),   # r389: CHARON_SOUNDCARD=ac97|hda-micro|hda-output
      '-qmp',f'tcp:127.0.0.1:{PORT},server=on,wait=off','-serial','file:serial.log']
+    if os.environ.get('CHARON_QEMU_EXTRA'):command+=__import__('shlex').split(os.environ['CHARON_QEMU_EXTRA'])   # r408: raw QEMU arguments (more disks, cards)
     out=(area/'stdout.log').open('xb');err=(area/'stderr.log').open('xb')
     child=subprocess.Popen(command,cwd=area,stdin=subprocess.DEVNULL,stdout=out,stderr=err,creationflags=subprocess.DETACHED_PROCESS)
     (area/'process.json').write_text(json.dumps(dict(pid=child.pid,command=command,parts={k:str(v) for k,v in parts.items()}),indent=2))

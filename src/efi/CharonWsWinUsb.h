@@ -181,7 +181,7 @@ inline bool FileSink(void*,uint32_t file,uint64_t fileOffset,const uint8_t* data
     auto& j=J();
     if(j.split && file==j.wimFile) {
         if(wimsplit::Feed(j.writer,fileOffset,data,size,PartSink,nullptr))return true;
-        if(!j.failed) {j.failed=true;j.why=T(u"Obraz systemu ma układ, którego Charon nie umie podzielić na części.",u"The system image has a layout Charon cannot split into parts.");}
+        if(!j.failed) {j.failed=true;j.why=T(u"Obraz systemu ma układ, którego Charon nie potrafi podzielić na części.",u"The system image has a layout Charon cannot split into parts.");}
         return false;
     }
     if(j.openFile!=file) {
@@ -191,7 +191,7 @@ inline bool FileSink(void*,uint32_t file,uint64_t fileOffset,const uint8_t* data
         else {Set(path,pathUnits,u"\\");Cat(path,pathUnits,j.map.files[file].path);}
         const bool fresh=!(j.started[file>>3]&(1u<<(file&7)));j.started[file>>3]|=uint8_t(1u<<(file&7));
         j.handle=OpenForWrite(j.volume,path,fresh);j.openFile=file;
-        if(!j.handle) {j.failed=true;j.why=T(u"Nie utworzono pliku na nośniku.",u"A file could not be created on the media.");return false;}
+        if(!j.handle) {j.failed=true;j.why=T(u"Nie udało się utworzyć pliku na nośniku.",u"A file could not be created on the media.");return false;}
     }
     if(!WriteAt(j.handle,fileOffset,data,size)) {j.failed=true;j.why=T(u"Zapis na nośnik nie powiódł się; może brakuje miejsca.",u"Writing to the media failed; it may be full.");return false;}
     return true;
@@ -199,7 +199,7 @@ inline bool FileSink(void*,uint32_t file,uint64_t fileOffset,const uint8_t* data
 inline bool StreamSink(void*,const uint8_t* data,size_t size) {
     auto& j=J();
     if(!udf::Feed(j.router,j.done,data,size,FileSink,nullptr)) {
-        if(!j.failed) {j.failed=true;j.why=T(u"Obraz dysku jest uszkodzony albo ma nieznany układ.",u"The disc image is damaged or has an unknown layout.");}
+        if(!j.failed) {j.failed=true;j.why=T(u"Obraz ISO jest uszkodzony albo ma nieznany układ.",u"The ISO image is damaged or has an unknown layout.");}
         return false;
     }
     j.done+=size;
@@ -234,21 +234,21 @@ inline bool Address(const char* locale,unsigned& splitMb) {
             if(value>=16 && value<=4000)splitMb=value;
         }
         Release(data);
-        if(im.url[0]) {Say(T(u"Biorę adres obrazu z pliku windows iso url na dysku Charona.",u"Taking the image's address from the file windows iso url on Charon's disk."));return true;}
+        if(im.url[0]) {Say(T(u"Używam adresu obrazu z pliku windows iso url na dysku Charona.",u"Using the image address from the file windows iso url on Charon's disk."));return true;}
     }
     if(Preset()) {
         size_t n=0;for(;Preset()[n] && n+1<sizeof(im.url);++n)im.url[n]=Preset()[n];
-        im.url[n]=0;Say(T(u"Biorę obraz próbny z serwera Microsoftu.",u"Taking the evaluation image from Microsoft's server."));return true;
+        im.url[n]=0;Say(T(u"Używam obrazu wersji próbnej z serwera Microsoftu.",u"Using the evaluation image from Microsoft's server."));return true;
     }
     static msiso::Link link;
     Say(ramdisk::AskingText());
     const auto result=msiso::Windows11LinkAny(im.client,ramdisk::MicrosoftLanguage(locale),link,ramdisk::LinkOptions());
     charontrace::Text("msiso stage");charontrace::Text(link.stage?link.stage:"-");charontrace::Text(link.error);charontrace::Text(link.errorKey);charontrace::Value("msiso http",uint64_t(link.httpStatus));charontrace::Value("msiso error type",uint64_t(link.errorType));
     if(result!=msiso::Result::ok) {
-        Fail(result==msiso::Result::refused?T(u"Microsoft odmówił podania adresu; tak bywa po kilku prośbach z jednego adresu sieciowego. Spróbuj za kilka godzin. Możesz też wpisać własny adres obrazu do pliku windows iso url w folderze EFI HAK na dysku Charona.",
-                u"Microsoft refused to give the address; that happens after a few requests from one network address. Try again in a few hours. You can also put your own image address into the file windows iso url in the folder EFI HAK on Charon's disk.")
+        Fail(result==msiso::Result::refused?T(u"Microsoft odmówił podania adresu; zdarza się to po kilku próbach z tego samego adresu sieciowego. Spróbuj ponownie za kilka godzin. Możesz też wpisać własny adres obrazu do pliku windows iso url w folderze EFI HAK na dysku Charona.",
+                u"Microsoft refused to give the address; this happens after several requests from the same network address. Try again in a few hours. You can also put your own image address into the file windows iso url in the folder EFI HAK on Charon's disk.")
             :result==msiso::Result::noClock?T(u"Firmware nie podaje daty, więc połączenia szyfrowanego nie da się sprawdzić.",u"The firmware gives no date, so the encrypted connection cannot be checked.")
-            :T(u"Nie udało się uzyskać adresu obrazu od Microsoftu.",u"The address of the image could not be got from Microsoft."));
+            :T(u"Nie udało się uzyskać adresu obrazu od Microsoftu.",u"The address of the image could not be obtained from Microsoft."));
         return false;}
     size_t n=0;for(;link.url[n] && n+1<sizeof(im.url);++n)im.url[n]=link.url[n];
     im.url[n]=0;return true;
@@ -278,7 +278,7 @@ inline bool Make(efi_handle target,const char* locale) {
      if(!room) {static char16_t text[300];Set(text,300,T(u"Na nośniku jest za mało wolnego miejsca. Potrzeba ",u"The media has too little free space. Needed: "));
         systools::PutSize(text,300,im.total+(uint64_t(64)<<20),Pl());Cat(text,300,u".");Fail(text);return false;}}
     if(!Reserve(cacheMemory,size_t(cacheBlock)*cacheBlocks) || !Reserve(filesMemory,sizeof(udf::File)*fileCapacity)
-        || !Reserve(extentsMemory,sizeof(udf::Extent)*extentCapacity) || !Reserve(startedMemory,fileCapacity/8)) {release();Fail(T(u"Brak pamięci.",u"Out of memory."));return false;}
+        || !Reserve(extentsMemory,sizeof(udf::Extent)*extentCapacity) || !Reserve(startedMemory,fileCapacity/8)) {release();Fail(T(u"Za mało pamięci RAM.",u"Not enough RAM."));return false;}
     im.cache=cacheMemory.data;memset(startedMemory.data,0,fileCapacity/8);j.started=startedMemory.data;
     j.map.files=reinterpret_cast<udf::File*>(filesMemory.data);j.map.fileCapacity=fileCapacity;j.map.fileCount=0;
     j.map.extents=reinterpret_cast<udf::Extent*>(extentsMemory.data);j.map.extentCapacity=extentCapacity;j.map.extentCount=0;j.map.overflow=false;
@@ -287,7 +287,7 @@ inline bool Make(efi_handle target,const char* locale) {
     if(!udf::Scan(source,j.map) || j.map.overflow) {
         release();
         if(im.lastResult!=https::Result::ok)net::HttpsFail(im.client,im.lastResult);
-        else Fail(T(u"To nie jest obraz dysku, który Charon umie odczytać: brak systemu plików UDF.",u"This is not a disc image Charon can read: no UDF file system."));
+        else Fail(T(u"Charon nie potrafi odczytać tego obrazu ISO: nie ma w nim systemu plików UDF.",u"Charon cannot read this ISO image: it has no UDF file system."));
         return false;}
     j.wimFile=FindFile(j.map,u"sources\\install.wim");
     const uint32_t bootWim=FindFile(j.map,u"sources\\boot.wim");
@@ -295,10 +295,17 @@ inline bool Make(efi_handle target,const char* locale) {
         release();Fail(T(u"Ten obraz nie jest instalatorem Windows: brak plików sources boot wim i install wim.",u"This image is not a Windows installer: the files sources boot wim and install wim are missing."));return false;}
     // Files of 4 GB and more cannot be written to FAT (except the image that is split).
     for(size_t i=0;i<j.map.fileCount;++i)if(!j.map.files[i].directory && uint32_t(i)!=j.wimFile && j.map.files[i].size>=0xffffffffull) {
-        release();Fail(T(u"Obraz zawiera plik większy niż 4 gigabajty, którego nie da się zapisać na FAT.",u"The image holds a file larger than 4 gigabytes, which cannot be written to FAT."));return false;}
+        release();Fail(T(u"Obraz zawiera plik większy niż 4 gigabajty, którego nie da się zapisać na FAT.",u"The image contains a file larger than 4 gigabytes, which cannot be written to FAT."));return false;}
     // Charon's own loader stays; the Windows boot manager goes under its own name.
     j.loaderFile=FindFile(j.map,u"efi\\boot\\bootx64.efi");
-    if(j.loaderFile!=UINT32_MAX && FindFile(j.map,u"efi\\microsoft\\boot\\bootmgfw.efi")==UINT32_MAX)j.redirectLoader=true;
+    // r405: only a stick that already starts something (Charon's own stick) keeps its loader;
+    // on any other stick the Windows boot manager must be \EFI\BOOT\BOOTX64.EFI, or the stick
+    // starts nowhere else (found with a stick made by Charon and tried in VMware).
+    bool hasLoader=false;
+    {static FileRef ref;ref.volume=target;Set(ref.path,pathUnits,u"\\efi\\boot\\bootx64.efi");efi_file_protocol* file=nullptr;
+     if(OpenFile(ref,EFI_FILE_MODE_READ,0,&file)==EFI_SUCCESS && file) {file->Close(file);hasLoader=true;}}
+    if(j.loaderFile!=UINT32_MAX && !hasLoader)j.loaderFile=UINT32_MAX;   // written under its own name, like every other file
+    else if(j.loaderFile!=UINT32_MAX && FindFile(j.map,u"efi\\microsoft\\boot\\bootmgfw.efi")==UINT32_MAX)j.redirectLoader=true;
     else if(j.loaderFile!=UINT32_MAX) {   // the image has both: only bootx64.efi must not replace an existing loader
         static FileRef ref;ref.volume=target;Set(ref.path,pathUnits,u"\\efi\\boot\\bootx64.efi");efi_file_protocol* file=nullptr;
         if(OpenFile(ref,EFI_FILE_MODE_READ,0,&file)==EFI_SUCCESS && file) {file->Close(file);
@@ -310,7 +317,7 @@ inline bool Make(efi_handle target,const char* locale) {
     // install.wim of 4 GB and more: plan the parts from its header and tables.
     if(j.wimFile!=UINT32_MAX && (j.map.files[j.wimFile].size>=0xffffffffull || splitMb<3800)) {
         static uint8_t head[wimsplit::kHeaderBytes];static wimsplit::Header header;static wimsplit::Part partList[partCapacity];
-        Say(T(u"Plik systemu jest większy niż 4 gigabajty: dzielę go na części dla FAT.",u"The system file is larger than 4 gigabytes: splitting it into parts for FAT."));
+        Say(T(u"Plik z systemem jest większy niż 4 gigabajty, więc dzielę go na części, które zmieszczą się na FAT.",u"The system file is larger than 4 gigabytes, so I am splitting it into parts that fit on FAT."));
         bool ok=ReadFile(j.map,j.wimFile,0,head,sizeof(head)) && wimsplit::ParseHeader(head,header);
         const size_t tableBytes=ok?size_t(header.blobTable.size):0,entries=tableBytes/wimsplit::kEntryBytes,xmlBytes=ok?size_t(header.xml.size):0;
         ok=ok && tableBytes && xmlBytes && Reserve(tableMemory,tableBytes) && Reserve(resourceMemory,sizeof(wimsplit::Resource)*(entries+1))
@@ -320,13 +327,13 @@ inline bool Make(efi_handle target,const char* locale) {
         ok=ok && wimsplit::MakePlan(header,tableMemory.data,tableBytes,uint64_t(splitMb)<<20,j.plan,reinterpret_cast<wimsplit::Resource*>(resourceMemory.data),entries+1,partList,partCapacity);
         if(!ok) {
             release();
-            Fail(T(u"Nie udało się zaplanować podziału pliku systemu; ten obraz nie nadaje się na nośnik FAT.",u"Splitting the system file could not be planned; this image does not suit FAT media."));return false;}
+            Fail(T(u"Nie udało się zaplanować podziału pliku z systemem; ten obraz nie nadaje się na nośnik FAT.",u"Splitting the system file could not be planned; this image is not suitable for FAT media."));return false;}
         j.split=true;wimsplit::Begin(j.writer,j.plan);
     }
     // Folders first, then the stream.
     for(size_t i=0;i<j.map.fileCount;++i)if(j.map.files[i].directory) {
         static char16_t path[pathUnits];Set(path,pathUnits,u"\\");Cat(path,pathUnits,j.map.files[i].path);
-        if(MakeFolders(target,path)!=EFI_SUCCESS) {release();Fail(T(u"Nie utworzono folderów na nośniku.",u"The folders could not be created on the media."));return false;}
+        if(MakeFolders(target,path)!=EFI_SUCCESS) {release();Fail(T(u"Nie udało się utworzyć folderów na nośniku.",u"The folders could not be created on the media."));return false;}
     }
     MakeFolders(target,u"\\efi\\microsoft\\boot");
     // Empty files exist in the list only.
@@ -335,9 +342,9 @@ inline bool Make(efi_handle target,const char* locale) {
         if(auto* file=OpenForWrite(target,path,true))file->Close(file);
     }
     udf::SortByOffset(j.map);udf::Begin(j.router,j.map);
-    if(j.router.failed) {release();Fail(T(u"Obraz dysku ma układ, którego Charon nie umie zapisać.",u"The disc image has a layout Charon cannot write out."));return false;}
+    if(j.router.failed) {release();Fail(T(u"Obraz ISO ma układ, którego Charon nie potrafi zapisać na nośniku.",u"The ISO image has a layout Charon cannot write to the media."));return false;}
     {static char16_t text[400];Set(text,400,T(u"Pobieram Windows 11 i zapisuję na nośnik: ",u"Downloading Windows 11 and writing it to the media: "));systools::PutSize(text,400,im.total,Pl());
-     Cat(text,400,T(u". To potrwa długo, zwykle ponad pół godziny. Escape przerywa.",u". This takes long, usually more than half an hour. Escape stops it."));Say(text);install::HearOut(120);}
+     Cat(text,400,T(u". To potrwa długo, zwykle ponad pół godziny. Escape przerywa.",u". This takes a long time, usually more than half an hour. Escape stops it."));Say(text);install::HearOut(120);}
     uint64_t offset=0;static https::Response answer;
     result=https::Download(im.client,im.url,offset,im.validator[0]?im.validator:nullptr,StreamSink,nullptr,answer);
     bool ok=result==https::Result::ok && !j.failed && !j.cancelled && j.done==im.total;
@@ -346,17 +353,17 @@ inline bool Make(efi_handle target,const char* locale) {
         uint8_t guid[16];uint32_t lo,hi;__asm__ volatile("rdtsc":"=a"(lo),"=d"(hi));uint64_t seed=(uint64_t(hi)<<32)|lo;
         for(auto& g:guid) {seed=seed*6364136223846793005ull+1442695040888963407ull;g=uint8_t(seed>>56);}
         ok=wimsplit::Finish(j.writer,xmlMemory.data,xmlMemory.size,guid,scratchMemory.data,size_t(1)<<20,PartSink,nullptr);
-        if(!ok && !j.why)j.why=T(u"Nie udało się zakończyć części pliku systemu.",u"The parts of the system file could not be finished.");
+        if(!ok && !j.why)j.why=T(u"Nie udało się dokończyć zapisu części pliku z systemem.",u"The parts of the system file could not be completed.");
     }
     const bool cancelled=j.cancelled;const char16_t* why=j.why;const bool failed=j.failed;
     release();
     if(ok) {
         static const char16_t* const what[2]={u"Windows 11 na nośnik",u"Windows 11 to the media"};Progress(what[Pl()?0:1],im.total,im.total);
-        Play(Icon::done);Say(T(u"Nośnik instalacyjny Windows 11 jest gotowy.",u"The Windows 11 install media is ready."));install::HearOut(60);
+        Play(Icon::done);Say(T(u"Nośnik instalacyjny Windows 11 jest gotowy.",u"The Windows 11 installation media is ready."));install::HearOut(60);
         return true;
     }
-    if(cancelled)Fail(T(u"Przerwano. Na nośniku zostały niepełne pliki instalatora; kolejna próba je zastąpi.",u"Stopped. Incomplete installer files stay on the media; another try replaces them."));
-    else if(failed || why)Fail(why?why:T(u"Zapis nośnika nie powiódł się.",u"Writing the media failed."));
+    if(cancelled)Fail(T(u"Przerwano. Na nośniku zostały niepełne pliki instalatora; kolejna próba je zastąpi.",u"Stopped. Incomplete installer files remain on the media; the next attempt replaces them."));
+    else if(failed || why)Fail(why?why:T(u"Zapis na nośnik nie powiódł się.",u"Writing to the media failed."));
     else net::HttpsFail(im.client,result);
     return false;
 }
@@ -368,8 +375,8 @@ inline bool ChooseAndMake(const char* locale) {
      efi_file_protocol* file=nullptr;if(OpenFile(ref,EFI_FILE_MODE_READ,0,&file)==EFI_SUCCESS && file) {file->Close(file);need=uint64_t(64)<<20;}}
     static Target list[16];const size_t n=Targets(list,16,need);
     if(!n) {
-        Fail(T(u"Nie ma pendrive'a z woluminem FAT i co najmniej 9 gigabajtami wolnego miejsca. Podłącz taki pendrive, sformatowany jako FAT32, i wybierz instalację ponownie. Może to być pendrive, z którego uruchomiono Charona.",
-            u"There is no USB stick with a FAT volume and at least 9 gigabytes free. Plug in such a stick, formatted as FAT32, and choose the installation again. It may be the stick Charon was started from."));
+        Fail(T(u"Nie ma pendrive'a z partycją FAT i co najmniej 9 gigabajtami wolnego miejsca. Podłącz taki pendrive, sformatowany jako FAT32, i wybierz instalację ponownie. Może to być pendrive, z którego uruchomiono Charona.",
+            u"There is no USB stick with a FAT partition and at least 9 gigabytes free. Plug in such a USB stick, formatted as FAT32, and choose the installation again. It may be the USB stick Charon was started from."));
         return false;}
     size_t pick=0;
     if(n>1) {
@@ -382,11 +389,11 @@ inline bool ChooseAndMake(const char* locale) {
     }
     static char16_t label[64];static char16_t text[500];VolumeLabel(list[pick].volume,label,64);
     Set(text,500,T(u"Pobrać ",u"Download "));Cat(text,500,Product());Cat(text,500,T(u" i zapisać pliki instalatora na pendrive ",u" and write the installer's files to the USB stick "));Cat(text,500,label);
-    Cat(text,500,T(u"? Nic nie jest formatowane, inne pliki zostają; pliki instalatora Windows o tych samych nazwach zostaną zastąpione.",
-        u"? Nothing is formatted and other files stay; Windows installer files of the same names are replaced."));
+    Cat(text,500,T(u"? Nic nie zostanie sformatowane, inne pliki zostają; pliki instalatora Windows o tych samych nazwach zostaną zastąpione.",
+        u"? Nothing will be formatted and other files are kept; Windows installer files with the same names will be replaced."));
     if(EspOnGpt(list[pick].volume)) {
-        Fail(T(u"Ten pendrive ma partycję oznaczoną jako systemowa EFI. Windows takiej partycji nie pokazuje, więc Instalator Windows nie znalazłby na niej swoich plików. Użyj pendrive'a ze zwykłą partycją FAT32, tak jak formatuje go Windows albo Linux.",
-            u"This stick's partition is marked as an EFI system partition. Windows does not show such a partition, so Windows Setup would not find its files on it. Use a stick with an ordinary FAT32 partition, as Windows or Linux formats it."));
+        Fail(T(u"Partycja na tym pendrivie jest oznaczona jako partycja systemowa EFI. Windows takiej partycji nie pokazuje, więc instalator Windows nie znalazłby na niej swoich plików. Użyj pendrive'a ze zwykłą partycją FAT32, takiego jak po sformatowaniu w Windows albo w Linuksie.",
+            u"The partition on this USB stick is marked as an EFI system partition. Windows does not show such a partition, so Windows Setup would not find its files on it. Use a USB stick with an ordinary FAT32 partition, as formatted by Windows or Linux."));
         return false;}
     if(!Confirm(text))return false;
     return Make(list[pick].volume,locale);

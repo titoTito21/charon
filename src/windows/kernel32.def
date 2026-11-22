@@ -1,0 +1,13 @@
+LIBRARY kernel32.dll
+EXPORTS
+CreateFileW
+ReadFile
+WriteFile
+CloseHandle
+GetFileSizeEx
+VirtualAlloc
+CreateDirectoryW
+GetCommandLineW
+ExitProcess
+GetStdHandle
+VirtualProtect

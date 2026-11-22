@@ -98,3 +98,67 @@ controller changes and the bounded DMA/mixer ownership contract are described
 in `../README.md`. A protocol declaration alone does not implement streaming.
 The rebuilt extended image must pass normal Secure Boot signing/authentication;
 no Haiku system changes or firmware verification bypass are involved.
+
+## r406: binding and output preparation for modern machines
+
+`HakHdaCompat.h`, `HakHdaCompat.c` (controller) and `HakHdaCodecCompat.c`
+(codec) are copied beside the stream extension; `apply-driver-extension.py`
+adds their call sites to `HdaController.c`, `HdaCodec.c` and
+`HdaCodecAudioIo.c` (every anchor is checked). What they do and what was and
+was not verified: `../AUDIO-HARDWARE.txt`. Build as before, with the tools of
+`work/charon-audio-driver-r347`:
+
+```text
+python3.15 apply-driver-extension.py work/charon-audio-driver-r347/opencore/OpenCorePkg-6fe4d15cb66596d99d8cfedce69d8fc6dad71886 work/ha
+cmd /c build-host-baseline.cmd work\charon-audio-driver-r347   (set HAK_AUDIO_TRACE=1 and delete the Hak*.obj files for the trace variant)
+```
+
+Results: `work/charon-audio-driver-r406/AudioDxe-r406.efi` (SHA-256
+12525748c4040c908f30414070b4345c0750106942af2f39ce758a36770f0a20) and
+`AudioDxe-r406-trace.efi`; logs `work/build-audiodxe-r406.log` and
+`work/build-audiodxe-r406trace.log`. A rebuild differs in two bytes (build
+time). `BUILD-RESULT.json` still describes the r347 binary. Not tested on
+hardware.
+
+## r407: no shared controller
+
+`HakHdaControllerMayShare()` (HakHdaCompat.c) was first edited into the build
+copy by hand; since r408 `apply-driver-extension.py` carries that edit, so the
+script again reproduces the build copy from the pinned tree.
+
+## r408: codec families and machine quirks (GPL-2.0-or-later)
+
+New files: `HakHdaQuirks.h`, `HakHdaQuirkMatch.h`, `HakHdaQuirks.c` and the
+generated `HakHdaQuirkTable.h`. They hold logic and data ported from the Linux
+kernel v7.3 (files under GPL-2.0-or-later only), so a driver built with them
+is GPL-2.0-or-later as a whole. What they do, the sources, the safety rules
+and the off-switch (`\EFI\HAK\audio-noquirks`, or `/DHAK_HDA_NO_QUIRKS`):
+`../../AUDIO-CODECS.txt`.
+
+Regenerate the table (kernel tree: sparse checkout of torvalds/linux at the
+tag, kept in `work/linux-hda-v7.3/src`; `-I` because the tree is downloaded
+text):
+
+```text
+python3.15 -I tools/gen-charon-hda-quirks.py work/linux-hda-v7.3/src src/efi/audio_stream/driver/HakHdaQuirkTable.h --tag v7.3 --commit c03c1a14507dfaf8b856c2608f9ac216021fc222
+```
+
+Call sites added by `apply-driver-extension.py` (anchors checked):
+`HakHdaQuirkProbe` before `HdaCodecParsePorts` in `HdaCodec.c`,
+`HakHdaQuirkFinish` after the output paths in `HdaCodecAudioIo.c`, the four
+files, `BaseLib` and `gEfiSimpleFileSystemProtocolGuid` in `AudioDxe.inf`.
+
+Build as before, inside the workspace lock `work/ha/.charon-build.lock`
+(two edk2 builds at once in one workspace corrupt each other): in PowerShell
+remove the environment variable `NoDefaultCurrentDirectoryInExePath`, put the
+Visual Studio Installer directory on `PATH`, delete the stale `.obj` files of
+the changed sources, apply the extension, then from `work`:
+
+```text
+cmd /c charon-src-r395\src\efi\audio_stream\driver\build-host-baseline.cmd charon-audio-driver-r347
+```
+
+Result: `work/charon-audio-driver-r408/AudioDxe-r408.efi` (208896 bytes,
+SHA-256 910ada692e0cf72ceed7d2f6c3809b25b51fe3f5db17205f8dc155d89a84726b),
+log beside it. Checked in one QEMU run (emulated HD Audio, sound measured);
+not tested on hardware.

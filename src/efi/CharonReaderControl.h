@@ -33,6 +33,10 @@ struct ReaderControl {
     // voice: rate | pitch<<8 | volume<<16 | effects volume<<24 (tenths; 0 keeps the current voice).
     efi_status (EFIAPI *Resume)(ReaderControl*,const char* language,uint8_t polish,uint8_t verbosity,uint8_t progress,uint32_t voice,uint32_t reading);
 };
+// r407: a program that reads its own graphical screen (CharonPC reading the controls of a guest
+// Windows) installs this GUID, with a null interface, on its image handle while that screen is up.
+// The resident reader then leaves pictures alone: no "graphical screen" description, no pixel reading.
+static efi_guid graphicsOwnerGuid={0x3d1b7c52,0x61e4,0x4a0f,{0xb7,0x29,0x5e,0x88,0x1c,0x40,0x9a,0x13}};
 inline ReaderControl* FindReaderControl(efi_boot_services* boot) {
     ReaderControl* control=nullptr;
     if(!boot || boot->LocateProtocol(&readerControlGuid,nullptr,(void**)&control)!=EFI_SUCCESS || !control)return nullptr;

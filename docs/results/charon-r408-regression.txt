@@ -1,0 +1,138 @@
+== grub
+  lista: fmmm0-aqmm0-- Urządzenie UEFI — EFI Internal Shell, 1 z 3 | fmmm0-aqmm0-- Dysk — GRUBTEST (GRUB, znalazł Charon), 2 z 3
+   M: fmmm0-aomm0-- Booting Charon test entry one' fmmm0-ammm0-- . fmmm0-aomm0-- Entry one selected
+   M: fmmm0-aomm0-- Failed to boot both default and fallback entries. fmmm0-ammm0--  fmmm0-anmm0-- Press any key to continue...
+  == down
+     R: fmmm0-ammm0b- fmmm0-aomm0-- grub fmmm0-ammm0-- p : menu, 6 pozycji. fmjn0actom2-- e Charon test entry one fmmm0-ammm0-- p , 1 z 6
+     M: fmmm0-aomm0-- GNU grub version 2.12-9 plus deb13u4 fmmm0-ammm0-- . fmmm0-akmm0-- Use the up arrow and down arrow keys to select which entry is highlighted. fmmm0-ajmm0-- Press enter to boot the selected OS, e' to edit
+  == down
+     R: fmmm0-ammm0d- fmjn0actom2-- Charon test entry two fmmm0-ammm0-- p , 2 z 6
+  == up
+     R: fmmm0-ammm0d- fmjn0actom2-- Charon test entry one fmmm0-ammm0-- p , 1 z 6
+  przerwane komunikaty: 1
+== sdboot
+  lista: fmmm0-aqmm0-- Urządzenie UEFI — EFI Internal Shell, 1 z 4 | fmmm0-aqmm0-- Dysk — GRUBTEST (GRUB, znalazł Charon), 2 z 4 | fmmm0-apmm0-- Dysk lub partycja — GRUBTEST (systemd-boot, znalazł Charon), 3 z 4
+  == down
+     R: fmmm0-ammm0d- fmjn0acrom2-- Windows Setup fmmm0-ammm0-- p , 2 z 3
+     R: fmmm0-ammm0d- systemd-boot p : menu, 3 pozycje. fmjn0acrom2-- e Windows Setup fmmm0-ammm0-- p , 2 z 3
+     M: Charon probe loader. fmmm0-almm0-- Reboot Into Firmware Interface
+  == up
+     R: fmmm0-ammm0d- fmjn0acrom2-- Charon probe loader fmmm0-ammm0-- p , 1 z 3
+  przerwane komunikaty: 0
+== limine
+  lista: fmmm0-aqmm0-- Urządzenie UEFI — EFI Internal Shell, 1 z 4 | fmmm0-aqmm0-- Dysk — GRUBTEST (GRUB, znalazł Charon), 2 z 4 | fmmm0-apmm0-- Dysk lub partycja — GRUBTEST (Limine, znalazł Charon), 3 z 4
+  == down
+     R: fmmm0-ammm0d- fmjn0agqom2-- Windows Boot Manager fmmm0-ammm0-- p , 2 z 2
+  == up
+     R: fmmm0-ammm0d- fmjn0agrom2-- Charon probe loader fmmm0-ammm0-- p , 1 z 2
+  przerwane komunikaty: 0
+== opencore
+  lista: fmmm0-aqmm0-- Urządzenie UEFI — EFI Internal Shell, 1 z 4 | fmmm0-aqmm0-- Dysk — GRUBTEST (GRUB, znalazł Charon), 2 z 4 | fmmm0-apmm0-- Dysk lub partycja — GRUBTEST (OpenCore, znalazł Charon), 3 z 4
+   R: fmmm0-aomm0-- OpenCore fmmm0-ammm0-- : menu, 3 pozycje. fpnm0-eomm5-- 1. CHARON fmmm0-ammm0-- , 1 z 3
+   M: fmmm0-aomm0-- OpenCore Boot Menu (REL-108-2026-09-27) fmmm0-ammm0-- . Shutdown p , przycisk, e Restart p , przycisk. fmmm0-almm0-- e Choose the Operating System:
+   M: fpnm0-elmm5-- Timeout
+   R: Witaj w Charon. Uruchamiam: Dysk — GRUBTEST (GRUB, znalazł Charon). Naciśnij spację, aby otworzyć menu opcji
+   M: fmmm0-almm0-- Choose the Operating System: Timeout
+  == down
+     R: fmmm0-ammm0d- fmjn0agrom2-- Charon test entry two fmmm0-ammm0-- p , 2 z 8
+     R: fmmm0-ammm0d- fpnm0-eomm5-- grub fmmm0-ammm0-- p : menu, 8 pozycji. fmmm0-anmm0-- e Charon test entry fmjn0agrom2-- two fmmm0-ammm0-- p , 2 z 8
+     M: fpnm0-eomm5-- GNU grub version 2.12-9 plus deb13u4 fmmm0-ammm0-- . fmmm0-anmm0-- Charon test entry one
+  == down
+     R: fmmm0-ammm0d- fmjn0agrom2-- U E F I firmware settings fmmm0-ammm0-- p , 3 z 8
+  == up
+     R: fmmm0-ammm0d- fmjn0agrom2-- Charon test entry two fmmm0-ammm0-- p , 2 z 8
+  przerwane komunikaty: 0
+== clover
+  lista: fmmm0-aqmm0-- Urządzenie UEFI — EFI Internal Shell, 1 z 4 | fmmm0-aqmm0-- Dysk — GRUBTEST (GRUB, znalazł Charon), 2 z 4 | fmmm0-apmm0-- Dysk lub partycja — GRUBTEST (Clover, znalazł Charon), 3 z 4
+   M: fmmm0-ajmm0-- Welcome to Clover 5176 fmmm0-ammm0-- . fmmm0-ajmm0-- ... scan entries ...
+   M: fmfm0-almm0-- Boot Microsoft E F I Boot from GRUBTEST fmmm0-ammm0-- . fmfm0-ejmm0-- F 1:Help
+  == right
+     R: fmfm0-almm0-- Clover Boot Options fmmm0-ammm0-- , 1 z 5
+  == left
+     M: fmfm0-almm0-- Boot Microsoft E F I Boot from GRUBTEST
+  przerwane komunikaty: 1
+== winbm
+  lista: fmmm0-aqmm0-- Urządzenie UEFI — EFI Internal Shell, 1 z 4 | fmmm0-aqmm0-- Dysk — GRUBTEST (GRUB, znalazł Charon), 2 z 4 | fmmm0-apmm0-- Dysk lub partycja — GRUBTEST (Windows Boot Manager, znalazł Charon), 3 z 4
+   R: Wczytywanie, czekaj.
+   M: fjkm0-eqmm4-- Recovery fmmm0-ammm0-- . fjkm0-epmm4-- Your PC slash Device needs to be repaired fmmm0-ammm0-- . fmmm0-anmm0-- A required device isn't connected or can't be accessed. fmmm0-ammm0--  fpnm0-emmm5-- Error c
+   R: Niebieski ekran śmierci.
+  == down
+  == up
+  przerwane komunikaty: 0
+== refind
+  lista: fmmm0-aqmm0-- Urządzenie UEFI — EFI Internal Shell, 1 z 3 | fmmm0-aqmm0-- Dysk — GRUBTEST (rEFInd, znalazł Charon), 2 z 3
+   R: fmfm0-akmm0-- Boot E F I probe GPROBE dot E F I from GRUBTEST fmmm0-ammm0-- , 1 z fmfm0-akmm0-- 3
+   M: Automatic fmfm0-akmm0-- boot in 30 seconds fmmm0-ammm0-- . fmfm0-ajmm0-- Use arrow keys to move cursor; Enter to boot;
+  == right
+     R: fmfm0-akmm0-- Boot E F I probe PROBE dot E F I from GRUBTEST fmmm0-ammm0-- , 2 z 3
+  == left
+     R: fmfm0-akmm0-- Boot E F I probe GPROBE dot E F I from GRUBTEST fmmm0-ammm0-- , 1 z 3
+  przerwane komunikaty: 0
+== memtest
+  lista: fmmm0-aqmm0-- Urządzenie UEFI — EFI Internal Shell, 1 z 4 | fmmm0-aqmm0-- Dysk — GRUBTEST (GRUB, znalazł Charon), 2 z 4 | fmmm0-apmm0-- Dysk lub partycja — GRUBTEST (Memtest86+, znalazł Charon), 3 z 4
+   R: Uruchomiono: Memtest86 plus .
+   R: System przejmuje sterowanie.
+  przerwane komunikaty: 0
+== syslinux
+  lista: fmmm0-aqmm0-- Urządzenie UEFI — EFI Internal Shell, 1 z 4 | fmmm0-aqmm0-- USB — GRUBTEST (Syslinux, znalazł Charon), 2 z 4
+  == down
+     R: fmmm0-ammm0d- fmjn0actom2-- Debian test two fmmm0-ammm0-- p , 2 z 3
+     R: fmmm0-ammm0d- fmoo0lbkno1-- Syslinux fmmm0-ammm0-- p : menu, 3 pozycje. fmmm0haomm0-- e Debian test fmjn0actom2-- two fmmm0-ammm0-- p , 2 z 3
+     M: fmoo0lbkno1-- Charon Syslinux test fmmm0-ammm0-- . fmwn0ectqm2-- Press Tab to edit options fmmm0-ammm0-- . fmqn0hcqom2-- Automatic boot in fmpp0pbqro2-- 50 fmqn0haqom2-- seconds...
+  == down
+     R: fmmm0-ammm0d- fmjn0actom2-- Rescue shell fmmm0-ammm0-- p , 3 z 3
+  == up
+     R: fmmm0-ammm0d- fmjn0actom2-- Debian test two fmmm0-ammm0-- p , 2 z 3
+  przerwane komunikaty: 0
+== ipxe
+  lista: fmmm0-aqmm0-- Urządzenie UEFI — EFI Internal Shell, 1 z 4 | fmmm0-aqmm0-- USB — GRUBTEST (iPXE, znalazł Charon), 2 z 4
+   M: fmmm0-aomm0-- eye pixie initialising devices... fmmm0-ammm0--  fmmm0-aomm0-- file:autoexec dot ipxe... Not found (https: slash slash ipxe dot org slash 7f4de18e) fmmm0-ammm0-- . fmmm0-aomm0-- file: slash autoexec dot 
+   M: fmmm0-anmm0-- No more network devices fmmm0-ammm0-- . Press Ctrl-B for the eye pixie command line...
+   R: Program rozruchowy zwrócił sterowanie do Charon. Sprawdź jego komunikaty i podany kod stanu. UEFI: 0x8000000000000007 Enter lub Escape zamyka komunikat.
+   M: Porada: aby otworzyć listę klawiszy, naciśnij Insert F1 albo Alt F1.
+   M: Porada: w ustawieniach Charona, w ustawieniach czytnika ekranu, zmienisz interpunkcję, język tekstu ekranu, wielkie litery i echo klawiszy.
+   M: Porada: po uruchomieniu programu Alt ukośnik wsteczny wstrzymuje rozruch, a strzałki czytają ekran.
+   M: Porada: sam numpad przy wyłączonym NumLocku przegląda ekran, tak jak w NVDA.
+  przerwane komunikaty: 2
+== ventoy
+  lista: fmmm0-aqmm0-- Urządzenie UEFI — EFI Internal Shell, 1 z 4 | fmmm0-aqmm0-- USB — VTOYEFI (shim, znalazł Charon), 2 z 4
+   R: Menu GRUB jest ukryte. Naciśnij dowolny klawisz w ciągu 2 sekund, aby je pokazać.
+   R: Czarny ekran.
+   R: fmmm0-ammm0d- Ventoy p : menu, 3 pozycje. fmqn0hcrom2-- e debian-mini dot iso fmmm0-ammm0-- p , 1 z 3
+   M: fmmm0-ajmm0-- L:Language F 1:Help F 2:Browse F3:TreeView F4:Localboot F5:Tools F6:ExMenu
+  == down
+     R: fmmm0-ammm0d- fmql0hcpoj2-- mini dot iso fmmm0-ammm0-- p , 2 z 3
+  == down
+     R: fmmm0-ammm0d- fmql0hcpoj2-- rescue-tools dot iso fmmm0-ammm0-- p , 3 z 3
+  == up
+     R: fmmm0-ammm0d- fmql0hcpoj2-- mini dot iso fmmm0-ammm0-- p , 2 z 3
+  przerwane komunikaty: 0
+== haiku
+  lista: fmmm0-aqmm0-- Urządzenie UEFI — EFI Internal Shell, 1 z 4 | fmmm0-aqmm0-- CD/DVD — HAIKU ESP (znalazł Charon), 2 z 4
+   R: fmmm0-ammm0b- fmml0icqoj2-- Haiku fmmm0-ammm0-- p : menu, 6 pozycji. fmmm0-anmm0-- e Select fmpp0pdsro2-- boot volume slash state (Current: fmml0iaqoj2-- Haiku (1.367 GiB)) fmmm0-ammm0-- p , 1 z 6
+   M: fmom0dakkm0-- hrev59866 plus 79 fmmm0-ammm0-- . fmlo0pbopo1-- Welcome to the fmmm0-ammm0-- . fmlo0pbopo1-- Haiku Boot Loader fmmm0-ammm0-- . fmom0dakkm0-- Copyright 2004-2026 Haiku, Inc.
+  == down
+     R: fmmm0-ammm0d- fmpp0pdsro2-- Select safe mode options fmmm0-ammm0-- p , 2 z 6
+  == up
+     R: fmmm0-ammm0d- fmpp0pdsro2-- Select boot volume slash state (Current: fmml0iaqoj2-- Haiku (1.367 GiB)) fmmm0-ammm0-- p , 1 z 6
+  przerwane komunikaty: 0
+== freebsd
+  lista: fmmm0-aqmm0-- Urządzenie UEFI — EFI Internal Shell, 1 z 4 | fmmm0-aqmm0-- CD/DVD — EFISYS (FreeBSD loader, znalazł Charon), 2 z 4
+   M: fmmm0-ammm0b- p Okno: fmmm0-anmm0-- e Welcome to FreeBSD fmmm0-ammm0-- . fmmm0-anmm0-- 1. fmlo0pbnpo1-- Boot fmmm0hanmm0-- Installer fmlo0pbnpo1-- Enter fmmm0-ammm0-- . 2. Boot fmlo0pbmpo1-- Single fmmm0himmm0-- user.
+  == down
+     M: fmmm0-akmm0-- Exiting menu! fmmm0-ammm0--  fmmm0-ajmm0-- Type ? for a list of commands, help' for more detailed help. fmmm0-ammm0--  fmmm0-ajmm0-- OK B
+  == up
+     R: A
+  przerwane komunikaty: 0
+== debian
+  lista: fmmm0-aqmm0-- Urządzenie UEFI — EFI Internal Shell, 1 z 4 | fmmm0-aqmm0-- CD/DVD — Debian 13.7.0 amd64 n (shim, znalazł Charon), 2 z 4
+   M: fmmm0-aomm0-- Loading bootloader...
+   R: fmmm0-ammm0d- fmom0-afkm0-- grub fmmm0-ammm0-- p : menu, 5 pozycji. fmsn0dcnmm2-- e Graphical install fmmm0-ammm0-- p , 1 z 5
+   M: fmom0-akkm0-- Debian GNU slash Linux 13.7.0 fmmm0-ammm0-- . fmom0-akkm0-- Debian GNU slash Linux U E F I Installer menu fmmm0-ammm0-- . fmom0-afkm0-- Enter: Select fmmm0-ammm0-- . fmom0-afkm0-- Edit Selection fmmm0-am
+  == down
+     R: fmmm0-ammm0d- fmsn0dcnmm2-- Install fmmm0-ammm0-- p , 2 z 5
+  == down
+     R: fmmm0-ammm0d- fmsn0dcnmm2-- Advanced options ... fmmm0-ammm0-- p , 3 z 5
+  == up
+     R: fmmm0-ammm0d- fmsn0dcnmm2-- Install fmmm0-ammm0-- p , 2 z 5
+  przerwane komunikaty: 0

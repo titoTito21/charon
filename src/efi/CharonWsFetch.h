@@ -37,11 +37,11 @@ inline bool HttpsSink(void* context,const uint8_t* data,size_t size) {
 inline void HttpsFail(const https::Client& client,https::Result result) {
     static char16_t text[400];
     switch(result) {
-        case https::Result::certificateUntrusted:Set(text,400,T(u"Serwer przedstawił certyfikat, któremu Charon nie ufa. Nie pobrano.",u"The server showed a certificate Charon does not trust. Nothing was downloaded."));break;
-        case https::Result::certificateExpired:Set(text,400,T(u"Certyfikat serwera jest nieważny dla daty z zegara komputera. Sprawdź zegar w Narzędziach systemowych.",u"The server's certificate is not valid for the date of the computer's clock. Check the clock in System tools."));break;
-        case https::Result::certificateWrongHost:Set(text,400,T(u"Certyfikat należy do innego serwera. Nie pobrano.",u"The certificate belongs to another server. Nothing was downloaded."));break;
+        case https::Result::certificateUntrusted:Set(text,400,T(u"Serwer przedstawił certyfikat, któremu Charon nie ufa. Nic nie pobrano.",u"The server showed a certificate Charon does not trust. Nothing was downloaded."));break;
+        case https::Result::certificateExpired:Set(text,400,T(u"Według zegara komputera certyfikat serwera jest nieważny. Sprawdź zegar w Narzędziach systemowych.",u"According to the computer's clock the server's certificate is not valid. Check the clock in System tools."));break;
+        case https::Result::certificateWrongHost:Set(text,400,T(u"Certyfikat należy do innego serwera. Nic nie pobrano.",u"The certificate belongs to another server. Nothing was downloaded."));break;
         case https::Result::noClock:Set(text,400,T(u"Firmware nie podaje daty, więc certyfikatu nie da się sprawdzić.",u"The firmware gives no date, so the certificate cannot be checked."));break;
-        case https::Result::connectFailed:Set(text,400,T(u"Nie połączono z serwerem: ",u"Not connected to the server: "));Cat(text,400,tcp::ErrorText(client.transportError));break;
+        case https::Result::connectFailed:Set(text,400,T(u"Nie udało się połączyć z serwerem: ",u"Could not connect to the server: "));Cat(text,400,tcp::ErrorText(client.transportError));break;
         default: {
             Set(text,400,T(u"Pobieranie przez HTTPS nie powiodło się: ",u"The HTTPS download failed: "));
             static char16_t wide[160];const char* reason=https::ResultText(result);size_t n=0;for(;reason[n] && n<158;++n)wide[n]=char16_t(uint8_t(reason[n]));
@@ -52,7 +52,7 @@ inline void HttpsFail(const https::Client& client,https::Result result) {
 }
 inline bool DownloadHttps(const char16_t* url,const FileRef& target,uint64_t* received,Memory* memory,const char16_t* what) {
     static https::Client client;static char ascii[2048];static https::Response probe,answer;*received=0;
-    size_t n=0;for(;url[n] && n<2046;++n) {if(url[n]>126 || url[n]<33) {Fail(T(u"Adres zawiera niedozwolone znaki.",u"The address holds characters that are not allowed."));return false;}ascii[n]=char(url[n]);}
+    size_t n=0;for(;url[n] && n<2046;++n) {if(url[n]>126 || url[n]<33) {Fail(T(u"Adres zawiera niedozwolone znaki.",u"The address contains characters that are not allowed."));return false;}ascii[n]=char(url[n]);}
     ascii[n]=0;client.transport=tcp::Transport();
     HttpsJob job{};job.memory=memory;job.label=what?what:T(u"Pobieranie",u"Downloading");
     auto result=https::Probe(client,ascii,probe);
@@ -62,8 +62,8 @@ inline bool DownloadHttps(const char16_t* url,const FileRef& target,uint64_t* re
         if(!job.total) {Fail(T(u"Serwer nie podał rozmiaru pliku.",u"The server did not give the file size."));return false;}
         if(!Reserve(*memory,size_t(job.total)+memory->extra+4096)) {Fail(T(u"Za mało pamięci RAM na ten plik.",u"Not enough RAM for this file."));return false;}
     } else {
-        if(OpenFile(target,EFI_FILE_MODE_READ|EFI_FILE_MODE_WRITE,0,&job.file)==EFI_SUCCESS) {if(job.file->Delete(job.file)!=EFI_SUCCESS) {Fail(T(u"Nośnik tylko do odczytu.",u"The medium is read only."));return false;}job.file=nullptr;}
-        if(OpenFile(target,EFI_FILE_MODE_READ|EFI_FILE_MODE_WRITE|EFI_FILE_MODE_CREATE,0,&job.file)!=EFI_SUCCESS) {Fail(T(u"Nie utworzono pliku.",u"The file could not be created."));return false;}
+        if(OpenFile(target,EFI_FILE_MODE_READ|EFI_FILE_MODE_WRITE,0,&job.file)==EFI_SUCCESS) {if(job.file->Delete(job.file)!=EFI_SUCCESS) {Fail(T(u"Nośnik jest tylko do odczytu.",u"The media is read-only."));return false;}job.file=nullptr;}
+        if(OpenFile(target,EFI_FILE_MODE_READ|EFI_FILE_MODE_WRITE|EFI_FILE_MODE_CREATE,0,&job.file)!=EFI_SUCCESS) {Fail(T(u"Nie udało się utworzyć pliku.",u"The file could not be created."));return false;}
     }
     uint64_t offset=0;
     result=https::Download(client,ascii,offset,probe.validator[0]?probe.validator:nullptr,HttpsSink,&job,answer);

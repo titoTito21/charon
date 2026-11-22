@@ -2,6 +2,7 @@
 // CharonDOS - the built-in command interpreter (native, reachable by
 // programs as COMSPEC=C:\COMMAND.COM) and the entry point dos_main().
 #include "dos.h"
+#include "charon_cmd.h"      // the CHARON built-in (controls Charon's reader and boot manager)
 
 // ---- messages: English and Polish in one table ---------------------------------------
 enum {
@@ -54,6 +55,7 @@ static const char* const s_msg[M_COUNT][2] = {
      "EXIT                       return to the boot manager\n"
      "WINNT                      start the installed Windows (CharonDOS ends)\n"
      "WIN [profile]              start a Windows profile installed into CharonDOS\n"
+     "CHARON [command]           control Charon's reader and boot manager\n"
      "name [arguments]           run name.COM, name.EXE or name.BAT\n"
      "command > file, >> file, < file redirect output and input\n"
      "Batch files: REM, PAUSE, GOTO, IF, CALL, SHIFT, %1..%9, @ECHO OFF\n"
@@ -70,6 +72,7 @@ static const char* const s_msg[M_COUNT][2] = {
      "EXIT                       powrót do menedżera rozruchu\n"
      "WINNT                      uruchom zainstalowany Windows (CharonDOS się kończy)\n"
      "WIN [profil]               uruchom profil Windows zainstalowany w CharonDOS\n"
+     "CHARON [polecenie]         steruj czytnikiem i menedżerem rozruchu Charona\n"
      "nazwa [argumenty]          uruchom nazwa.COM, nazwa.EXE lub nazwa.BAT\n"
      "polecenie > plik, >> plik, < plik  przekierowanie wyjścia i wejścia\n"
      "Pliki wsadowe: REM, PAUSE, GOTO, IF, CALL, SHIFT, %1..%9, @ECHO OFF\n"
@@ -694,12 +697,12 @@ static void run_external(char* token, char* args)
 // ---- command line ---------------------------------------------------------------------------
 struct Builtin { const char* name; int id; };
 enum { C_DIR, C_CD, C_TYPE, C_COPY, C_DEL, C_REN, C_MD, C_RD, C_CLS, C_VER, C_ECHO, C_SET, C_PATH, C_PROMPT,
-       C_DATE, C_TIME, C_MEM, C_HELP, C_EXIT, C_REM, C_PAUSE, C_GOTO, C_IF, C_CALL, C_SHIFT, C_LH, C_WINNT, C_WIN };
+       C_DATE, C_TIME, C_MEM, C_HELP, C_EXIT, C_REM, C_PAUSE, C_GOTO, C_IF, C_CALL, C_SHIFT, C_LH, C_WINNT, C_WIN, C_CHARON };
 static const Builtin s_builtins[] = {
     {"DIR", C_DIR}, {"CD", C_CD}, {"CHDIR", C_CD}, {"TYPE", C_TYPE}, {"COPY", C_COPY}, {"DEL", C_DEL}, {"ERASE", C_DEL},
     {"REN", C_REN}, {"RENAME", C_REN}, {"MD", C_MD}, {"MKDIR", C_MD}, {"RD", C_RD}, {"RMDIR", C_RD}, {"CLS", C_CLS},
     {"VER", C_VER}, {"ECHO", C_ECHO}, {"SET", C_SET}, {"PATH", C_PATH}, {"PROMPT", C_PROMPT}, {"DATE", C_DATE},
-    {"TIME", C_TIME}, {"MEM", C_MEM}, {"HELP", C_HELP}, {"EXIT", C_EXIT}, {"WINNT", C_WINNT}, {"WIN", C_WIN}, {"REM", C_REM}, {"PAUSE", C_PAUSE},
+    {"TIME", C_TIME}, {"MEM", C_MEM}, {"HELP", C_HELP}, {"EXIT", C_EXIT}, {"WINNT", C_WINNT}, {"WIN", C_WIN}, {"CHARON", C_CHARON}, {"REM", C_REM}, {"PAUSE", C_PAUSE},
     {"GOTO", C_GOTO}, {"IF", C_IF}, {"CALL", C_CALL}, {"SHIFT", C_SHIFT}, {"LH", C_LH}, {"LOADHIGH", C_LH},
 };
 
@@ -756,6 +759,7 @@ static void builtin(int id, char* args)
         if (plat_request_launch(PL_WIN, name, chosen, sizeof chosen)) { msgln(M_NOWINPROF, name, 0); break; }
         msgln(M_STARTWIN, chosen, 0); s_exit_requested = true;
         break; }
+    case C_CHARON: s_errorlevel = charon_command(args, s_polish ? 1 : 0); break;
     case C_REM: break;
     case C_PAUSE:
         msg(M_PAUSE, nullptr, 0);

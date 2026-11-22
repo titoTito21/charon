@@ -1,0 +1,1707 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Charon screen reader settings (Linux companion program of the Charon speaking
+# UEFI boot manager and pre-boot screen reader). GPL-2.0-or-later.
+#
+# Changes, from the running system, what Charon otherwise changes in its own
+# pre-boot menu: the settings record \EFI\HAK\charon-settings-a.bin / -b.bin on
+# the EFI system partition, the reader add-on (driver option "Charon voice")
+# and the reader-only marker.
+#
+# Python 3.6 or newer, standard library only. Plain line-oriented text
+# interface (numbered menus, one prompt per line, no curses, no cursor
+# addressing) for Speakup, Fenrir, Orca and braille displays in a terminal.
+#
+# Options: --esp DIR (a folder standing in for the EFI partition), --no-firmware
+# (never touch firmware variables), --firmware-dir DIR (test stand-in for the
+# firmware variables, efivarfs file format), --lang en|pl, --show, --synths, --set
+# member=value, --defaults, --repair, --format X, --reader-only on|off,
+# --addon on|off|status, --yes, --version. Without them: the interactive menu.
+#
+# The tables below are the shared specification of the record (the Windows
+# program Charon-Settings.ps1 carries the same ones).
+from __future__ import print_function
+
+import argparse
+import os
+import struct
+import subprocess
+import sys
+import time
+import uuid
+import zlib
+
+# ---------------------------------------------------------------------------
+# Shared specification of Charon's settings record for the OS companion programs.
+# Source: src/efi/CharSettings.h (layout, ranges, defaults), src/efi/BootMenu.h
+# labelFor() lines 1118-1300 (names, PL/EN), src/efi/BootMenuModel.h (rows, bits).
+#
+# RECORD (little endian):
+#   0..6  "CHARS00", 7 version char '1'..'9','A','B','C'
+#   8..15 sequence (uint64, non-zero)
+#   16 language 17 wrap 18 sounds 19 explicitMessages 20 startMelody 21 backgroundMelody
+#   22 rate 23 speechVolume 24 effectsVolume 25 verbosity | progress<<2
+#   26 rememberLast | welcome<<1   27 autoSeconds
+#   28 pitch 29 readerRate 30 readerPitch 31 readerVolume 32 detail 33 timers
+#   34 messageRate 35 messagePitch 36 punctuation 37 capitals 38 screenLanguage
+#   39 readerFlags 40 formatFlags 41 readerExtra 42 synthKey 43 synthVoice
+#   CRC-32 (IEEE, reflected, init/final 0xffffffff = zlib.crc32) of bytes [0, crcAt) at crcAt
+#   size / crcAt: versions 1-6: 32 / 28; 7-8: 40 / 36; 9, A, B, C: 48 / 44
+#   slot file A = \EFI\HAK\charon-settings-a.bin holds ODD sequences, B = ...-b.bin EVEN.
+VERSIONS = '123456789ABC'          # ascending; index = age
+NEWEST = 'C'
+MEMBERS = ['language', 'wrap', 'sounds', 'explicitMessages', 'startMelody', 'backgroundMelody', 'rate',
+           'speechVolume', 'effectsVolume', 'verbosity', 'progress', 'rememberLast', 'autoSeconds', 'welcome',
+           'pitch', 'readerRate', 'readerPitch', 'readerVolume', 'detail', 'timers', 'messageRate', 'messagePitch',
+           'punctuation', 'capitals', 'screenLanguage', 'readerFlags', 'formatFlags', 'readerExtra',
+           'synthKey', 'synthVoice']
+# CharSettings{} defaults (CharSettings.h lines 50-56). readerExtra's default 153 has bit 7
+# (extraLinger) set, which DecodeSettings (line 120, bytes[41]>127) rejects: the programs
+# never write bit 7, so the storable default is 25.
+DEFAULTS = dict(language=0, wrap=0, sounds=1, explicitMessages=0, startMelody=1, backgroundMelody=0, rate=10,
+                speechVolume=10, effectsVolume=10, verbosity=1, progress=1, rememberLast=0, autoSeconds=10, welcome=7,
+                pitch=10, readerRate=10, readerPitch=10, readerVolume=10, detail=7, timers=2, messageRate=14,
+                messagePitch=10, punctuation=1, capitals=1, screenLanguage=0, readerFlags=47, formatFlags=255,
+                readerExtra=25, synthKey=0, synthVoice=0)
+# Defaults of the two bytes in formats A and B (CharSettings.h lines 34-39: 60 and 25).
+DEFAULTS_AB = dict(formatFlags=60, readerExtra=25)
+# member -> first version that stores it
+MEMBER_SINCE = dict(language='1', wrap='1', sounds='2', explicitMessages='3', startMelody='4', backgroundMelody='4',
+                    rate='5', speechVolume='6', effectsVolume='6', verbosity='6', progress='6', rememberLast='6',
+                    autoSeconds='6', welcome='7', pitch='7', readerRate='7', readerPitch='7', readerVolume='7',
+                    detail='7', timers='7', messageRate='8', messagePitch='8', punctuation='9', capitals='9',
+                    screenLanguage='9', readerFlags='9', formatFlags='A', readerExtra='A', synthKey='B', synthVoice='B')
+AUTO_DELAYS = [0, 3, 5, 10, 15, 20, 30, 60, 255]
+
+# UI rows in the order of Charon's menu pages.
+# kind: 'check' (one bit: member & mask), 'choice' (value = (member >> shift) & mask, choices listed),
+#       'slider' (whole member, low..high; unit 'percent' = VoicePercent(tenths), 'tenth' = value*10 %)
+# since: first record format that stores the row.
+PAGES = [
+    ('general', 'Charon settings', 'Ustawienia Charona'),
+    ('welcome', 'Welcome', 'Powitanie'),
+    ('detail', 'Detail', 'Szczegółowość'),
+    ('reader', 'Screen reader settings', 'Ustawienia czytnika ekranu'),
+    ('formatting', 'Text formatting', 'Formatowanie tekstu'),
+    ('synth', 'Synthesizer', 'Syntezator'),
+]
+OFF_MELODIES = [(0, 'Off', 'Wyłączone'), (1, 'Melody 1', 'Melodia 1'), (2, 'Melody 2', 'Melodia 2'),
+                (3, 'Melody 3', 'Melodia 3'), (4, 'Melody 4', 'Melodia 4')]
+ROWS = [
+    # ---- general (BootMenu.h settings page) ----
+    dict(id='wrap', page='general', kind='check', member='wrap', mask=1, since='1',
+         en='Wrap lists', pl='Zawijanie list'),
+    dict(id='language', page='general', kind='choice', member='language', shift=0, mask=255, since='1',
+         en='Language', pl='Język',
+         choices=[(0, 'Automatic', 'Automatyczny'), (1, 'English', 'English'), (2, 'Polski', 'Polski')]),
+    dict(id='sounds', page='general', kind='check', member='sounds', mask=1, since='2',
+         en='UI sounds', pl='Dźwięki interfejsu'),
+    dict(id='startMelody', page='general', kind='choice', member='startMelody', shift=0, mask=255, since='4',
+         en='Start melody', pl='Melodia startu', choices=OFF_MELODIES),
+    dict(id='backgroundMelody', page='general', kind='choice', member='backgroundMelody', shift=0, mask=255, since='4',
+         en='Background melody', pl='Melodia w tle', choices=OFF_MELODIES),
+    dict(id='rate', page='general', kind='slider', member='rate', low=5, high=20, unit='percent', since='5',
+         en='Speech rate', pl='Tempo mowy'),
+    dict(id='pitch', page='general', kind='slider', member='pitch', low=5, high=20, unit='percent', since='7',
+         en='Voice pitch', pl='Wysokość głosu'),
+    dict(id='speechVolume', page='general', kind='slider', member='speechVolume', low=1, high=10, unit='tenth', since='6',
+         en='Speech volume', pl='Głośność mowy'),
+    dict(id='effectsVolume', page='general', kind='slider', member='effectsVolume', low=0, high=10, unit='tenth', since='6',
+         en='Effects and melody volume', pl='Głośność efektów i melodii'),
+    dict(id='verbosity', page='general', kind='choice', member='verbosity', shift=0, mask=3, since='6',
+         en='Boot messages (reader verbosity)', pl='Komunikaty rozruchu (szczegółowość czytnika)',
+         choices=[(0, 'Off: no messages, no screen reading', 'Wyłączone: bez komunikatów i bez czytania programu'),
+                  (1, 'Short: what starts, program screen reading', 'Krótkie: co uruchamiam, czytanie ekranu programu'),
+                  (2, 'Detailed: also file, size, Secure Boot and counters', 'Szczegółowe: także plik, rozmiar, Secure Boot i liczniki')]),
+    dict(id='rememberLast', page='general', kind='check', member='rememberLast', mask=1, since='6',
+         en='Remember last choice', pl='Zapamiętaj ostatni wybór'),
+    dict(id='autoSeconds', page='general', kind='choice', member='autoSeconds', shift=0, mask=255, since='6',
+         en='Auto-continue time', pl='Czas autostartu',
+         choices=[(0, 'Immediately', 'Natychmiast'), (3, '3 seconds', '3 sekund'), (5, '5 seconds', '5 sekund'),
+                  (10, '10 seconds', '10 sekund'), (15, '15 seconds', '15 sekund'), (20, '20 seconds', '20 sekund'),
+                  (30, '30 seconds', '30 sekund'), (60, '60 seconds', '60 sekund'),
+                  (255, 'Never: always open the menu', 'Nigdy: zawsze otwórz menu')]),
+    dict(id='progress', page='general', kind='choice', member='progress', shift=0, mask=3, since='6',
+         en='Progress bars', pl='Paski postępu',
+         choices=[(0, 'Off', 'Wyłączone'), (1, 'Beeps, as in NVDA', 'Sygnały dźwiękowe jak w NVDA'),
+                  (2, 'Speech every 10 percent', 'Mowa co 10 procent'), (3, 'Beeps and speech', 'Sygnały i mowa')]),
+    dict(id='explicitMessages', page='general', kind='check', member='explicitMessages', mask=1, since='3',
+         en='Explicit messages', pl='Tryb dosadnych komunikatów'),
+    # ---- welcome ----
+    dict(id='welcomeHint', page='welcome', kind='check', member='welcome', mask=1, since='7',
+         en='Hint how to open the options menu', pl='Porada, jak przejść do menu opcji'),
+    dict(id='welcomeSound', page='welcome', kind='check', member='welcome', mask=2, since='7',
+         en='Welcome beep, as when the add-on starts', pl='Pisk powitania, jak przy starcie dodatku'),
+    dict(id='welcomeSpeech', page='welcome', kind='check', member='welcome', mask=4, since='7',
+         en='Speech: Welcome to Charon', pl='Mowa: Witaj w Charon'),
+    # ---- detail ----
+    dict(id='detailDisk', page='detail', kind='check', member='detail', mask=1, since='7',
+         en='Disk name', pl='Nazwa dysku'),
+    dict(id='detailManager', page='detail', kind='check', member='detail', mask=2, since='7',
+         en='Boot manager name, for example GRUB', pl='Nazwa menedżera rozruchu, na przykład GRUB'),
+    dict(id='detailPosition', page='detail', kind='check', member='detail', mask=4, since='7',
+         en='Position in lists, for example 2 of 5', pl='Pozycja na liście, na przykład 2 z 5'),
+    # ---- reader ----
+    dict(id='readerRate', page='reader', kind='slider', member='readerRate', low=5, high=20, unit='percent', since='7',
+         en='Reader rate', pl='Tempo czytnika'),
+    dict(id='readerPitch', page='reader', kind='slider', member='readerPitch', low=5, high=20, unit='percent', since='7',
+         en='Reader pitch', pl='Wysokość głosu czytnika'),
+    dict(id='readerVolume', page='reader', kind='slider', member='readerVolume', low=1, high=10, unit='tenth', since='7',
+         en='Reader volume', pl='Głośność czytnika'),
+    dict(id='timerSpeech', page='reader', kind='check', member='timers', mask=1, since='7',
+         en='Countdowns: speak every 10 seconds', pl='Odliczanie: mowa co 10 sekund'),
+    dict(id='timerSound', page='reader', kind='check', member='timers', mask=2, since='7',
+         en='Countdowns: tick every second, long tone at the end', pl='Odliczanie: dźwięk co sekundę, długi na końcu'),
+    dict(id='messageRate', page='reader', kind='slider', member='messageRate', low=5, high=20, unit='percent', since='8',
+         en='Boot message rate', pl='Tempo komunikatów startowych'),
+    dict(id='messagePitch', page='reader', kind='slider', member='messagePitch', low=5, high=20, unit='percent', since='8',
+         en='Boot message pitch', pl='Wysokość głosu komunikatów startowych'),
+    dict(id='punctuation', page='reader', kind='choice', member='punctuation', shift=0, mask=3, since='9',
+         en='Symbol level', pl='Interpunkcja',
+         choices=[(0, 'none', 'brak'), (1, 'some', 'część'), (2, 'most', 'większość'), (3, 'all', 'wszystko')]),
+    dict(id='screenLanguage', page='reader', kind='choice', member='screenLanguage', shift=0, mask=3, since='9',
+         en='Screen text language', pl='Język tekstu ekranu',
+         choices=[(0, 'automatic', 'automatycznie'), (1, 'as the menu', 'jak menu'), (2, 'English', 'angielski'),
+                  (3, 'Polish', 'polski')]),
+    dict(id='capSay', page='reader', kind='check', member='capitals', mask=1, since='9',
+         en='Capitals: say cap', pl='Wielkie litery: mów duże'),
+    dict(id='capBeep', page='reader', kind='check', member='capitals', mask=2, since='9',
+         en='Capitals: beep', pl='Wielkie litery: dźwięk'),
+    dict(id='capPitch', page='reader', kind='check', member='capitals', mask=4, since='9',
+         en='Capitals: higher pitch', pl='Wielkie litery: wyższy głos'),
+    dict(id='flagMessages', page='reader', kind='check', member='readerFlags', mask=1, since='9',
+         en='Text outside the selection on the second voice', pl='Tekst poza zaznaczeniem drugim głosem'),
+    dict(id='flagTyped', page='reader', kind='check', member='readerFlags', mask=2, since='9',
+         en='Speak typed characters', pl='Czytaj wpisywane znaki'),
+    dict(id='flagWords', page='reader', kind='check', member='readerFlags', mask=16, since='9',
+         en='Speak typed words', pl='Czytaj wpisywane słowa'),
+    dict(id='flagCursor', page='reader', kind='check', member='readerFlags', mask=8, since='9',
+         en='Speak the character at the cursor after arrows', pl='Czytaj znak pod kursorem po strzałkach'),
+    dict(id='flagAutoRead', page='reader', kind='check', member='readerFlags', mask=4, since='9',
+         en='Automatic reading of screen changes', pl='Automatyczne czytanie zmian ekranu'),
+    dict(id='flagHints', page='reader', kind='check', member='readerFlags', mask=32, since='9',
+         en="Hints in Charon's menu", pl='Porady w menu Charona'),
+    dict(id='hiddenMenus', page='reader', kind='choice', member='readerExtra', shift=0, mask=3, since='A',
+         en='Hidden boot-manager menus', pl='Ukryte menu menedżerów rozruchu',
+         choices=[(0, 'off', 'wyłączone'), (1, 'announce and wait 2 seconds', 'ogłoś i czekaj 2 sekundy'),
+                  (2, 'always reveal', 'zawsze odsłaniaj')]),
+    dict(id='stopCountdown', page='reader', kind='check', member='readerExtra', mask=4, since='A',
+         en='Stop boot-manager countdowns', pl='Zatrzymuj odliczanie menedżerów rozruchu'),
+    # ---- formatting ----
+    dict(id='formatVoice', page='formatting', kind='check', member='formatFlags', mask=1, since='A',
+         en='Voice formatting: pitch, rate, volume and timbre, as in Emacspeak',
+         pl='Formatowanie głosem: wysokość, tempo, głośność i barwa jak w Emacspeaku'),
+    dict(id='formatIcons', page='formatting', kind='check', member='formatFlags', mask=2, since='A',
+         en='Sound icons: oscillator sounds together with speech', pl='Ikony dźwiękowe: dźwięki oscylatora razem z mową'),
+    dict(id='formatColours', page='formatting', kind='check', member='formatFlags', mask=4, since='A',
+         en='Text and background colours', pl='Kolory tekstu i tła'),
+    dict(id='formatBright', page='formatting', kind='check', member='formatFlags', mask=8, since='A',
+         en='Bright and bold text', pl='Jasny i pogrubiony tekst'),
+    dict(id='formatFont', page='formatting', kind='check', member='formatFlags', mask=16, since='A',
+         en='Font and size', pl='Czcionka i rozmiar'),
+    dict(id='formatInverse', page='formatting', kind='check', member='formatFlags', mask=32, since='A',
+         en='Inverse and highlight', pl='Odwrócenie i podświetlenie'),
+    dict(id='formatEvents', page='formatting', kind='check', member='formatFlags', mask=64, since='C',
+         en='Event icons, as in Emacspeak: open, close, select, scroll, warning',
+         pl='Ikony zdarzeń jak w Emacspeaku: otwarcie, zamknięcie, wybór, przewinięcie, ostrzeżenie'),
+    dict(id='formatFamilies', page='formatting', kind='check', member='formatFlags', mask=128, since='C',
+         en='Voice families: another voice for another style', pl='Rodziny głosów: inny głos dla innego stylu'),
+    dict(id='stereo', page='formatting', kind='choice', member='readerExtra', shift=5, mask=3, since='C',
+         en='Stereo position', pl='Położenie w stereo',
+         choices=[(0, 'off', 'wyłączone'), (1, 'icons', 'ikony'), (2, 'speech and icons', 'mowa i ikony')]),
+    dict(id='braille', page='formatting', kind='check', member='readerExtra', mask=8, since='A',
+         en='Attributes in braille, dots 7 and 8', pl='Atrybuty na brajlu, punkty 7 i 8'),
+    dict(id='dictionary', page='formatting', kind='check', member='readerExtra', mask=16, since='A',
+         en='Firmware pronunciation dictionary, for example TPM, XHCI', pl='Słownik wymowy firmware, na przykład TPM, XHCI'),
+    # ---- synth (rows built at run time from \EFI\HAK\synths\*.manifest) ----
+    # synthKey: 0 = 'TVox, built in' / 'TVox, wbudowany'; add-on = '<name>, add-on' / '<name>, dodatek'
+    # synthVoice: index into the manifest's voice lines (spoken name); a new synthesizer resets it to 0.
+]
+# Not offered as a row: readerExtra bit 7 'Loading sound after the system takes over' /
+# 'Dźwięk wczytywania po przekazaniu sterowania systemowi' (BootMenu.h line 1229): the
+# record reader of this tree rejects byte 41 > 127 (CharSettings.h line 120), so the bit
+# cannot be stored. The programs say so in the information page and always write it as 0.
+LINGER_NOTE_EN = ("'Loading sound after the system takes over' cannot be changed here: Charon's settings reader "
+                  "rejects a record with this option on, so it is always written as off.")
+LINGER_NOTE_PL = ("Opcji „Dźwięk wczytywania po przekazaniu sterowania systemowi” nie da się tu zmienić: Charon odrzuca "
+                  "zapis ustawień z włączoną tą opcją, więc zawsze jest zapisywana jako wyłączona.")
+
+
+def voice_percent(tenths):
+    if tenths <= 5:
+        return 0
+    if tenths <= 10:
+        return (tenths - 5) * 10
+    return 100 if tenths >= 20 else 50 + (tenths - 10) * 5
+
+# ---------------------------------------------------------------------------
+PROGRAM = 'charon-settings'
+RELEASE = 'r408'
+EFI_GUID = '8be4df61-93ca-11d2-aa0d-00e098032b8c'
+SLOT_FILES = ('charon-settings-a.bin', 'charon-settings-b.bin')
+VOICE_NAME = 'Charon voice'                       # BootMenu.h firmwareVoiceName
+VOICE_FILE = '\\EFI\\HAK\\CHARONVOICE.EFI'        # BootMenu.h firmwareVoiceFile
+CHARON_DEFAULTS = dict(DEFAULTS, readerExtra=153)  # CharSettings{} as Charon holds it without a record
+RANGE = dict(language=(0, 2), wrap=(0, 1), sounds=(0, 1), explicitMessages=(0, 1), startMelody=(0, 4),
+             backgroundMelody=(0, 4), rate=(5, 20), speechVolume=(1, 10), effectsVolume=(0, 10), verbosity=(0, 2),
+             progress=(0, 3), rememberLast=(0, 1), welcome=(0, 7), pitch=(5, 20), readerRate=(5, 20),
+             readerPitch=(5, 20), readerVolume=(1, 10), detail=(0, 7), timers=(0, 3), messageRate=(5, 20),
+             messagePitch=(5, 20), punctuation=(0, 3), capitals=(0, 7), screenLanguage=(0, 3), readerFlags=(0, 63),
+             synthKey=(0, 255), synthVoice=(0, 15))
+EXIT_OK, EXIT_ERROR, EXIT_NO_ESP, EXIT_INVALID, EXIT_VALUE, EXIT_REFUSED, EXIT_NO_FIRMWARE = 0, 1, 2, 4, 5, 6, 7
+
+POLISH = False
+ASSUME_YES = False
+
+
+def T(en, pl):
+    return pl if POLISH else en
+
+
+def out(text=''):
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        encoding = sys.stdout.encoding or 'ascii'
+        print(text.encode(encoding, 'replace').decode(encoding))
+    sys.stdout.flush()
+
+
+class EndOfInput(Exception):
+    pass
+
+
+class Fail(Exception):
+    def __init__(self, code, message):
+        Exception.__init__(self, message)
+        self.code = code
+        self.message = message
+
+
+def ask(prompt):
+    out(prompt)
+    try:
+        return input().strip()
+    except EOFError:
+        raise EndOfInput()
+
+
+def confirm(question):
+    out(question)
+    if ASSUME_YES:
+        out(T('Confirmed by the --yes option.', 'Potwierdzone opcją --yes.'))
+        return True
+    try:
+        answer = ask(T('Type yes to confirm, anything else cancels:', 'Wpisz tak, aby potwierdzić, cokolwiek innego anuluje:'))
+    except EndOfInput:
+        return False
+    return answer.lower() in ('yes', 'y', 'tak', 't')
+
+
+def ci_path(base, *parts):
+    """Join, matching existing names without regard to case (FAT shows EFI or efi)."""
+    path = base
+    for part in parts:
+        exact = os.path.join(path, part)
+        if os.path.exists(exact):
+            path = exact
+            continue
+        match = None
+        try:
+            for name in os.listdir(path):
+                if name.lower() == part.lower():
+                    match = name
+                    break
+        except OSError:
+            pass
+        path = os.path.join(path, match if match else part)
+    return path
+
+
+def run(command):
+    try:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        stdout, stderr = process.communicate()
+        return process.returncode, stdout, stderr
+    except OSError as error:
+        return 127, '', str(error)
+
+
+def which(name):
+    for folder in os.environ.get('PATH', '').split(os.pathsep) + ['/usr/sbin', '/sbin', '/usr/bin', '/bin']:
+        candidate = os.path.join(folder, name)
+        if folder and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
+def sync_dir(path):
+    if os.name == 'nt':
+        return
+    try:
+        fd = os.open(path, os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    except OSError:
+        pass
+
+
+# ---- the settings record (CharSettings.h) ---------------------------------
+def vidx(version):
+    return VERSIONS.index(version)
+
+
+def size_for(version):
+    return 48 if vidx(version) >= vidx('9') else 40 if vidx(version) >= vidx('7') else 32
+
+
+def structure_problem(b):
+    """What DecodeSettings rejects before it looks at the values; None when the frame is right."""
+    n = len(b)
+    if n not in (48, 40, 32):
+        return T('wrong length, %d bytes' % n, 'zła długość, %d bajtów' % n)
+    if bytes(b[:7]) != b'CHARS00':
+        return T('no CHARS00 signature', 'brak sygnatury CHARS00')
+    version = chr(b[7])
+    if version not in VERSIONS:
+        return T('unknown format', 'nieznany format')
+    if n != size_for(version):
+        return T('length %d does not fit format %s' % (n, version), 'długość %d nie pasuje do formatu %s' % (n, version))
+    at = n - 4
+    if struct.unpack_from('<I', b, at)[0] != (zlib.crc32(bytes(b[:at])) & 0xffffffff):
+        return T('the check sum (CRC) does not match', 'suma kontrolna (CRC) się nie zgadza')
+    if not struct.unpack_from('<Q', b, 8)[0]:
+        return T('the sequence number is zero', 'numer kolejny jest zerem')
+    return None
+
+
+def range_violations(b, version):
+    """The value checks of DecodeSettings: list of (byte index, value) it rejects."""
+    i = vidx(version)
+    bad = []
+
+    def chk(index, ok):
+        if not ok:
+            bad.append((index, b[index]))
+    chk(16, b[16] <= 2)
+    chk(17, b[17] <= 1)
+    chk(18, b[18] <= (0 if version == '1' else 1))
+    chk(19, b[19] <= (1 if i >= vidx('3') else 0))
+    melodies = 4 if i >= vidx('4') else 0
+    chk(20, b[20] <= melodies)
+    chk(21, b[21] <= melodies)
+    if i >= vidx('5'):
+        chk(22, 5 <= b[22] <= 20)
+    else:
+        chk(22, b[22] == 0)
+    if i >= vidx('6'):
+        chk(23, 1 <= b[23] <= 10)
+        chk(24, b[24] <= 10)
+        chk(25, (b[25] & 3) <= 2 and b[25] <= 15)
+        chk(26, b[26] <= (15 if i >= vidx('7') else 1))
+        chk(27, b[27] in AUTO_DELAYS)
+    else:
+        for k in range(23, 28):
+            chk(k, b[k] == 0)
+    if i >= vidx('7'):
+        for k in (28, 29, 30):
+            chk(k, 5 <= b[k] <= 20)
+        chk(31, 1 <= b[31] <= 10)
+        chk(32, b[32] <= 7)
+        chk(33, b[33] <= 3)
+        if version == '7':
+            chk(34, b[34] == 0)
+            chk(35, b[35] == 0)
+        else:
+            chk(34, 5 <= b[34] <= 20)
+            chk(35, 5 <= b[35] <= 20)
+    if i >= vidx('9'):
+        chk(36, b[36] <= 3)
+        chk(37, b[37] <= 7)
+        chk(38, b[38] <= 3)
+        chk(39, b[39] <= 63)
+        if i >= vidx('A'):
+            old = i < vidx('C')
+            chk(40, not (old and b[40] > 63))
+            chk(41, not (old and b[41] > 31) and b[41] <= 127 and ((b[41] >> 5) & 3) <= 2 and (b[41] & 3) <= 2)
+            chk(42, not (version == 'A' and b[42]))
+            chk(43, b[43] <= 15 and not (version == 'A' and b[43]))
+        else:
+            for k in range(40, 44):
+                chk(k, b[k] == 0)
+    return bad
+
+
+def extract(b, version):
+    """The assignments of DecodeSettings (members a format does not store keep CharSettings{} defaults)."""
+    i = vidx(version)
+    s = dict(CHARON_DEFAULTS)
+    s['language'] = b[16]
+    s['wrap'] = 1 if b[17] else 0
+    s['sounds'] = 1 if (version == '1' or b[18]) else 0
+    s['explicitMessages'] = 1 if (i >= vidx('3') and b[19]) else 0
+    if i >= vidx('4'):
+        s['startMelody'] = b[20]
+        s['backgroundMelody'] = b[21]
+    if i >= vidx('5'):
+        s['rate'] = b[22]
+    if i >= vidx('6'):
+        s['speechVolume'] = b[23]
+        s['effectsVolume'] = b[24]
+        s['verbosity'] = b[25] & 3
+        s['progress'] = b[25] >> 2
+        s['rememberLast'] = b[26] & 1
+        s['autoSeconds'] = b[27]
+        if i >= vidx('7'):
+            s['welcome'] = b[26] >> 1
+    s['readerRate'] = s['rate']
+    s['readerVolume'] = s['speechVolume']
+    if i >= vidx('7'):
+        s['pitch'] = b[28]
+        s['readerRate'] = b[29]
+        s['readerPitch'] = b[30]
+        s['readerVolume'] = b[31]
+        s['detail'] = b[32]
+        s['timers'] = b[33]
+        if version == '7' and not s['timers']:
+            s['timers'] = 2
+        if i >= vidx('8'):
+            s['messageRate'] = b[34]
+            s['messagePitch'] = b[35]
+    if i >= vidx('9'):
+        s['punctuation'] = b[36]
+        s['capitals'] = b[37]
+        s['screenLanguage'] = b[38]
+        s['readerFlags'] = b[39]
+    if i >= vidx('A'):
+        s['formatFlags'] = b[40]
+        s['readerExtra'] = b[41]
+    if i >= vidx('B'):
+        s['synthKey'] = b[42]
+        s['synthVoice'] = b[43]
+    return s
+
+
+def decode_settings(b):
+    """DecodeSettings: (values, sequence, version) or None."""
+    if structure_problem(b):
+        return None
+    version = chr(b[7])
+    if range_violations(b, version):
+        return None
+    return extract(b, version), struct.unpack_from('<Q', b, 8)[0], version
+
+
+def stored(member, version):
+    return vidx(version) >= vidx(MEMBER_SINCE[member])
+
+
+def member_problem(member, value, target):
+    """True when Charon would not accept this value in a record of format `target`."""
+    old = target in 'AB'
+    if member == 'autoSeconds':
+        return value not in AUTO_DELAYS
+    if member == 'readerExtra':
+        return not (0 <= value <= (31 if old else 127) and (value & 3) <= 2 and ((value >> 5) & 3) <= 2)
+    if member == 'formatFlags':
+        return not 0 <= value <= (63 if old else 255)
+    low, high = RANGE[member]
+    return not low <= value <= high
+
+
+def encode_settings(values, sequence, version, base=None):
+    """EncodeSettings for any format; bytes a format does not store are zero."""
+    size = size_for(version)
+    if base is not None and len(base) == size and chr(base[7]) == version:
+        b = bytearray(base)                       # keeps bits this program does not know
+    else:
+        b = bytearray(size)
+
+    def has(member):
+        return stored(member, version)
+    b[0:8] = b'CHARS00' + version.encode('ascii')
+    struct.pack_into('<Q', b, 8, sequence)
+    b[16] = values['language']
+    b[17] = 1 if values['wrap'] else 0
+    b[18] = (1 if values['sounds'] else 0) if has('sounds') else 0
+    b[19] = (1 if values['explicitMessages'] else 0) if has('explicitMessages') else 0
+    b[20] = values['startMelody'] if has('startMelody') else 0
+    b[21] = values['backgroundMelody'] if has('backgroundMelody') else 0
+    b[22] = values['rate'] if has('rate') else 0
+    if has('speechVolume'):
+        b[23] = values['speechVolume']
+        b[24] = values['effectsVolume']
+        b[25] = values['verbosity'] | (values['progress'] << 2)
+        b[26] = (1 if values['rememberLast'] else 0) | ((values['welcome'] << 1) if has('welcome') else 0)
+        b[27] = values['autoSeconds']
+    else:
+        for k in range(23, 28):
+            b[k] = 0
+    if has('pitch'):
+        b[28] = values['pitch']
+        b[29] = values['readerRate']
+        b[30] = values['readerPitch']
+        b[31] = values['readerVolume']
+        b[32] = values['detail']
+        b[33] = values['timers']
+        b[34] = values['messageRate'] if has('messageRate') else 0
+        b[35] = values['messagePitch'] if has('messagePitch') else 0
+    if has('punctuation'):
+        b[36] = values['punctuation']
+        b[37] = values['capitals']
+        b[38] = values['screenLanguage']
+        b[39] = values['readerFlags']
+        if has('formatFlags'):
+            fmt = values['formatFlags']
+            extra = values['readerExtra'] & 0x7f   # bit 7 is rejected by DecodeSettings (CharSettings.h line 120)
+            if version in 'AB':
+                fmt &= 63
+                extra &= 31
+            b[40] = fmt
+            b[41] = extra
+        else:
+            b[40] = b[41] = 0
+        if has('synthKey'):
+            b[42] = values['synthKey']
+            b[43] = values['synthVoice']
+        else:
+            b[42] = b[43] = 0
+    struct.pack_into('<I', b, size - 4, zlib.crc32(bytes(b[:size - 4])) & 0xffffffff)
+    return bytes(b)
+
+
+class Store(object):
+    """The two slots, read and written the way LoadCharSettings / SaveCharSettings do (BootMenu.h 28-61)."""
+
+    def __init__(self, hak, forced_format=None):
+        self.hak = hak
+        self.forced = forced_format
+        self.load()
+
+    def slot_path(self, slot):
+        return ci_path(self.hak, SLOT_FILES[slot])
+
+    def read_slot(self, slot):
+        info = dict(slot=slot, status='missing', data=None, values=None, version=None, reason='', bad=[],
+                    lenient=False, sequence=0, newer=None)
+        path = self.slot_path(slot)
+        if not os.path.exists(path):
+            return info
+        try:
+            with open(path, 'rb') as handle:
+                data = handle.read(49)                # charSettingsBytes + 1, as ReadSettingsSlot
+        except (IOError, OSError) as error:
+            info.update(status='error', reason=str(error))
+            return info
+        info['data'] = data
+        if data[:7] == b'CHARS00' and len(data) >= 8 and chr(bytearray(data)[7]) not in VERSIONS:
+            info['newer'] = chr(bytearray(data)[7])
+        data = bytearray(data)
+        problem = structure_problem(data)
+        if problem:
+            info.update(status='invalid', reason=problem)
+            return info
+        version = chr(data[7])
+        sequence = struct.unpack_from('<Q', data, 8)[0]
+        info.update(version=version, sequence=sequence)
+        if (sequence & 1) != (0 if slot else 1):
+            info.update(status='invalid', reason=T('sequence number %d does not belong in this slot' % sequence,
+                                                   'numer kolejny %d nie należy do tego pliku' % sequence))
+            return info
+        bad = range_violations(data, version)
+        if bad:
+            listed = ', '.join(T('byte %d = %d', 'bajt %d = %d') % pair for pair in bad)
+            info.update(status='invalid', bad=bad, lenient=True,
+                        reason=T('value out of range: ', 'wartość poza zakresem: ') + listed)
+            return info
+        info.update(status='valid', values=extract(data, version))
+        return info
+
+    def scan_binaries(self):
+        """The format the installed boot manager writes: "CHARS00" + version byte inside its image."""
+        self.scanned = None
+        self.scan_source = None
+        self.scan_newer = None
+        for name in ('HAKBOOT.EFI', 'grubx64.efi'):
+            path = ci_path(self.hak, name)
+            if not os.path.isfile(path):
+                continue
+            try:
+                with open(path, 'rb') as handle:
+                    image = handle.read()
+            except (IOError, OSError):
+                continue
+            image = bytearray(image)
+            best = None
+            at = image.find(b'CHARS00')
+            while at >= 0:
+                if at + 7 < len(image):
+                    mark = chr(image[at + 7])
+                    if mark in VERSIONS:
+                        if best is None or vidx(mark) > vidx(best):
+                            best = mark
+                    elif mark.isdigit() or ('A' <= mark <= 'Z'):
+                        self.scan_newer = mark
+                        self.scan_source = name
+                at = image.find(b'CHARS00', at + 1)
+            if best is not None and (self.scanned is None or vidx(best) < vidx(self.scanned)):
+                self.scanned = best
+                if not self.scan_newer:
+                    self.scan_source = name
+
+    def load(self):
+        a = self.read_slot(0)
+        b = self.read_slot(1)
+        self.slots = [a, b]
+        self.newer = a['newer'] or b['newer']
+        valid_a, valid_b = a['status'] == 'valid', b['status'] == 'valid'
+        self.chosen = None
+        if a['status'] == 'missing' and b['status'] == 'missing':
+            self.state = 'none'
+        elif not valid_a and not valid_b:
+            self.state = 'invalid'
+        elif valid_a and valid_b and a['sequence'] == b['sequence'] and a['values'] != b['values']:
+            self.state = 'invalid'                    # ChooseSettings: same sequence, different content
+        else:
+            self.state = 'valid'
+            self.chosen = a if (not valid_b or (valid_a and a['sequence'] >= b['sequence'])) else b
+        if self.chosen:
+            self.version = self.chosen['version']
+            self.sequence = self.chosen['sequence']
+            self.values = dict(self.chosen['values'])
+            self.raw = bytes(self.chosen['data'])
+        else:
+            self.version = None
+            self.sequence = 0
+            self.values = dict(CHARON_DEFAULTS)
+            self.raw = None
+        self.scan_binaries()
+        damaged = self.repairable()
+        if self.scanned:
+            self.target = self.scanned
+            self.target_why = T('the format the installed boot manager writes (found in %s)' % self.scan_source,
+                                'format zapisywany przez zainstalowany menedżer rozruchu (znaleziony w %s)' % self.scan_source)
+        elif self.version:
+            self.target = self.version
+            self.target_why = T('the format of the record on the partition', 'format zapisu na partycji')
+        elif damaged:
+            self.target = damaged['version']
+            self.target_why = T('the format of the damaged record on the partition', 'format uszkodzonego zapisu na partycji')
+        elif self.forced:
+            self.target = self.forced
+            self.target_why = T('chosen with --format', 'wybrany opcją --format')
+        else:
+            self.target = NEWEST
+            self.target_why = T('no record and no boot manager file to detect the format from; the newest format, '
+                                'read by Charon r397 and later, is used (choose another with --format)',
+                                'brak zapisu i pliku menedżera rozruchu, z którego dałoby się odczytać format; użyty '
+                                'zostanie najnowszy format, czytany przez Charona r397 i nowsze (inny: opcja --format)')
+        self.refused = None
+        if self.newer or self.scan_newer:
+            mark = self.newer or self.scan_newer
+            self.refused = T('The settings on this partition use format %s, which is newer than this program knows '
+                             '(formats 1 to %s). Nothing will be written; update the Charon tools.' % (mark, NEWEST),
+                             'Ustawienia na tej partycji mają format %s, nowszy niż znane temu programowi (formaty od 1 '
+                             'do %s). Nic nie zostanie zapisane; zaktualizuj narzędzia Charona.' % (mark, NEWEST))
+
+    def working(self):
+        values = dict(self.values)
+        if self.state == 'none' and self.target in 'AB':
+            values.update(DEFAULTS_AB)
+        return values
+
+    def default_values(self):
+        values = dict(DEFAULTS)
+        if self.target in 'AB':
+            values.update(DEFAULTS_AB)
+        return values
+
+    def repairable(self):
+        if self.state != 'invalid':
+            return None
+        candidates = [s for s in self.slots if s['lenient']]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda s: s['sequence'])
+
+    def save(self, values, base_sequence=None):
+        """SaveCharSettings: next sequence into the inactive slot, flushed, read back and compared."""
+        if self.refused:
+            raise Fail(EXIT_REFUSED, self.refused)
+        sequence = self.sequence if base_sequence is None else base_sequence
+        if sequence >= 0xffffffffffffffff:
+            raise Fail(EXIT_VALUE, T('The sequence number cannot grow any more.', 'Numer kolejny nie może już wzrosnąć.'))
+        following = sequence + 1
+        values = dict(values)
+        values['readerExtra'] &= 0x7f                 # what the encoder writes: never bit 7,
+        if self.target in 'AB':                       # and only the bits formats A and B hold
+            values['formatFlags'] &= 63
+            values['readerExtra'] &= 31
+        for member in MEMBERS:
+            if stored(member, self.target) and member_problem(member, values[member], self.target):
+                raise Fail(EXIT_VALUE, T('%s = %d is out of range.' % (member, values[member]),
+                                         '%s = %d jest poza zakresem.' % (member, values[member])))
+        base = self.raw if (self.raw is not None and self.version == self.target) else None
+        data = encode_settings(values, following, self.target, base)
+        if decode_settings(bytearray(data)) is None:
+            raise Fail(EXIT_VALUE, T('These settings would not be accepted by Charon; nothing was written.',
+                                     'Charon nie przyjąłby tych ustawień; nic nie zapisano.'))
+        slot = 0 if (following & 1) else 1
+        path = self.slot_path(slot)
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_BINARY', 0), 0o644)
+            try:
+                written = os.write(fd, data)
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+            sync_dir(self.hak)
+            with open(path, 'rb') as handle:
+                back = handle.read(49)
+        except (IOError, OSError) as error:
+            raise Fail(EXIT_ERROR, T('Writing %s failed: %s' % (path, error), 'Zapis %s nie powiódł się: %s' % (path, error)))
+        check = decode_settings(bytearray(back)) if back == data else None
+        if written != len(data) or check is None or (check[1] & 1) != (0 if slot else 1):
+            raise Fail(EXIT_ERROR, T('The record read back from %s differs from what was written.' % path,
+                                     'Zapis odczytany z %s różni się od zapisanego.' % path))
+        self.load()
+        return slot, following
+
+    def repair(self):
+        damaged = self.repairable()
+        if not damaged:
+            return None
+        values = extract(bytearray(damaged['data']), damaged['version'])
+        values['readerExtra'] &= 0x7f
+        defaults = self.default_values()
+        replaced = []
+        for member in MEMBERS:
+            if member_problem(member, values[member], self.target):
+                values[member] = defaults[member]
+                replaced.append(member)
+        bad = list(damaged['bad'])
+        slot, sequence = self.save(values, base_sequence=damaged['sequence'])
+        return bad, replaced, slot, sequence
+
+
+# ---- synthesizer add-ons (CharonSynthHost.h) --------------------------------
+def key_of(name):
+    h = 2166136261
+    raw = name.encode('utf-16-le')
+    for at in range(0, len(raw), 2):
+        c = raw[at] | (raw[at + 1] << 8) if isinstance(raw[at], int) else ord(raw[at]) | (ord(raw[at + 1]) << 8)
+        if 0x41 <= c <= 0x5a:
+            c += 32
+        h = ((h ^ c) * 16777619) & 0xffffffff
+    k = (h ^ (h >> 8) ^ (h >> 16) ^ (h >> 24)) & 0xff
+    return k if k else 1
+
+
+def parse_manifest(text):
+    name, module, voices = '', '', []
+    for line in text.split(b'\n'):
+        line = line.lstrip(b' \t').rstrip(b' \t\r')
+        if not line or line.startswith(b'#') or b'=' not in line:
+            continue
+        key, value = line.split(b'=', 1)
+        key = key.strip(b' \t')
+        value = value.lstrip(b' \t').rstrip(b' \t\r')
+        if key == b'name':
+            name = value[:47].decode('utf-8', 'replace')
+        elif key == b'module':
+            module = value.decode('utf-8', 'replace')
+        elif key == b'voice' and len(voices) < 16:
+            parts = value.split(b'|', 2)
+            ident = parts[0].strip(b' \t\r')
+            spoken = parts[1].strip(b' \t\r') if len(parts) > 1 else b''
+            language = parts[2].strip(b' \t\r') if len(parts) > 2 else b''
+            if ident:
+                voices.append((ident.decode('utf-8', 'replace'), spoken.decode('utf-8', 'replace')[:47],
+                               language.decode('utf-8', 'replace')))
+    if not module or not voices:
+        return None
+    return dict(name=name, module=module, voices=voices)
+
+
+def scan_synths(hak):
+    folder = ci_path(hak, 'synths')
+    found = []
+    try:
+        names = sorted(os.listdir(folder))
+    except OSError:
+        return found
+    for name in names:
+        if len(found) >= 8:
+            break
+        if len(name) >= 60 or len(name) <= 9 or not name.lower().endswith('.manifest'):
+            continue
+        path = os.path.join(folder, name)
+        if os.path.isdir(path):
+            continue
+        try:
+            with open(path, 'rb') as handle:
+                text = handle.read(4095)
+        except (IOError, OSError):
+            continue
+        info = parse_manifest(text)
+        if info:
+            info['key'] = key_of(name)
+            info['manifest'] = name
+            found.append(info)
+    return found
+
+
+def synth_text(synths, key):
+    if not key:
+        return T('TVox, built in', 'TVox, wbudowany')
+    for info in synths:
+        if info['key'] == key:
+            return (info['name'] or info['manifest']) + T(', add-on', ', dodatek')
+    return T('add-on not found on the partition (key %d)' % key, 'dodatek nieznaleziony na partycji (klucz %d)' % key)
+
+
+def voice_text(synths, key, voice):
+    if not key:
+        return 'TVox'
+    for info in synths:
+        if info['key'] == key:
+            index = voice if voice < len(info['voices']) else 0
+            return info['voices'][index][1] or info['voices'][index][0]
+    return T('voice %d' % voice, 'głos %d' % voice)
+
+
+# ---- firmware variables ----------------------------------------------------
+class Firmware(object):
+    """real: efivarfs for reading, efibootmgr for changes; dir: a test folder in efivarfs format; none."""
+
+    def __init__(self, mode, directory=None):
+        self.mode = mode
+        self.dir = directory if mode == 'dir' else '/sys/firmware/efi/efivars'
+
+    def available(self):
+        return self.mode != 'none' and os.path.isdir(self.dir)
+
+    def why_not(self):
+        if self.mode == 'none':
+            return T('Firmware variables are not available in this mode (--no-firmware).',
+                     'Zmienne firmware nie są dostępne w tym trybie (--no-firmware).')
+        if self.mode == 'dir':
+            return T('The folder given with --firmware-dir does not exist: %s' % self.dir,
+                     'Folder podany opcją --firmware-dir nie istnieje: %s' % self.dir)
+        return T('Firmware variables are not available: this system was not started through UEFI (%s is missing).' % self.dir,
+                 'Zmienne firmware nie są dostępne: ten system nie wystartował przez UEFI (brak %s).' % self.dir)
+
+    def path(self, name):
+        return os.path.join(self.dir, name + '-' + EFI_GUID)
+
+    def get(self, name):
+        try:
+            with open(self.path(name), 'rb') as handle:
+                data = handle.read()
+        except (IOError, OSError):
+            return None
+        return data[4:] if len(data) >= 4 else None
+
+    def put(self, name, data, attributes=7):          # test folder only
+        with open(self.path(name), 'wb') as handle:
+            handle.write(struct.pack('<I', attributes) + data)
+
+    def remove(self, name):                           # test folder only
+        try:
+            os.remove(self.path(name))
+        except OSError:
+            pass
+
+    def order(self, name):
+        data = self.get(name) or b''
+        return [struct.unpack_from('<H', data, at)[0] for at in range(0, len(data) - 1, 2)]
+
+
+def find_voice(fw):
+    """FindFirmwareVoice: the Driver#### in DriverOrder whose description is "Charon voice"."""
+    wanted = (VOICE_NAME + '\0').encode('utf-16-le')
+    for number in fw.order('DriverOrder'):
+        option = fw.get('Driver%04X' % number)
+        if option and len(option) >= 6 + len(wanted) and option[6:6 + len(wanted)] == wanted:
+            return number
+    return None
+
+
+def driver_option(number, start, size, guid):
+    """The load option of Install-CharonAddon.ps1 New-DriverOption (test folder mode)."""
+    hd = bytearray(42)
+    hd[0:4] = bytes(bytearray([4, 1, 42, 0]))
+    struct.pack_into('<IQQ', hd, 4, number, start, size)
+    hd[24:40] = uuid.UUID(guid).bytes_le
+    hd[40] = 2
+    hd[41] = 2
+    name = (VOICE_FILE + '\0').encode('utf-16-le')
+    node = bytes(bytearray([4, 4])) + struct.pack('<H', 4 + len(name)) + name
+    path = bytes(hd) + node + bytes(bytearray([0x7f, 0xff, 4, 0]))
+    return struct.pack('<IH', 3, len(path)) + (VOICE_NAME + '\0').encode('utf-16-le') + path
+
+
+def esp_device(esp):
+    """(disk, partition number) of the EFI partition, as the installers find them."""
+    code, stdout, _ = run(['findmnt', '-n', '-o', 'SOURCE', esp])
+    devices = [line.strip() for line in stdout.splitlines() if line.strip().startswith('/dev/')]
+    if code or not devices:
+        return None
+    device = devices[-1]
+    code, stdout, _ = run(['lsblk', '-n', '-o', 'PKNAME', device])
+    parent = stdout.strip().splitlines()[0].strip() if stdout.strip() else ''
+    try:
+        with open('/sys/class/block/%s/partition' % os.path.basename(device)) as handle:
+            part = handle.read().strip()
+    except (IOError, OSError):
+        part = ''
+    if code or not parent or not part:
+        return None
+    return '/dev/' + parent, part
+
+
+def addon_state_text(fw):
+    if not fw.available():
+        return T('unknown', 'nieznany')
+    number = find_voice(fw)
+    if number is None:
+        return T('off', 'wyłączona')
+    return T('on, Driver%04X' % number, 'włączona, Driver%04X' % number)
+
+
+def addon_change(fw, hak, esp, turn_on):
+    """Returns an exit code; every change is confirmed first and read back afterwards."""
+    if not fw.available():
+        out(fw.why_not())
+        return EXIT_NO_FIRMWARE
+    number = find_voice(fw)
+    if turn_on:
+        if number is not None:
+            out(T('Speech from power-on is already on: Driver%04X.' % number,
+                  'Mowa od włączenia komputera jest już włączona: Driver%04X.' % number))
+            return EXIT_OK
+        if not os.path.isfile(ci_path(hak, 'CHARONVOICE.EFI')):
+            out(T('CHARONVOICE.EFI is not in EFI/HAK on this partition, so the reader add-on cannot be turned on. '
+                  'Install it with the Charon installer.',
+                  'Na tej partycji nie ma CHARONVOICE.EFI w EFI/HAK, więc dodatku czytnika nie da się włączyć. '
+                  'Zainstaluj go instalatorem Charona.'))
+            return EXIT_VALUE
+        if not confirm(T('Turn on speech from power-on? This adds the firmware driver option "Charon voice" that loads '
+                         '\\EFI\\HAK\\CHARONVOICE.EFI at every start. With Secure Boot on, firmware loads it only when '
+                         'the file is signed with a key it trusts. Disk encryption bound to the TPM may ask for its '
+                         'recovery passphrase once.',
+                         'Włączyć mowę od włączenia komputera? Dodaje to opcję sterownika firmware „Charon voice”, która '
+                         'przy każdym starcie ładuje \\EFI\\HAK\\CHARONVOICE.EFI. Przy włączonym Secure Boot firmware '
+                         'załaduje go tylko wtedy, gdy plik jest podpisany zaufanym kluczem. Szyfrowanie dysku powiązane '
+                         'z TPM może raz zapytać o hasło odzyskiwania.')):
+            out(T('Not changed.', 'Bez zmian.'))
+            return EXIT_VALUE
+        if fw.mode == 'dir':
+            spec = os.environ.get('CHARON_TEST_ESP_PART', '1,2048,204800,00000000-0000-0000-0000-000000000001').split(',')
+            option = driver_option(int(spec[0]), int(spec[1]), int(spec[2]), spec[3])
+            free = None
+            for candidate in range(0x1000):
+                if fw.get('Driver%04X' % candidate) is None:
+                    free = candidate
+                    break
+            if free is None:
+                out(T('No free Driver number.', 'Brak wolnego numeru Driver.'))
+                return EXIT_ERROR
+            fw.put('Driver%04X' % free, option)
+            fw.put('DriverOrder', b''.join(struct.pack('<H', n) for n in [free] + fw.order('DriverOrder')))
+        else:
+            location = esp_device(esp)
+            if not location or not which('efibootmgr'):
+                out(T('efibootmgr or the device of the EFI partition was not found; nothing was changed.',
+                      'Nie znaleziono efibootmgr albo urządzenia partycji EFI; nic nie zmieniono.'))
+                return EXIT_ERROR
+            code, _, stderr = run(['efibootmgr', '--driver', '--create', '--disk', location[0], '--part', location[1],
+                                   '--loader', VOICE_FILE, '--label', VOICE_NAME])
+            if code:
+                out(T('The firmware did not take the driver option: ', 'Firmware nie przyjęło opcji sterownika: ') + stderr.strip())
+                return EXIT_ERROR
+    else:
+        if number is None:
+            out(T('Speech from power-on is already off.', 'Mowa od włączenia komputera jest już wyłączona.'))
+            return EXIT_OK
+        if not confirm(T('Turn off speech from power-on? This removes the driver option Driver%04X "Charon voice" from '
+                         'firmware; the file CHARONVOICE.EFI stays on the partition.' % number,
+                         'Wyłączyć mowę od włączenia komputera? Usuwa to z firmware opcję sterownika Driver%04X '
+                         '„Charon voice”; plik CHARONVOICE.EFI zostaje na partycji.' % number)):
+            out(T('Not changed.', 'Bez zmian.'))
+            return EXIT_VALUE
+        if fw.mode == 'dir':
+            kept = [n for n in fw.order('DriverOrder') if n != number]
+            fw.put('DriverOrder', b''.join(struct.pack('<H', n) for n in kept))
+            fw.remove('Driver%04X' % number)
+        else:
+            code, _, stderr = run(['efibootmgr', '--driver', '--bootnum', '%04X' % number, '--delete-bootnum'])
+            if code:
+                out(T('The firmware did not remove the driver option: ', 'Firmware nie usunęło opcji sterownika: ') + stderr.strip())
+                return EXIT_ERROR
+    after = find_voice(fw)
+    out(T('Read back from firmware: speech from power-on is %s.', 'Odczytano z firmware: mowa od włączenia komputera jest %s.')
+        % addon_state_text(fw))
+    if (after is not None) != turn_on:
+        out(T('The firmware does not show the change.', 'Firmware nie pokazuje zmiany.'))
+        return EXIT_ERROR
+    return EXIT_OK
+
+
+# ---- the EFI partition -----------------------------------------------------
+def find_esp(explicit):
+    if explicit:
+        return explicit if os.path.isdir(explicit) else None
+    candidates = ['/boot/efi', '/efi', '/boot']
+    code, stdout, _ = run(['findmnt', '-n', '-l', '-t', 'vfat', '-o', 'TARGET'])
+    if not code:
+        for line in stdout.splitlines():
+            if line.strip() and line.strip() not in candidates:
+                candidates.append(line.strip())
+    for candidate in candidates:                      # a systemd automount mounts on first access
+        try:
+            os.listdir(candidate)
+        except OSError:
+            pass
+    for parts in (('EFI', 'HAK'), ('EFI',)):
+        for candidate in candidates:
+            if os.path.isdir(ci_path(candidate, *parts)):
+                return candidate
+    return None
+
+
+def first_line(path):
+    try:
+        with open(path, 'rb') as handle:
+            return handle.read(300).decode('utf-8', 'replace').splitlines()[0].strip()
+    except (IOError, OSError, IndexError):
+        return None
+
+
+def reader_only_path(hak):
+    return ci_path(hak, 'reader-only')
+
+
+def set_reader_only(hak, on):
+    path = reader_only_path(hak)
+    if on:
+        if not os.path.exists(path):
+            with open(path, 'wb') as handle:
+                handle.write(b'reader-only\r\n')
+                handle.flush()
+                os.fsync(handle.fileno())
+    elif os.path.exists(path):
+        os.remove(path)
+    sync_dir(hak)
+    return os.path.exists(path)
+
+
+# ---- texts of the rows -------------------------------------------------------
+def on_off(flag):
+    return T('on', 'włączone') if flag else T('off', 'wyłączone')
+
+
+def row_stored(row, store):
+    return vidx(store.target) >= vidx(row['since'])
+
+
+NOT_STORED = ('not stored by this Charon version', 'nie jest zapisywane przez tę wersję Charona')
+
+
+def row_value(row, values, store):
+    if not row_stored(row, store):
+        return T(*NOT_STORED)
+    member = values[row['member']]
+    if row['kind'] == 'check':
+        return on_off(member & row['mask'])
+    if row['kind'] == 'choice':
+        value = (member >> row['shift']) & row['mask']
+        for choice in row['choices']:
+            if choice[0] == value:
+                return T(choice[1], choice[2])
+        return str(value)
+    return '%d%%' % (voice_percent(member) if row['unit'] == 'percent' else member * 10)
+
+
+def set_choice(values, row, value):
+    member = values[row['member']]
+    values[row['member']] = (member & ~(row['mask'] << row['shift']) & 0xff) | (value << row['shift'])
+
+
+def assignment(values, text, store):
+    """--set member=value or rowid=value; returns an error text or None."""
+    if '=' not in text:
+        return T('Write --set name=value, not "%s".' % text, 'Napisz --set nazwa=wartość, nie „%s”.' % text)
+    name, raw = text.split('=', 1)
+    name, raw = name.strip(), raw.strip().lower()
+    words = {'on': 1, 'off': 0, 'true': 1, 'false': 0, 'yes': 1, 'no': 0, 'tak': 1, 'nie': 0}
+    try:
+        value = words[raw] if raw in words else int(raw, 10) if raw.isdigit() else int(raw, 0)
+    except ValueError:
+        return T('"%s" is not a number.' % raw, '„%s” nie jest liczbą.' % raw)
+    row = None
+    if name not in MEMBERS:
+        for candidate in ROWS:
+            if candidate['id'] == name:
+                row = candidate
+        if row is None:
+            return T('There is no setting named %s.' % name, 'Nie ma ustawienia o nazwie %s.' % name)
+    member = row['member'] if row else name
+    if not stored(member, store.target) or (row and not row_stored(row, store)):
+        return T('%s is not stored by this Charon version (settings format %s).' % (name, store.target),
+                 '%s nie jest zapisywane przez tę wersję Charona (format ustawień %s).' % (name, store.target))
+    out_of_range = T('%s = %s is out of range.' % (name, raw), '%s = %s jest poza zakresem.' % (name, raw))
+    if row and row['kind'] == 'check':
+        if value not in (0, 1):
+            return out_of_range
+        values[member] = (values[member] | row['mask']) if value else (values[member] & ~row['mask'] & 0xff)
+    elif row and row['kind'] == 'choice':
+        if value not in [choice[0] for choice in row['choices']]:
+            return out_of_range
+        set_choice(values, row, value)
+    else:
+        if member == 'readerExtra' and 0 <= value <= 255 and (value & 0x80):
+            return out_of_range + ' ' + T(LINGER_NOTE_EN, LINGER_NOTE_PL)
+        if value < 0 or value > 255 or member_problem(member, value, store.target):
+            return out_of_range
+        values[member] = value
+    return None
+
+
+def show_lines(store):
+    lines = ['format=%s' % (store.version or 'none'), 'sequence=%d' % store.sequence]
+    for member in MEMBERS:
+        lines.append('%s=%d' % (member, store.values[member]))
+    return lines
+
+
+def invalid_lines(store):
+    lines = ['record=invalid']
+    for info in store.slots:
+        lines.append('slot-%s=%s%s' % ('ab'[info['slot']], info['status'], (': ' + info['reason']) if info['reason'] else ''))
+    lines.append('repairable=%s' % ('yes' if (store.repairable() and not store.refused) else 'no'))
+    if store.refused:
+        lines.append(store.refused)
+    return lines
+
+
+def slot_text(info):
+    name = SLOT_FILES[info['slot']]
+    if info['status'] == 'missing':
+        return T('%s: not present' % name, '%s: brak' % name)
+    if info['status'] == 'valid':
+        return T('%s: valid, format %s, sequence %d' % (name, info['version'], info['sequence']),
+                 '%s: prawidłowy, format %s, numer kolejny %d' % (name, info['version'], info['sequence']))
+    return T('%s: not accepted by Charon, %s' % (name, info['reason']), '%s: nie do przyjęcia dla Charona, %s' % (name, info['reason']))
+
+
+def file_text(hak, name):
+    path = ci_path(hak, name)
+    if not os.path.isfile(path):
+        return T('%s: not present' % name, '%s: brak' % name)
+    status = os.stat(path)
+    stamp = time.strftime('%Y-%m-%d %H:%M', time.localtime(status.st_mtime))
+    return T('%s: %d bytes, changed %s' % (name, status.st_size, stamp), '%s: %d bajtów, zmieniony %s' % (name, status.st_size, stamp))
+
+
+def information(store, hak, esp, fw):
+    out(T('Information, read only.', 'Informacje, tylko do odczytu.'))
+    out(T('EFI partition: %s' % esp, 'Partycja EFI: %s' % esp))
+    out(T('Charon folder: %s' % hak, 'Folder Charona: %s' % hak))
+    for name in ('installed-by.txt', 'addon.txt'):
+        line = first_line(ci_path(hak, name))
+        if line:
+            out('%s: %s' % (name, line))
+    for name in ('HAKBOOT.EFI', 'CHARONVOICE.EFI'):
+        out(file_text(hak, name))
+    language = first_line(ci_path(hak, 'audio-language'))
+    out(T('Installation language (audio-language): %s' % (language or 'not present'),
+          'Język instalacji (audio-language): %s' % (language or 'brak')))
+    for info in store.slots:
+        out(slot_text(info))
+    if store.state == 'none':
+        out(T('No settings record yet: Charon uses its defaults.', 'Nie ma jeszcze zapisu ustawień: Charon używa wartości domyślnych.'))
+    elif store.state == 'invalid':
+        out(T('Charon does not accept the settings on this partition: it uses defaults and blocks saving in its menu.',
+              'Charon nie przyjmuje ustawień z tej partycji: używa wartości domyślnych i blokuje zapis w swoim menu.'))
+    out(T('Format that will be written: %s, %s.' % (store.target, store.target_why),
+          'Format, który zostanie zapisany: %s, %s.' % (store.target, store.target_why)))
+    if store.refused:
+        out(store.refused)
+    hidden = [row for row in ROWS if not row_stored(row, store)]
+    if hidden:
+        out(T('%d settings need a newer Charon and cannot be changed.' % len(hidden),
+              '%d ustawień wymaga nowszego Charona i nie można ich zmienić.' % len(hidden)))
+    out(T('Speech from power-on (reader add-on): %s', 'Mowa od włączenia komputera (dodatek czytnika): %s') % addon_state_text(fw))
+    out(T('Reader only: %s', 'Tylko czytnik: %s') % on_off(os.path.exists(reader_only_path(hak))))
+    out(T(LINGER_NOTE_EN, LINGER_NOTE_PL))
+    out(T('%s %s, settings formats 1 to %s.' % (PROGRAM, RELEASE, NEWEST), '%s %s, formaty ustawień od 1 do %s.' % (PROGRAM, RELEASE, NEWEST)))
+
+
+# ---- the interactive menu ----------------------------------------------------
+def menu_answer(count, top=False):
+    """A number 0..count, 'list' (L or an empty line: say the items again), or None for anything else."""
+    if top:
+        prompt = T('Type a number and press Enter; L lists the items again:', 'Wpisz numer i naciśnij Enter; L czyta pozycje ponownie:')
+    else:
+        prompt = T('Type a number and press Enter; 0 goes back, L lists the items again:',
+                   'Wpisz numer i naciśnij Enter; 0 wraca, L czyta pozycje ponownie:')
+    answer = ask(prompt)
+    if answer.lower() in ('', 'l'):
+        return 'list'
+    try:
+        number = int(answer)
+    except ValueError:
+        out(T('That is not a number.', 'To nie jest numer.'))
+        return None
+    if number < 0 or number > count:
+        out(T('There are only %d items.' % count, 'Jest tylko %d pozycji.' % count))
+        return None
+    return number
+
+
+def choose_number(count, prompt=None):
+    """A number 0..count; None for anything else."""
+    answer = ask(prompt or T('Type a number and press Enter, 0 goes back:', 'Wpisz numer i naciśnij Enter, 0 wraca:'))
+    try:
+        number = int(answer)
+    except ValueError:
+        out(T('That is not a number.', 'To nie jest numer.'))
+        return None
+    if number < 0 or number > count:
+        out(T('There are only %d items.' % count, 'Jest tylko %d pozycji.' % count))
+        return None
+    return number
+
+
+def edit_slider(row, values):
+    member = row['member']
+    low, high = row['low'], row['high']
+    percent = (lambda t: voice_percent(t)) if row['unit'] == 'percent' else (lambda t: t * 10)
+    label = T(row['en'], row['pl'])
+    out(T('%s: %d%%. Allowed: %d%% to %d%%, %d steps.' % (label, percent(values[member]), percent(low), percent(high), high - low + 1),
+          '%s: %d%%. Zakres: od %d%% do %d%%, %d kroków.' % (label, percent(values[member]), percent(low), percent(high), high - low + 1)))
+    answer = ask(T('Type a percent value, or + or - for one step, or just Enter to keep it:',
+                   'Wpisz wartość w procentach albo + lub - dla jednego kroku, albo sam Enter, aby zostawić:'))
+    if not answer:
+        return
+    if answer in ('+', '-'):
+        value = values[member] + (1 if answer == '+' else -1)
+        if value < low or value > high:
+            out(T('That is the end of the range.', 'To koniec zakresu.'))
+            return
+    else:
+        try:
+            wanted = int(answer.rstrip('%').strip())
+        except ValueError:
+            out(T('That is not a number.', 'To nie jest liczba.'))
+            return
+        if wanted < percent(low) or wanted > percent(high):
+            out(T('Out of range.', 'Poza zakresem.'))
+            return
+        value = min(range(low, high + 1), key=lambda t: (abs(percent(t) - wanted), t))
+    values[member] = value
+    out('%s: %d%%' % (label, percent(value)))
+
+
+def edit_choice(row, values, store):
+    label = T(row['en'], row['pl'])
+    choices = row['choices']
+    out(T('%s, %d choices. Now: %s.' % (label, len(choices), row_value(row, values, store)),
+          '%s, %d możliwości. Teraz: %s.' % (label, len(choices), row_value(row, values, store))))
+    for index, choice in enumerate(choices):
+        out('%d. %s' % (index + 1, T(choice[1], choice[2])))
+    number = choose_number(len(choices))
+    if not number:
+        return
+    set_choice(values, row, choices[number - 1][0])
+    out('%s: %s' % (label, row_value(row, values, store)))
+
+
+def page_menu(page, values, store):
+    rows = [row for row in ROWS if row['page'] == page[0]]
+    listing = True
+    while True:
+        if listing:
+            out(T('%s, %d items.' % (page[1], len(rows)), '%s, %d pozycji.' % (page[2], len(rows))))
+            for index, row in enumerate(rows):
+                out('%d. %s: %s' % (index + 1, T(row['en'], row['pl']), row_value(row, values, store)))
+        number = menu_answer(len(rows))
+        listing = number == 'list'
+        if number is None or listing:
+            continue
+        if number == 0:
+            return
+        row = rows[number - 1]
+        if not row_stored(row, store):
+            out(T('%s is not stored by this Charon version (settings format %s) and cannot be changed.' % (row['en'], store.target),
+                  '%s nie jest zapisywane przez tę wersję Charona (format ustawień %s) i nie można tego zmienić.' % (row['pl'], store.target)))
+        elif row['kind'] == 'check':
+            values[row['member']] ^= row['mask']
+            out('%s: %s' % (T(row['en'], row['pl']), row_value(row, values, store)))
+        elif row['kind'] == 'choice':
+            edit_choice(row, values, store)
+        else:
+            edit_slider(row, values)
+
+
+def synth_menu(values, store, synths):
+    usable = vidx(store.target) >= vidx('B')
+    listing = True
+    while True:
+        if listing and usable:
+            out(T('Synthesizer, 2 items.', 'Syntezator, 2 pozycje.'))
+            out('1. %s: %s' % (T('Synthesizer', 'Syntezator'), synth_text(synths, values['synthKey'])))
+            out('2. %s: %s' % (T('Synthesizer voice', 'Głos syntezatora'), voice_text(synths, values['synthKey'], values['synthVoice'])))
+        elif listing:
+            out(T('Synthesizer, 2 items.', 'Syntezator, 2 pozycje.'))
+            out('1. %s: %s' % (T('Synthesizer', 'Syntezator'), T(*NOT_STORED)))
+            out('2. %s: %s' % (T('Synthesizer voice', 'Głos syntezatora'), T(*NOT_STORED)))
+        number = menu_answer(2)
+        listing = number == 'list'
+        if number is None or listing:
+            continue
+        if number == 0:
+            return
+        if not usable:
+            out(T('The synthesizer is not stored by this Charon version.', 'Syntezator nie jest zapisywany przez tę wersję Charona.'))
+        elif number == 1:
+            keys = [0] + [info['key'] for info in synths]
+            out(T('Synthesizer, %d choices. Now: %s.' % (len(keys), synth_text(synths, values['synthKey'])),
+                  'Syntezator, %d możliwości. Teraz: %s.' % (len(keys), synth_text(synths, values['synthKey']))))
+            if not synths:
+                out(T('No other synthesizers; add-ons go in EFI, HAK, synths.', 'Brak innych syntezatorów; dodatki leżą w EFI, HAK, synths.'))
+            for index, key in enumerate(keys):
+                out('%d. %s' % (index + 1, synth_text(synths, key)))
+            pick = choose_number(len(keys))
+            if pick:
+                if keys[pick - 1] != values['synthKey']:
+                    values['synthKey'] = keys[pick - 1]
+                    values['synthVoice'] = 0
+                out('%s: %s' % (T('Synthesizer', 'Syntezator'), synth_text(synths, values['synthKey'])))
+        else:
+            voices = []
+            for info in synths:
+                if info['key'] == values['synthKey']:
+                    voices = info['voices']
+            if len(voices) < 2:
+                out(T('This synthesizer has no other voice.', 'Ten syntezator nie ma innego głosu.'))
+                continue
+            out(T('Synthesizer voice, %d choices. Now: %s.' % (len(voices), voice_text(synths, values['synthKey'], values['synthVoice'])),
+                  'Głos syntezatora, %d możliwości. Teraz: %s.' % (len(voices), voice_text(synths, values['synthKey'], values['synthVoice']))))
+            for index, voice in enumerate(voices):
+                out('%d. %s' % (index + 1, voice[1] or voice[0]))
+            pick = choose_number(len(voices))
+            if pick:
+                values['synthVoice'] = pick - 1
+                out('%s: %s' % (T('Synthesizer voice', 'Głos syntezatora'), voice_text(synths, values['synthKey'], values['synthVoice'])))
+
+
+def do_save(store, values):
+    try:
+        slot, sequence = store.save(values)
+    except Fail as failure:
+        out(failure.message)
+        return False
+    out(T('Saved and read back: %s, format %s, sequence %d.' % (SLOT_FILES[slot], store.version, sequence),
+          'Zapisano i odczytano kontrolnie: %s, format %s, numer kolejny %d.' % (SLOT_FILES[slot], store.version, sequence)))
+    out(T('Charon uses the new settings from the next start of the computer.',
+          'Charon użyje nowych ustawień od następnego startu komputera.'))
+    return True
+
+
+def interactive(store, hak, esp, fw):
+    global POLISH
+    out(T('Charon screen reader settings', 'Ustawienia czytnika ekranu Charon'))
+    out(T('EFI partition: %s.' % esp, 'Partycja EFI: %s.' % esp))
+    if store.state == 'invalid':
+        out(T('Charon does not accept the settings on this partition; it uses defaults and blocks saving in its menu.',
+              'Charon nie przyjmuje ustawień z tej partycji; używa wartości domyślnych i blokuje zapis w swoim menu.'))
+        for info in store.slots:
+            out(slot_text(info))
+        if store.repairable() and not store.refused:
+            if confirm(T('Repair the record? Values out of range take their defaults and a valid record is written.',
+                         'Naprawić zapis? Wartości spoza zakresu przyjmą wartości domyślne i powstanie prawidłowy zapis.')):
+                try:
+                    bad, replaced, slot, sequence = store.repair()
+                    out(T('Repaired: %s; written to %s with sequence %d.', 'Naprawiono: %s; zapisano do %s z numerem kolejnym %d.')
+                        % (', '.join(T('byte %d was %d', 'bajt %d miał wartość %d') % pair for pair in bad), SLOT_FILES[slot], sequence))
+                except Fail as failure:
+                    out(failure.message)
+        if store.state == 'invalid':
+            out(T('The settings cannot be changed here until the record is repaired. Only information is available.',
+                  'Dopóki zapis nie zostanie naprawiony, ustawień nie da się tu zmienić. Dostępne są tylko informacje.'))
+    elif store.state == 'none':
+        out(T('There is no settings record yet; the values shown are Charon\'s defaults.',
+              'Nie ma jeszcze zapisu ustawień; pokazane wartości to wartości domyślne Charona.'))
+    else:
+        out(T('Settings record: format %s, sequence %d.' % (store.version, store.sequence),
+              'Zapis ustawień: format %s, numer kolejny %d.' % (store.version, store.sequence)))
+    if store.refused:
+        out(store.refused)
+    values = store.working()
+    loaded = dict(values)
+    synths = scan_synths(hak)
+    listing = True
+    while True:
+        editable = store.state != 'invalid'
+        dirty = editable and values != loaded
+        items = [(T(page[1], page[2]), ('page', page)) for page in PAGES]
+        items.append((T('Speech from power-on (reader add-on): %s', 'Mowa od włączenia komputera (dodatek czytnika): %s')
+                      % addon_state_text(fw), ('addon', None)))
+        items.append((T('Reader only: start the Continue target at once and silently: %s',
+                        'Tylko czytnik: od razu i po cichu uruchom cel Kontynuuj: %s')
+                      % on_off(os.path.exists(reader_only_path(hak))), ('readeronly', None)))
+        items.append((T('Restore defaults', 'Przywróć ustawienia domyślne'), ('defaults', None)))
+        items.append((T('Information', 'Informacje'), ('info', None)))
+        items.append((T('Language of this program: English', 'Język tego programu: polski'), ('language', None)))
+        items.append((T('Save', 'Zapisz') + (T(' (there are unsaved changes)', ' (są niezapisane zmiany)') if dirty else ''), ('save', None)))
+        items.append((T('Quit', 'Zakończ'), ('quit', None)))
+        if listing:
+            out(T('Main menu, %d items.' % len(items), 'Menu główne, %d pozycji.' % len(items)))
+            for index, item in enumerate(items):
+                out('%d. %s' % (index + 1, item[0]))
+        number = menu_answer(len(items), top=True)
+        listing = number == 'list'
+        if not number or listing:
+            continue
+        action, argument = items[number - 1][1]
+        listing = action in ('page', 'addon', 'readeronly', 'language')   # the lines of the menu may have changed
+        if action in ('page', 'defaults', 'save') and not editable:
+            out(T('Not available: the settings record is not valid.', 'Niedostępne: zapis ustawień jest nieprawidłowy.'))
+        elif action == 'page':
+            if argument[0] == 'synth':
+                synth_menu(values, store, synths)
+            else:
+                page_menu(argument, values, store)
+        elif action == 'addon':
+            out(T('Speech from power-on (reader add-on, driver option "Charon voice"): %s.',
+                  'Mowa od włączenia komputera (dodatek czytnika, opcja sterownika „Charon voice”): %s.') % addon_state_text(fw))
+            if not fw.available():
+                out(fw.why_not())
+                continue
+            on = find_voice(fw) is not None
+            out('1. ' + (T('Turn it off', 'Wyłącz') if on else T('Turn it on', 'Włącz')))
+            if choose_number(1) == 1:
+                addon_change(fw, hak, esp, not on)
+        elif action == 'readeronly':
+            on = os.path.exists(reader_only_path(hak))
+            question = (T('Turn reader-only mode off? Charon will show its menu again and wait the auto-continue time. '
+                          'This is applied at once, not with Save.',
+                          'Wyłączyć tryb „tylko czytnik”? Charon znów pokaże swoje menu i odczeka czas autostartu. '
+                          'Zmiana działa od razu, nie przez Zapisz.') if on else
+                        T('Turn reader-only mode on? Charon will then start its Continue target at once and silently, with '
+                          'the screen reader; Space during the start still opens the menu. This is applied at once, not with Save.',
+                          'Włączyć tryb „tylko czytnik”? Charon będzie od razu i po cichu uruchamiał cel Kontynuuj, z czytnikiem '
+                          'ekranu; spacja podczas startu nadal otwiera menu. Zmiana działa od razu, nie przez Zapisz.'))
+            if confirm(question):
+                try:
+                    state = set_reader_only(hak, not on)
+                    out(T('Reader only: %s', 'Tylko czytnik: %s') % on_off(state))
+                except (IOError, OSError) as error:
+                    out(T('Could not change the marker: %s' % error, 'Nie udało się zmienić znacznika: %s' % error))
+            else:
+                out(T('Not changed.', 'Bez zmian.'))
+        elif action == 'defaults':
+            if confirm(T('Restore all settings to Charon\'s defaults? They are written only when you choose Save.',
+                         'Przywrócić wszystkim ustawieniom wartości domyślne Charona? Zostaną zapisane dopiero po wybraniu Zapisz.')):
+                values.clear()
+                values.update(store.default_values())
+                out(T('Defaults restored; not saved yet.', 'Przywrócono wartości domyślne; jeszcze niezapisane.'))
+            else:
+                out(T('Not changed.', 'Bez zmian.'))
+        elif action == 'info':
+            information(store, hak, esp, fw)
+        elif action == 'language':
+            POLISH = not POLISH
+            out(T('This program now speaks English.', 'Ten program mówi teraz po polsku.'))
+        elif action == 'save':
+            if not dirty and store.state == 'valid':
+                out(T('Nothing has changed; nothing to save.', 'Nic się nie zmieniło; nie ma czego zapisywać.'))
+            elif do_save(store, values):
+                values = store.working()
+                loaded = dict(values)
+        elif action == 'quit':
+            if dirty:
+                out(T('There are unsaved changes, 2 items.', 'Są niezapisane zmiany, 2 pozycje.'))
+                out('1. ' + T('Save and quit', 'Zapisz i zakończ'))
+                out('2. ' + T('Quit without saving', 'Zakończ bez zapisywania'))
+                answer = choose_number(2)
+                if not answer:
+                    continue
+                if answer == 1 and not do_save(store, values):
+                    continue
+            out(T('Goodbye.', 'Do widzenia.'))
+            return EXIT_OK
+
+
+# ---- non-interactive use ---------------------------------------------------
+def batch(args, store, hak, esp, fw):
+    printed_invalid = False
+    if args.repair:
+        if store.state == 'invalid':
+            if store.refused:
+                out(store.refused)
+                return EXIT_REFUSED
+            result = store.repair()
+            if result is None:
+                for line in invalid_lines(store):
+                    out(line)
+                out(T('This record cannot be repaired automatically.', 'Tego zapisu nie da się naprawić automatycznie.'))
+                return EXIT_INVALID
+            bad, replaced, slot, sequence = result
+            out(T('Repaired: %s; members reset: %s; written to %s with sequence %d.',
+                  'Naprawiono: %s; przywrócone pola: %s; zapisano do %s z numerem kolejnym %d.')
+                % (', '.join(T('byte %d was %d', 'bajt %d miał wartość %d') % pair for pair in bad),
+                   ', '.join(replaced) or '-', SLOT_FILES[slot], sequence))
+        else:
+            out(T('Nothing to repair.', 'Nie ma czego naprawiać.'))
+    if args.defaults or args.set:
+        if store.refused:                             # a newer format: never written, whatever else is wrong
+            out(store.refused)
+            return EXIT_REFUSED
+        if store.state == 'invalid':
+            for line in invalid_lines(store):
+                out(line)
+            return EXIT_INVALID
+        values = store.default_values() if args.defaults else store.working()
+        for item in args.set or []:
+            error = assignment(values, item, store)
+            if error:
+                out(error)
+                return EXIT_VALUE
+        if store.state == 'none' and not store.scanned and not store.forced:
+            out(T('Notice: ', 'Uwaga: ') + store.target_why + '.')
+        store.save(values)
+    if args.reader_only:
+        state = set_reader_only(hak, args.reader_only == 'on')
+        out('reader-only=%s' % ('on' if state else 'off'))
+    if args.addon:
+        if not fw.available():
+            out(fw.why_not())
+            return EXIT_NO_FIRMWARE
+        if args.addon != 'status':
+            code = addon_change(fw, hak, esp, args.addon == 'on')
+            if code:
+                return code
+        number = find_voice(fw)
+        out('addon=off' if number is None else 'addon=on Driver%04X' % number)
+    if args.synths:
+        for info in scan_synths(hak):
+            out('key=%d file=%s voices=%d name=%s' % (info['key'], info['manifest'], len(info['voices']), info['name']))
+    if args.show or args.defaults or args.set or args.repair:
+        if store.state == 'invalid':
+            if not printed_invalid:
+                for line in invalid_lines(store):
+                    out(line)
+            return EXIT_INVALID
+        for line in show_lines(store):
+            out(line)
+    return EXIT_OK
+
+
+def environment_polish():
+    for name in ('LC_ALL', 'LC_MESSAGES', 'LANG'):
+        if os.environ.get(name, '').lower().startswith('pl'):
+            return True
+    return False
+
+
+def become_root(args):
+    geteuid = getattr(os, 'geteuid', None)
+    if geteuid is None or geteuid() == 0:
+        return
+    if args.esp and (args.no_firmware or args.firmware_dir):
+        return
+    read_only = (args.show or args.synths) and not (args.set or args.defaults or args.repair or args.reader_only or args.addon)
+    if args.esp and read_only:                        # reading a given folder needs no administrator
+        return
+    out(T('The EFI partition and the firmware variables can be changed only by the administrator, so this program '
+          'starts itself again through sudo.',
+          'Partycję EFI i zmienne firmware może zmieniać tylko administrator, więc ten program uruchomi się ponownie przez sudo.'))
+    script = os.path.abspath(sys.argv[0])
+    for tool in ('sudo', 'pkexec'):
+        if which(tool):
+            try:
+                os.execvp(tool, [tool, sys.executable, script] + sys.argv[1:])
+            except OSError:
+                pass
+    out(T('Neither sudo nor pkexec was found. Run as root: %s %s' % (sys.executable, script),
+          'Nie znaleziono sudo ani pkexec. Uruchom jako root: %s %s' % (sys.executable, script)))
+    sys.exit(EXIT_ERROR)
+
+
+def main(argv):
+    global POLISH, ASSUME_YES
+    parser = argparse.ArgumentParser(prog=PROGRAM, description='Charon screen reader settings / Ustawienia czytnika ekranu Charon')
+    parser.add_argument('--esp', metavar='DIR', help='folder of the EFI system partition (or a folder standing in for it)')
+    parser.add_argument('--no-firmware', action='store_true', help='never touch firmware variables')
+    parser.add_argument('--firmware-dir', metavar='DIR', help='test stand-in for the firmware variables (efivarfs file format)')
+    parser.add_argument('--lang', choices=['en', 'pl'], help='language of this program')
+    parser.add_argument('--show', action='store_true', help='print the settings record as member=value lines')
+    parser.add_argument('--set', action='append', metavar='NAME=VALUE', help='change one setting and save (repeatable)')
+    parser.add_argument('--synths', action='store_true', help='list the synthesizer add-ons found on the partition')
+    parser.add_argument('--defaults', action='store_true', help='restore the defaults and save')
+    parser.add_argument('--repair', action='store_true', help='repair a record Charon does not accept')
+    parser.add_argument('--format', metavar='X', help='record format to write when it cannot be detected (1-9, A, B, C)')
+    parser.add_argument('--reader-only', choices=['on', 'off'], help='create or remove the reader-only marker')
+    parser.add_argument('--addon', choices=['on', 'off', 'status'], help='the reader add-on (driver option "Charon voice")')
+    parser.add_argument('--yes', action='store_true', help='answer yes to confirmations')
+    parser.add_argument('--version', action='store_true')
+    args = parser.parse_args(argv)
+    if args.version:
+        print('%s %s (settings formats 1-%s)' % (PROGRAM, RELEASE, NEWEST))
+        return EXIT_OK
+    ASSUME_YES = args.yes
+    POLISH = args.lang == 'pl' or (args.lang is None and environment_polish())
+    if args.format:
+        args.format = args.format.upper()
+        if args.format not in VERSIONS:
+            out(T('--format takes one of: %s' % ' '.join(VERSIONS), '--format przyjmuje jedno z: %s' % ' '.join(VERSIONS)))
+            return EXIT_VALUE
+    become_root(args)
+    esp = find_esp(args.esp)
+    if esp is None:
+        out(T('The EFI system partition was not found (looked at /boot/efi, /efi, /boot and mounted FAT volumes). '
+              'Mount it or give its folder with --esp.',
+              'Nie znaleziono partycji systemowej EFI (sprawdzono /boot/efi, /efi, /boot i zamontowane woluminy FAT). '
+              'Zamontuj ją albo podaj jej folder opcją --esp.'))
+        return EXIT_NO_ESP
+    hak = ci_path(esp, 'EFI', 'HAK')
+    if not os.path.isdir(hak):
+        out(T('Charon is not installed on this partition: there is no EFI/HAK folder in %s.' % esp,
+              'Charon nie jest zainstalowany na tej partycji: w %s nie ma folderu EFI/HAK.' % esp))
+        return EXIT_NO_ESP
+    store = Store(hak, args.format)
+    if args.lang is None and not POLISH:
+        language = first_line(ci_path(hak, 'audio-language')) or ''
+        POLISH = language.lower().startswith('pl') or (store.state == 'valid' and store.values['language'] == 2)
+        if POLISH:
+            store.load()                              # texts kept in the store follow the language
+    if args.firmware_dir:
+        fw = Firmware('dir', args.firmware_dir)
+    elif args.no_firmware:
+        fw = Firmware('none')
+    else:
+        fw = Firmware('real')
+    try:
+        if args.show or args.synths or args.set or args.defaults or args.repair or args.reader_only or args.addon:
+            return batch(args, store, hak, esp, fw)
+        return interactive(store, hak, esp, fw)
+    except Fail as failure:
+        out(failure.message)
+        return failure.code
+    except EndOfInput:
+        out(T('End of input: quitting without saving.', 'Koniec danych wejściowych: kończę bez zapisywania.'))
+        return EXIT_OK
+    except KeyboardInterrupt:
+        out(T('Interrupted: quitting without saving.', 'Przerwano: kończę bez zapisywania.'))
+        return EXIT_OK
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

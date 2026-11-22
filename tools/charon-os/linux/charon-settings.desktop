@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Charon screen reader settings
+Name[pl]=Ustawienia czytnika ekranu Charon
+GenericName=Pre-boot screen reader settings
+GenericName[pl]=Ustawienia czytnika ekranu przed startem systemu
+Comment=Change the voice, reading and menu settings of the Charon pre-boot screen reader (text menu in a terminal)
+Comment[pl]=Zmień ustawienia głosu, czytania i menu czytnika ekranu Charon działającego przed startem systemu (menu tekstowe w terminalu)
+Exec=charon-settings
+Terminal=true
+Icon=preferences-desktop-accessibility
+Categories=Settings;System;Accessibility;
+Keywords=Charon;UEFI;boot;screen reader;speech;accessibility;
+Keywords[pl]=Charon;UEFI;rozruch;czytnik ekranu;mowa;dostępność;

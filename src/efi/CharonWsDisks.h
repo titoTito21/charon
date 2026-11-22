@@ -37,7 +37,7 @@ inline const char16_t* KindName(uint8_t kind) {
     switch(kind) {
         case 1:return T(u"partycja systemowa EFI",u"EFI system partition");case 2:return T(u"dane Windows",u"Windows data");
         case 3:return T(u"Linux",u"Linux");case 4:return T(u"pamięć wymiany Linuksa",u"Linux swap");
-        case 5:return T(u"zastrzeżona Microsoft",u"Microsoft reserved");case 6:return T(u"odzyskiwanie Windows",u"Windows recovery");
+        case 5:return T(u"zastrzeżona przez Microsoft",u"Microsoft reserved");case 6:return T(u"odzyskiwanie Windows",u"Windows recovery");
         default:return T(u"inna",u"other");
     }
 }
@@ -111,7 +111,7 @@ inline void DiskLabel(const Disk& d,size_t index,char16_t* out,size_t cap) {
     Set(out,cap,T(u"Dysk ",u"Disk "));CatN(out,cap,index+1);Cat(out,cap,u", ");systools::PutSize(out,cap,Bytes(d),Pl());
     Cat(out,cap,d.usb?u", USB":d.nvme?u", NVMe":T(u", wewnętrzny",u", internal"));
     if(d.removable)Cat(out,cap,T(u", wymienny",u", removable"));
-    if(d.readOnly)Cat(out,cap,T(u", tylko do odczytu",u", read only"));
+    if(d.readOnly)Cat(out,cap,T(u", tylko do odczytu",u", read-only"));
     if(d.hasCharon)Cat(out,cap,T(u", z niego działa Charon",u", Charon runs from it"));
     if(d.blank)Cat(out,cap,T(u", pusty, bez partycji",u", empty, no partitions"));
     else if(!d.gpt)Cat(out,cap,T(u", bez tablicy GPT",u", no GPT table"));
@@ -120,8 +120,8 @@ inline void DiskLabel(const Disk& d,size_t index,char16_t* out,size_t cap) {
         // What lives there, so the user knows what would be lost.
         bool windows=false,linuxSystem=false;
         for(size_t i=0;i<d.partCount;++i) {if(d.parts[i].kind==2 || d.parts[i].kind==5)windows=true;if(d.parts[i].kind==3)linuxSystem=true;}
-        if(windows)Cat(out,cap,T(u", jest Windows lub dane Windows",u", holds Windows or Windows data"));
-        if(linuxSystem)Cat(out,cap,T(u", jest Linux",u", holds Linux"));
+        if(windows)Cat(out,cap,T(u", zawiera Windows lub dane Windows",u", contains Windows or Windows data"));
+        if(linuxSystem)Cat(out,cap,T(u", zawiera Linuksa",u", contains Linux"));
         if(d.freeBlocks*d.blockSize>=(uint64_t(1)<<30)) {Cat(out,cap,T(u", wolne miejsce ",u", free space "));systools::PutSize(out,cap,d.freeBlocks*d.blockSize,Pl());}
     }
 }

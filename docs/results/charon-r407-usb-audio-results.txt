@@ -1,0 +1,203 @@
+Charon r407: USB sound devices (CharonUsbAudio.h, CharonUsbAudioModel.h, CharonUsbAudioQuirks.h)
+Recorded 2026-11-22. What is supported and why: src/efi/USB-AUDIO.txt (section 8 is the summary of this file).
+
+Nothing here ran on physical hardware. QEMU q35 + OVMF, TCG (CHARON_ACCEL=tcg), QMP port 4496, qemu-xhci with
+usb-kbd and usb-audio (USB Audio Class 1.0, full speed, vendor 46f4 product 0002) on the same controller, sound
+through DirectSound on the host and recorded with the monitor's wavcapture. CHARON.EFI only; CHARONVOICE.EFI was built.
+
+HOST TESTS
+  clang++ -std=c++17 -Wall -Wextra -fuse-ld=lld -I <build>/include tests/CharonUsbAudioTests.cpp
+  Result: PASS CharonUsbAudioTests (r405 tests kept; new: UAC 2.0 asynchronous headset, UAC 1.0 asynchronous,
+  8-bit and float, BADD, full UAC 3.0 on SuperSpeed, descriptor corruption, feedback values and pacing, packet
+  cap, encodings, burst counts, feedback ring, quirk lookup).
+
+BUILDS (tools/build-charon-windows.py NEW_DIR --trace [--driver]; all PASS)
+  work/charon-win-r407usb1, work/charon-win-r407usb1-drv   run 1
+  work/charon-win-r407usb2, work/charon-win-r407usb2-drv   runs 2 and 3
+  work/charon-win-r407usb3, work/charon-win-r407usb3-drv   run 4 (final sources)
+
+TRACE FIELDS
+  identify  status | slot<<8 | speed<<16 (1 full, 3 high, 4 Super)      device   product | vendor<<16 | quirks<<32
+  format    rate | channels<<32 | bytes per sample<<40 | class<<48 | alternate<<56
+  endpoint  address | attributes<<8 | wMaxPacketSize<<16 | microframes<<32 | feedback endpoint<<40 | encoding<<48 | interface<<56
+  output    best output terminal type | output terminals<<16 | feature units<<24 | selector units<<32
+  volume    set value | minimum<<16 | maximum<<32 | channel<<48 (1/256 dB)     attach   status | interrupter<<8 | completion code<<16
+  plays on  product | vendor<<16 | output rank<<32 | place in the set<<40
+
+RUN 1 (usb1 build; CHARON_SOUNDCARD=none CHARON_USBAUDIO=1 CHARON_USBKBD=1): USB device is the only sound device
+  Recorded: 65 seconds with sound (rms above 50) of 208, peak 18203.
+  "help" and "ver" typed on the USB keyboard ran in the firmware shell during the stream and after the unplug.
+  device_del: vanished, stopped; 12 reopen tries, then one not-found line in 8 s. device_add: found again, sound again.
+  After the tries were used up the voice returned about 8 s after the first key (fixed in the usb2 build).
+  Trace (USB lines, in order):
+    CHARON audio open=800000000000000e
+    CHARON audio driver base=000000001c39a000
+    CHARON audio driver started=0000000000000000
+    CHARON audio firmware hda disconnected=0000000000000000
+    CHARON audio connected=00000000000000bf
+    CHARON audio driver=0000000000000000
+    CHARON usb audio identify=0000000000010200
+    CHARON usb audio device=0000000046f40002
+    CHARON usb audio format=010102020000bb80
+    CHARON usb audio endpoint=0100000800c00d01
+    CHARON usb audio output=0000000001010301
+    CHARON usb audio volume=0001080080010000
+    CHARON usb audio volume=0002080080010000
+    CHARON usb audio attach=0000000000010f00
+    CHARON usb audio first events=0000000000000002
+    CHARON usb audio start=0000000000000000
+    CHARON usb audio plays on=0000000146f40002
+    CHARON usb audio primary=0000000000000000
+    CHARON audio open2=0000000000000000
+    CHARON usb audio pacing device=000046f400020100
+    CHARON usb audio events=00000000000029ae
+    CHARON usb audio errors=0000000000000000
+    CHARON usb audio alt0=0000000000000000
+    CHARON usb audio stopped=0000000000000000
+    CHARON usb audio identify=0000000000010200
+    CHARON usb audio device=0000000046f40002
+    CHARON usb audio format=010102020000bb80
+    CHARON usb audio endpoint=0100000800c00d01
+    CHARON usb audio output=0000000001010301
+    CHARON usb audio volume=0001080080010000
+    CHARON usb audio volume=0002080080010000
+    CHARON usb audio attach=0000000000010f00
+    CHARON usb audio first events=0000000000000001
+    CHARON usb audio start=0000000000000000
+    CHARON usb audio plays on=0000000146f40002
+    CHARON usb audio primary=0000000000000000
+    CHARON usb audio pacing device=000046f400020100
+    CHARON usb audio events=0000000000016c6d
+    CHARON usb audio errors=0000000000000000
+    CHARON usb audio stopped=0000000000000000
+    CHARON usb audio identify=0000000000010200
+    CHARON usb audio device=0000000046f40002
+    CHARON usb audio format=010102020000bb80
+    CHARON usb audio endpoint=0100000800c00d01
+    CHARON usb audio output=0000000001010301
+    CHARON usb audio volume=0001080080010000
+    CHARON usb audio volume=0002080080010000
+    CHARON usb audio attach=0000000000010f00
+    CHARON usb audio first events=0000000000000004
+    CHARON usb audio start=0000000000000000
+    CHARON usb audio plays on=0000000146f40002
+    CHARON usb audio primary=0000000000000000
+    CHARON audio reopened=0000000000000001
+    CHARON usb audio pacing device=000046f400020100
+    CHARON usb audio events=000000000000731d
+    CHARON usb audio errors=0000000000000000
+    CHARON usb audio stopped=0000000000000000
+    CHARON usb audio identify=0000000000010200
+    CHARON usb audio device=0000000046f40002
+    CHARON usb audio format=010102020000bb80
+    (72 lines left out: not-found retries, "audio vanished" ticks, "first PCM")
+
+RUN 2 (usb2 build, same machine): unplug released after 3.1 s; 12 tries; one not-found line in the next 10 s;
+  plug-in: keys 4.0 s later, playing 1.6 s after the first key, no failed attempt in between; sound recorded again.
+
+RUN 3 (usb2 build; built-in HD Audio through AudioDxe, CHARON_USBKBD=1, USB sound device plugged in later)
+  Plugged in while HD Audio played: started as the copy at the first utterance. Pulled out: released; the built-in
+  card went on (no fault, no reopen). 51 seconds with sound, peak 21453 (both devices share the recorded output).
+  Trace:
+    CHARON audio open=800000000000000e
+    CHARON audio driver base=000000001c39c000
+    CHARON audio driver started=0000000000000000
+    CHARON audio firmware hda disconnected=0000000000000000
+    CHARON audio connected=00000000000000be
+    CHARON audio driver=0000000000000000
+    CHARON audio outputs=0000000000000000
+    CHARON audio ports=0000000000000001
+    CHARON audio setup mask=0000000000000001
+    CHARON audio setup=0000000000000000
+    CHARON audio begin=0000000000000000
+    CHARON audio open2=0000000000000000
+    CHARON audio outputs=0000000000000000
+    CHARON audio ports=0000000000000001
+    CHARON audio setup mask=0000000000000001
+    CHARON audio setup=0000000000000000
+    CHARON audio begin=0000000000000000
+    CHARON usb audio identify=0000000000010200
+    CHARON usb audio device=0000000046f40002
+    CHARON usb audio format=010102020000bb80
+    CHARON usb audio endpoint=0100000800c00d01
+    CHARON usb audio output=0000000001010301
+    CHARON usb audio volume=0001080080010000
+    CHARON usb audio volume=0002080080010000
+    CHARON usb audio attach=0000000000010f00
+    CHARON usb audio first events=0000000000000003
+    CHARON usb audio start=0000000000000000
+    CHARON usb audio plays on=0000000146f40002
+    CHARON usb audio pacing device=000046f400020100
+    CHARON usb audio unplugged=0000000046f40002
+    CHARON usb audio events=000000000000297c
+    CHARON usb audio errors=0000000000000000
+    CHARON usb audio stopped=0000000000000000
+    
+    (14 lines left out: not-found retries, "audio vanished" ticks, "first PCM")
+
+RUN 4 (usb3 build = final sources; machine of run 1)
+  40 seconds with sound of 47 recorded, peak 17424; stream errors 0.
+  Unplug: released 3.1 s later; 12 tries; one not-found line in the next 10 s.
+  Plug-in: playing 1.6 s after the first key (5.6 s after plug-in), no failed attempt in between.
+  Trace:
+    CHARON audio open=800000000000000e
+    CHARON audio driver base=000000001c39a000
+    CHARON audio driver started=0000000000000000
+    CHARON audio firmware hda disconnected=0000000000000000
+    CHARON audio connected=00000000000000bf
+    CHARON audio driver=0000000000000000
+    CHARON usb audio identify=0000000000010200
+    CHARON usb audio device=0000000046f40002
+    CHARON usb audio format=010102020000bb80
+    CHARON usb audio endpoint=0100000800c00d01
+    CHARON usb audio output=0000000001010301
+    CHARON usb audio volume=0001080080010000
+    CHARON usb audio volume=0002080080010000
+    CHARON usb audio attach=0000000000010f00
+    CHARON usb audio first events=0000000000000001
+    CHARON usb audio start=0000000000000000
+    CHARON usb audio plays on=0000000146f40002
+    CHARON usb audio primary=0000000000000000
+    CHARON audio open2=0000000000000000
+    CHARON usb audio pacing device=000046f400020100
+    CHARON usb audio events=0000000000002982
+    CHARON usb audio errors=0000000000000000
+    CHARON usb audio alt0=0000000000000000
+    CHARON usb audio stopped=0000000000000000
+    CHARON usb audio identify=0000000000010200
+    CHARON usb audio device=0000000046f40002
+    CHARON usb audio format=010102020000bb80
+    CHARON usb audio endpoint=0100000800c00d01
+    CHARON usb audio output=0000000001010301
+    CHARON usb audio volume=0001080080010000
+    CHARON usb audio volume=0002080080010000
+    CHARON usb audio attach=0000000000010f00
+    CHARON usb audio first events=0000000000000002
+    CHARON usb audio start=0000000000000000
+    CHARON usb audio plays on=0000000146f40002
+    CHARON usb audio primary=0000000000000000
+    CHARON usb audio pacing device=000046f400020100
+    CHARON usb audio events=000000000000632b
+    CHARON usb audio errors=0000000000000000
+    CHARON usb audio stopped=0000000000000000
+    CHARON usb audio identify=0000000000010200
+    CHARON usb audio device=0000000046f40002
+    CHARON usb audio format=010102020000bb80
+    CHARON usb audio endpoint=0100000800c00d01
+    CHARON usb audio output=0000000001010301
+    CHARON usb audio volume=0001080080010000
+    CHARON usb audio volume=0002080080010000
+    CHARON usb audio attach=0000000000010f00
+    CHARON usb audio first events=0000000000000001
+    CHARON usb audio start=0000000000000000
+    CHARON usb audio plays on=0000000146f40002
+    CHARON usb audio primary=0000000000000000
+    CHARON audio reopened=0000000000000001
+    CHARON usb audio pacing device=000046f400020100
+    
+    (63 lines left out: not-found retries, "audio vanished" ticks, "first PCM")
+
+NOT EXERCISED: USB Audio Class 2.0 and 3.0, high speed and SuperSpeed, hubs and docks, feedback endpoints and
+feedback pacing on a controller, 8-bit and float devices, other rates than 48 kHz, several USB sound devices at
+once, selector units, quirk pauses, the ExitBootServices path, CHARONVOICE.EFI with USB audio, any firmware but
+OVMF, any physical controller or device.

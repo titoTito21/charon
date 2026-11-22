@@ -7,7 +7,7 @@ a fresh temporary directory as drive C: (and a second one as D:), so effects
 on files are checked on the real host file system, not only in the output.
 The real-mode programs are assembled here by hand (bytes with label fix-ups);
 no assembler is needed."""
-import shutil, struct, subprocess, sys, tempfile
+import binascii, shutil, struct, subprocess, sys, tempfile
 from pathlib import Path
 
 exe = Path(sys.argv[1]).resolve()
@@ -386,16 +386,47 @@ PROGRAMS = {'HELLO.COM': HELLO, 'FILEIO.COM': FILEIO, 'SEEK.COM': SEEK, 'CPU.COM
             'TIMER.COM': TIMER, 'TSR.COM': TSR, 'CALLTSR.COM': CALLTSR, 'DIRS.COM': DIRS, 'ILLEGAL.COM': ILLEGAL, 'DIVZERO.COM': DIVZERO, 'HELLOEXE.EXE': mz_exe()}
 
 
+# ---- Charon's CharSettings record (mirror of src/efi/CharSettings.h, V12) -------
+SETTINGS_DEFAULTS = dict(language=0, wrap=0, sounds=1, explicit=0, startMelody=1, bgMelody=0,
+    rate=10, speechVol=10, fxVol=10, verbosity=1, remember=0, autoSec=10, progress=1, welcome=7,
+    pitch=10, readerRate=10, readerPitch=10, readerVol=10, detail=7, timers=2, msgRate=14,
+    msgPitch=10, punct=1, capitals=1, screenLang=0, readerFlags=47, formatFlags=60,
+    readerExtra=25, synthKey=0, synthVoice=0)   # readerExtra<=127: DecodeSettings range
+
+
+def settings_record(seq, **over):
+    f = dict(SETTINGS_DEFAULTS); f.update(over)
+    b = bytearray(48)
+    b[0:8] = b'CHARS00C'
+    b[8:16] = struct.pack('<Q', seq)
+    b[16] = f['language']; b[17] = f['wrap']; b[18] = f['sounds']; b[19] = f['explicit']
+    b[20] = f['startMelody']; b[21] = f['bgMelody']; b[22] = f['rate']
+    b[23] = f['speechVol']; b[24] = f['fxVol']; b[25] = f['verbosity'] | (f['progress'] << 2)
+    b[26] = (f['remember'] & 1) | (f['welcome'] << 1); b[27] = f['autoSec']
+    b[28] = f['pitch']; b[29] = f['readerRate']; b[30] = f['readerPitch']; b[31] = f['readerVol']
+    b[32] = f['detail']; b[33] = f['timers']; b[34] = f['msgRate']; b[35] = f['msgPitch']
+    b[36] = f['punct']; b[37] = f['capitals']; b[38] = f['screenLang']; b[39] = f['readerFlags']
+    b[40] = f['formatFlags']; b[41] = f['readerExtra']; b[42] = f['synthKey']; b[43] = f['synthVoice']
+    b[44:48] = struct.pack('<I', binascii.crc32(bytes(b[0:44])) & 0xffffffff)
+    return bytes(b)
+
+
+def settings_seq(data): return struct.unpack('<Q', data[8:16])[0]
+def settings_byte(data, i): return data[i]
+
+
 # ---- harness --------------------------------------------------------------------
 class Box:
     def __init__(self):
         self.top = Path(tempfile.mkdtemp(prefix='charondos-'))
-        self.c = self.top / 'c'; self.d = self.top / 'd'
-        self.c.mkdir(); self.d.mkdir()
+        self.c = self.top / 'c'; self.d = self.top / 'd'; self.hak = self.top / 'hak'
+        self.c.mkdir(); self.d.mkdir(); self.hak.mkdir()
         for name, data in PROGRAMS.items(): (self.c / name).write_bytes(data)
 
+    def seed_settings(self, seq=1, **over): (self.hak / 'charon-settings-a.bin').write_bytes(settings_record(seq, **over))
+
     def run(self, command=None, keys=None, extra=()):
-        argv = [str(exe), '--root', f'C={self.c}', '--root', f'D={self.d}', *extra]
+        argv = [str(exe), '--root', f'C={self.c}', '--root', f'D={self.d}', '--hak', str(self.hak), *extra]
         if command is not None: argv += ['-c', command]
         if keys is not None: argv += ['--keys', keys]
         r = subprocess.run(argv, capture_output=True, timeout=30)
@@ -687,6 +718,103 @@ def shell_autoexec_mem_help(b):
 def shell_ctrl_c_stops_waiting_program(b):
     code, out = b.run(keys='KEY{ENTER}{CTRLC}ECHO back{ENTER}EXIT{ENTER}')
     assert '^C' in out and 'back' in lines_of(out), out
+
+
+# ---- CHARON: controlling Charon's reader and boot manager -----------------------
+@case
+def charon_status_and_help(b):
+    b.seed_settings(seq=1, readerRate=12, punct=2, sounds=0)
+    code, out = b.run('CHARON')
+    assert code == 0, (code, out)
+    assert 'Charon' in out, out
+    assert 'Reader rate 60%' in out, out                 # readerRate 12 tenths -> 60%
+    assert 'Punctuation most' in out, out
+    assert 'sounds off' in out, out
+    assert 'Secure Boot:' in out and 'Continue target:' in out, out
+    assert 'CHARON RATE' in out, out                      # the sub-command list
+    code, out = b.run('CHARON HELP')
+    assert 'CHARON BOOT' in out and 'CHARON SAY' in out, out
+
+@case
+def charon_rate_persists_both_slots(b):
+    b.seed_settings(seq=1)
+    code, out = b.run('CHARON RATE 60')
+    assert code == 0 and 'Reader rate 60 %' in out, (code, out)
+    assert 'next start of Charon' in out, out             # deferred-until-restart note
+    a = (b.hak / 'charon-settings-a.bin').read_bytes()
+    bb = (b.hak / 'charon-settings-b.bin').read_bytes()
+    assert settings_seq(a) == 3 and settings_seq(bb) == 2, (settings_seq(a), settings_seq(bb))
+    assert settings_byte(a, 29) == 12, settings_byte(a, 29)   # readerRate = 12 tenths
+    # both slots verify as a valid CHARS00C record (CRC check)
+    for rec in (a, bb):
+        assert rec[:8] == b'CHARS00C'
+        assert struct.unpack('<I', rec[44:48])[0] == (binascii.crc32(rec[0:44]) & 0xffffffff)
+
+@case
+def charon_rate_report_only(b):
+    b.seed_settings(seq=1, readerRate=20)
+    code, out = b.run('CHARON RATE')
+    assert 'Reader rate 100%' in out, out
+    assert settings_seq((b.hak / 'charon-settings-a.bin').read_bytes()) == 1, 'report must not write'
+
+@case
+def charon_refuses_newer_format(b):
+    (b.hak / 'charon-settings-a.bin').write_bytes(b'CHARS00D' + bytes(40))   # version newer than understood
+    code, out = b.run('CHARON RATE 70')
+    assert 'newer format' in out and code == 1, out
+    assert (b.hak / 'charon-settings-a.bin').read_bytes()[:8] == b'CHARS00D', 'must not overwrite'
+
+@case
+def charon_punct_lang_sounds(b):
+    b.seed_settings(seq=1)
+    code, out = b.run('CHARON PUNCT all')
+    assert 'Punctuation all' in out, out
+    assert settings_byte((b.hak / 'charon-settings-a.bin').read_bytes(), 36) == 3
+    code, out = b.run('CHARON LANG pl')
+    assert 'polski' in out or 'Polish' in out, out
+    assert settings_byte((b.hak / 'charon-settings-a.bin').read_bytes(), 16) == 2
+
+@case
+def charon_say_speaks(b):
+    b.seed_settings()
+    code, out = b.run('CHARON SAY hello there')
+    assert code == 0 and 'hello there' in out, out
+
+@case
+def charon_boot_list_shows_position(b):
+    code, out = b.run('CHARON BOOT')
+    assert 'CharonDOS' in out and 'Charon' in out and 'Windows Boot Manager' in out, out
+    assert 'boot manager' in out, out                     # Charon's position is marked
+
+@case
+def charon_continue_writes_target(b):
+    code, out = b.run('CHARON CONTINUE 3')
+    assert code == 0 and 'Continue target set to Windows Boot Manager' in out, out
+    assert (b.hak / 'continue-set').exists() and (b.hak / 'continue.bin').exists(), out
+    assert (b.hak / 'continue.bin').read_bytes()[:8] == b'HAKCONT1'
+
+@case
+def charon_restart_asks_confirmation(b):
+    code, out = b.run(keys='CHARON RESTART{ENTER}T{ENTER}')
+    assert 'Restart the computer?' in out and 'Restarting.' in out, out
+    code, out = b.run(keys='CHARON OFF{ENTER}n{ENTER}')
+    assert 'Cancelled' in out, out
+
+@case
+def charon_firmware_confirmation(b):
+    code, out = b.run(keys='CHARON FIRMWARE{ENTER}T{ENTER}')
+    assert 'firmware setup' in out, out
+
+@case
+def charon_voice_lists_and_sets(b):
+    b.seed_settings(seq=1)
+    (b.hak / 'synths').mkdir()
+    (b.hak / 'synths' / 'eloquence.manifest').write_bytes(b'name=Eloquence\nmodule=elq.efi\nvoice=en|English|en\n')
+    code, out = b.run('CHARON VOICE')
+    assert 'eloquence.manifest' in out and 'TVox' in out, out
+    code, out = b.run('CHARON VOICE eloquence')
+    assert code == 0, (code, out)
+    assert settings_byte((b.hak / 'charon-settings-a.bin').read_bytes(), 42) != 0, 'synth key stored'
 
 
 if only: cases = [f for f in cases if any(part in f.__name__ for part in only)]

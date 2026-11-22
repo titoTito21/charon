@@ -50,7 +50,7 @@ inline bool Install(const doscatalog::Program& p,efi_handle volume,const char16_
     {   // the very file that was tested
         Sha256 hash;hash.Update(d.archive.data,d.archive.size);uint8_t got[32];hash.Final(got);static const char hex[]="0123456789abcdef";
         bool same=true;for(int i=0;i<32 && same;++i)same=p.sha256[i*2]==hex[got[i]>>4] && p.sha256[i*2+1]==hex[got[i]&15];
-        if(!same) {Free(d.archive);Fail(T(u"Plik na serwerze jest inny niż ten, który sprawdzono w CharonDOS. Nie zainstalowano.",u"The file on the server differs from the one tested in CharonDOS. Not installed."));return false;}
+        if(!same) {Free(d.archive);Fail(T(u"Plik na serwerze jest inny niż ten, który sprawdzono w CharonDOS. Nie zainstalowano go.",u"The file on the server differs from the one tested in CharonDOS. It was not installed."));return false;}
     }
     static uint8_t scratch[65536+64];static uint8_t directory[8192];static uint8_t input[65536];static uint8_t window[32768];static inflate::Decoder decoder;
     zip::Source source{nullptr,Read};zip::Archive archive{};
@@ -59,9 +59,9 @@ inline bool Install(const doscatalog::Program& p,efi_handle volume,const char16_
         for(const doscatalog::File* f=p.files;ok && f->zipPath;++f) {
             zip::Cursor cursor{};zip::Begin(cursor,archive,directory,sizeof(directory));zip::Entry entry{};bool found=false;
             while(zip::Next(cursor,entry)==zip::Error::None)if(zip::NameEquals(entry,f->zipPath)) {found=true;break;}
-            if(!found || entry.uncompressedSize>(uint64_t(8)<<20)) {ok=false;why=T(u"W archiwum brakuje pliku z katalogu.",u"A file of the catalog is missing from the archive.");break;}
+            if(!found || entry.uncompressedSize>(uint64_t(8)<<20)) {ok=false;why=T(u"W archiwum brakuje pliku wymienionego w katalogu programów.",u"A file listed in the program catalogue is missing from the archive.");break;}
             static Memory file;file.reserved=false;file.extra=0;
-            if(!Reserve(file,size_t(entry.uncompressedSize)+16)) {ok=false;why=T(u"Brak pamięci.",u"Out of memory.");break;}
+            if(!Reserve(file,size_t(entry.uncompressedSize)+16)) {ok=false;why=T(u"Za mało pamięci RAM.",u"Not enough RAM.");break;}
             d.out=file.data;d.outSize=0;d.outCap=size_t(entry.uncompressedSize);d.overflow=false;
             zip::ExtractWork work{};work.input=input;work.inputBytes=sizeof(input);work.decoder=&decoder;work.window=window;work.windowBytes=sizeof(window);
             zip::Sink sink{nullptr,Take};
@@ -82,16 +82,16 @@ inline bool Install(const doscatalog::Program& p,efi_handle volume,const char16_
 // r403: the program groups; the installer of CharonDOS asks the same question.
 inline const ask::Choice* Groups(size_t& n) {
     static const ask::Choice groups[]={{u"wszystkie sprawdzone programy",u"all the tested programs",""},{u"edytory",u"editors","edit"},{u"pliki i foldery",u"files and folders","files"},
-        {u"przeglądanie tekstu i pomoc",u"text viewing and help","view"},{u"narzędzia",u"tools","tools"},{u"archiwa",u"archivers","archive"},{u"programowanie",u"development","devel"},{u"gry",u"games","games"},
+        {u"przeglądanie tekstu i pomoc",u"text viewing and help","view"},{u"narzędzia",u"tools","tools"},{u"archiwa i pakowanie",u"archives and compression","archive"},{u"programowanie",u"programming","devel"},{u"gry",u"games","games"},
         {u"bez programów",u"no programs","none"}};
     n=sizeof(groups)/sizeof(groups[0]);return groups;
 }
 inline bool AskGroup(size_t& group,bool allowNone) {
     size_t n=0;const ask::Choice* groups=Groups(n);if(!allowNone)--n;
     const size_t count=sizeof(doscatalog::kPrograms)/sizeof(doscatalog::kPrograms[0]);
-    static char16_t text[300];Set(text,300,T(u"CharonDOS pobierze darmowe programy DOS z oficjalnego repozytorium FreeDOS. W katalogu jest ",u"CharonDOS fetches free DOS programs from the official FreeDOS repository. The catalog holds "));
-    CatN(text,300,count);Cat(text,300,T(u" programów sprawdzonych w CharonDOS.",u" programs tested in CharonDOS."));Say(text);install::HearOut(150);
-    group=0;return ask::Choose(T(u"Które programy pobrać?",u"Which programs to fetch?"),groups,n,group);
+    static char16_t text[300];Set(text,300,T(u"CharonDOS pobierze darmowe programy DOS z oficjalnego repozytorium FreeDOS. Liczba programów w katalogu, sprawdzonych w CharonDOS: ",u"CharonDOS downloads free DOS programs from the official FreeDOS repository. Number of programs in the catalogue, tested in CharonDOS: "));
+    CatN(text,300,count);Cat(text,300,T(u".",u"."));Say(text);install::HearOut(150);
+    group=0;return ask::Choose(T(u"Które programy pobrać?",u"Which programs should be downloaded?"),groups,n,group);
 }
 // Fetches group `group` into <package>\C on `volume` (network must be up).
 inline void Fetch(efi_handle volume,const char16_t* package,size_t group) {
@@ -109,13 +109,13 @@ inline void Fetch(efi_handle volume,const char16_t* package,size_t group) {
     }
     static char16_t summary[400];Set(summary,400,T(u"Zainstalowano programów: ",u"Programs installed: "));CatN(summary,400,done);
     if(failed) {Cat(summary,400,T(u", nie udało się: ",u", failed: "));CatN(summary,400,failed);}
-    Cat(summary,400,T(u". Są na dysku C CharonDOS w folderze APPS; każdy program uruchamiasz w jego folderze.",u". They are on CharonDOS drive C in the folder APPS; start each program in its own folder."));
+    Cat(summary,400,T(u". Są na dysku C CharonDOS w folderze APPS; każdy program uruchamiasz w jego folderze.",u". They are on drive C of CharonDOS in the folder APPS; start each program from its own folder."));
     Play(Icon::done);Say(summary);install::HearOut(300);
 }
 inline void Run() {
     efi_handle volume=nullptr;static char16_t package[pathUnits];
     if(!Package(volume,package,pathUnits)) {
-        Fail(T(u"Nie znalazłem pakietu CharonDOS na dysku, na którym da się pisać: folder EFI, HAK, packages, CharonDOS.",u"I did not find the CharonDOS package on a writable disk: the folder EFI, HAK, packages, CharonDOS."));install::HearOut(200);return;}
+        Fail(T(u"Nie znalazłem pakietu CharonDOS na dysku, na którym można zapisywać; powinien być w folderze EFI, HAK, packages, CharonDOS.",u"I did not find the CharonDOS package on a disk that can be written to; it should be in the folder EFI, HAK, packages, CharonDOS."));install::HearOut(200);return;}
     if(!install::EnsureNetwork()) {install::HearOut(200);return;}
     size_t group=0;if(!AskGroup(group,false))return;
     Fetch(volume,package,group);

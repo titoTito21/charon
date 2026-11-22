@@ -1,0 +1,1013 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Charon boot manager (Linux companion program of the Charon speaking UEFI boot
+# manager and pre-boot screen reader). GPL-2.0-or-later.
+#
+# Shows the firmware boot order with Charon's place in it, moves entries, puts
+# Charon first, second or out of the order (its files and its boot entry stay),
+# sets Charon's "Continue" target (\EFI\HAK\continue.bin, the entry Charon
+# starts by itself), starts Charon's menu at the next restart only (BootNext),
+# restarts into firmware setup (OsIndications) and shows the Secure Boot state.
+#
+# Python 3.6 or newer, standard library only. Plain line-oriented text
+# interface (numbered menus, one prompt per line, no curses, no cursor
+# addressing) for Speakup, Fenrir, Orca and braille displays in a terminal.
+#
+# Firmware variables are read from efivarfs and changed with efibootmgr, the
+# way Charon's installers do it. Every change is confirmed first and read back
+# afterwards. Options: --esp DIR, --firmware-dir DIR (test stand-in for the
+# firmware variables, efivarfs file format), --no-firmware, --lang en|pl,
+# --list, --move XXXX up|down, --charon first|second|remove|restore,
+# --continue XXXX, --bootnext-charon, --firmware-setup, --restart, --yes,
+# --version. Without them: the interactive menu.
+from __future__ import print_function
+
+import argparse
+import os
+import re
+import struct
+import subprocess
+import sys
+
+PROGRAM = 'charon-bootmanager'
+RELEASE = 'r408'
+EFI_GUID = '8be4df61-93ca-11d2-aa0d-00e098032b8c'
+CHARON_NAMES = ('Charon', 'Charon czytnik')            # the installers' boot entry descriptions
+CHARON_FILES = ('\\efi\\hak\\hakboot.efi', '\\efi\\hak\\shimx64.efi', '\\efi\\hak\\grubx64.efi')
+VOICE_NAME = 'Charon voice'
+CONTINUE_CAPACITY = 65555                               # ContinueTarget.h continueCapacity
+EXIT_OK, EXIT_ERROR, EXIT_NO_ESP, EXIT_VALUE, EXIT_NO_FIRMWARE = 0, 1, 2, 5, 7
+TPM_EN = ('Disk encryption bound to the TPM (systemd-cryptenroll or clevis with PCR 1 or 4) may ask for its recovery '
+          'passphrase after this change.')
+TPM_PL = ('Szyfrowanie dysku powiązane z TPM (systemd-cryptenroll albo clevis z PCR 1 lub 4) może po tej zmianie '
+          'zapytać o hasło odzyskiwania.')
+
+POLISH = False
+ASSUME_YES = False
+
+
+def T(en, pl):
+    return pl if POLISH else en
+
+
+def out(text=''):
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        encoding = sys.stdout.encoding or 'ascii'
+        print(text.encode(encoding, 'replace').decode(encoding))
+    sys.stdout.flush()
+
+
+class EndOfInput(Exception):
+    pass
+
+
+def ask(prompt):
+    out(prompt)
+    try:
+        return input().strip()
+    except EOFError:
+        raise EndOfInput()
+
+
+def confirm(question):
+    out(question)
+    if ASSUME_YES:
+        out(T('Confirmed by the --yes option.', 'Potwierdzone opcją --yes.'))
+        return True
+    try:
+        answer = ask(T('Type yes to confirm, anything else cancels:', 'Wpisz tak, aby potwierdzić, cokolwiek innego anuluje:'))
+    except EndOfInput:
+        return False
+    return answer.lower() in ('yes', 'y', 'tak', 't')
+
+
+def ci_path(base, *parts):
+    """Join, matching existing names without regard to case (FAT shows EFI or efi)."""
+    path = base
+    for part in parts:
+        exact = os.path.join(path, part)
+        if os.path.exists(exact):
+            path = exact
+            continue
+        match = None
+        try:
+            for name in os.listdir(path):
+                if name.lower() == part.lower():
+                    match = name
+                    break
+        except OSError:
+            pass
+        path = os.path.join(path, match if match else part)
+    return path
+
+
+def run(command):
+    try:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        stdout, stderr = process.communicate()
+        return process.returncode, stdout, stderr
+    except OSError as error:
+        return 127, '', str(error)
+
+
+def which(name):
+    for folder in os.environ.get('PATH', '').split(os.pathsep) + ['/usr/sbin', '/sbin', '/usr/bin', '/bin']:
+        candidate = os.path.join(folder, name)
+        if folder and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
+def sync_dir(path):
+    if os.name == 'nt':
+        return
+    try:
+        fd = os.open(path, os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    except OSError:
+        pass
+
+
+def u16(data, at):
+    return struct.unpack_from('<H', data, at)[0]
+
+
+def u32(data, at):
+    return struct.unpack_from('<I', data, at)[0]
+
+
+def hex4(number):
+    return '%04X' % number
+
+
+# ---- load options (BootOption.h) -------------------------------------------
+def parse_option(d):
+    """Parse(): (description bytes, path offset, path bytes, options offset), or None when Charon would not start it."""
+    size = len(d)
+    if size < 12 or size > 65536:
+        return None
+    attributes = u32(d, 0)
+    if not (attributes & 1) or (attributes & 0x1f00):   # active boot-category entries only
+        return None
+    end = 6
+    while end + 2 <= size and u16(d, end):
+        unit = u16(d, end)
+        end += 2
+        if 0xd800 <= unit <= 0xdbff:
+            if end + 2 > size or not 0xdc00 <= u16(d, end) <= 0xdfff:
+                return None
+            end += 2
+        elif 0xdc00 <= unit <= 0xdfff:
+            return None
+    if end + 2 > size:
+        return None
+    start = end + 2
+    length = u16(d, 4)
+    if length < 4 or length > size - start:
+        return None
+    at = start
+    finished = False
+    while at < start + length:
+        if start + length - at < 4:
+            return None
+        node = u16(d, at + 2)
+        if node < 4 or node > start + length - at:
+            return None
+        if bytearray(d)[at] == 0x7f:
+            if node != 4:
+                return None
+            sub = bytearray(d)[at + 1]
+            if sub == 0xff:
+                if at + 4 != start + length:
+                    return None
+                finished = True
+            elif sub != 1 or at + 4 == start + length:
+                return None
+        at += node
+    if not finished:
+        return None
+    return end - 6, start, length, start + length
+
+
+def describe_option(number, data):
+    """What is shown of an entry; works for entries Parse() rejects too (inactive, applications)."""
+    entry = dict(number=number, data=data, present=data is not None, description='', active=False, startable=False,
+                 file='', partition='', charon=False)
+    if data is None or len(data) < 8:
+        entry['description'] = T('(variable missing)', '(brak zmiennej)')
+        return entry
+    raw = bytearray(data)
+    entry['active'] = bool(u32(data, 0) & 1)
+    entry['startable'] = parse_option(data) is not None
+    end = 6
+    while end + 2 <= len(raw) and u16(data, end):
+        end += 2
+    entry['description'] = bytes(raw[6:end]).decode('utf-16-le', 'replace')
+    start = end + 2
+    stop = min(len(raw), start + u16(data, 4))
+    at = start
+    while at + 4 <= stop:
+        node = u16(data, at + 2)
+        if node < 4 or at + node > stop or raw[at] == 0x7f:
+            break
+        if raw[at] == 4 and raw[at + 1] == 4:
+            entry['file'] = bytes(raw[at + 4:at + node]).decode('utf-16-le', 'replace').split('\0')[0]
+        elif raw[at] == 4 and raw[at + 1] == 1 and node >= 42:
+            g = raw[at + 24:at + 40]
+            entry['partition'] = '%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%s' % (
+                g[3], g[2], g[1], g[0], g[5], g[4], g[7], g[6], g[8], g[9], ''.join('%02x' % x for x in g[10:16]))
+        at += node
+    lowered = entry['file'].lower()
+    entry['charon'] = entry['description'] in CHARON_NAMES or any(lowered.endswith(name) for name in CHARON_FILES)
+    return entry
+
+
+def parse_continue(data):
+    """ParseContinueTarget(): (boot number, the Boot#### bytes it holds), or None."""
+    length = len(data)
+    if length < 18 or length >= CONTINUE_CAPACITY or data[:8] != b'HAKCONT1':
+        return None
+    if u32(data, 10) != length - 18 or data[length - 4:] != b'HEND':
+        return None
+    payload = data[14:length - 4]
+    if parse_option(payload) is None:
+        return None
+    return u16(data, 8), payload
+
+
+# ---- firmware variables ----------------------------------------------------
+class Firmware(object):
+    """real: efivarfs for reading, efibootmgr for changes; dir: a test folder in efivarfs format; none."""
+
+    def __init__(self, mode, directory=None):
+        self.mode = mode
+        self.dir = directory if mode == 'dir' else '/sys/firmware/efi/efivars'
+        self.error = ''
+
+    def available(self):
+        return self.mode != 'none' and os.path.isdir(self.dir)
+
+    def why_not(self):
+        if self.mode == 'none':
+            return T('Firmware variables are not available in this mode (--no-firmware).',
+                     'Zmienne firmware nie są dostępne w tym trybie (--no-firmware).')
+        if self.mode == 'dir':
+            return T('The folder given with --firmware-dir does not exist: %s' % self.dir,
+                     'Folder podany opcją --firmware-dir nie istnieje: %s' % self.dir)
+        return T('Firmware variables are not available: this system was not started through UEFI (%s is missing).' % self.dir,
+                 'Zmienne firmware nie są dostępne: ten system nie wystartował przez UEFI (brak %s).' % self.dir)
+
+    def path(self, name):
+        return os.path.join(self.dir, name + '-' + EFI_GUID)
+
+    def get(self, name):
+        try:
+            with open(self.path(name), 'rb') as handle:
+                data = handle.read()
+        except (IOError, OSError):
+            return None
+        return data[4:] if len(data) >= 4 else None
+
+    def put(self, name, data, attributes=7):          # test folder only
+        with open(self.path(name), 'wb') as handle:
+            handle.write(struct.pack('<I', attributes) + data)
+
+    def order(self, name='BootOrder'):
+        data = self.get(name) or b''
+        return [u16(data, at) for at in range(0, len(data) - 1, 2)]
+
+    def boot_numbers(self):
+        numbers = []
+        try:
+            names = os.listdir(self.dir)
+        except OSError:
+            return numbers
+        for name in names:
+            match = re.match(r'^Boot([0-9A-Fa-f]{4})-' + EFI_GUID + '$', name, re.I)
+            if match:
+                numbers.append(int(match.group(1), 16))
+        return sorted(numbers)
+
+    def tool(self, command):
+        if not which(command[0]):
+            self.error = T('%s is not installed.' % command[0], 'Program %s nie jest zainstalowany.' % command[0])
+            return False
+        code, _, stderr = run(command)
+        self.error = stderr.strip()
+        return code == 0
+
+    def set_boot_order(self, numbers):
+        if self.mode == 'dir':
+            self.put('BootOrder', b''.join(struct.pack('<H', n) for n in numbers))
+            return True
+        return self.tool(['efibootmgr', '--bootorder', ','.join(hex4(n) for n in numbers)])
+
+    def set_boot_next(self, number):
+        if self.mode == 'dir':
+            self.put('BootNext', struct.pack('<H', number))
+            return True
+        return self.tool(['efibootmgr', '--bootnext', hex4(number)])
+
+    def os_indications(self, name='OsIndications'):
+        data = self.get(name)
+        return struct.unpack('<Q', data[:8])[0] if data and len(data) >= 8 else 0
+
+    def set_firmware_setup(self):
+        value = struct.pack('<Q', self.os_indications() | 1)
+        if self.mode == 'dir':
+            self.put('OsIndications', value)
+            return True
+        if which('bootctl') and self.tool(['bootctl', 'reboot-to-firmware', 'true']):
+            return True
+        try:
+            write_efivar(self.path('OsIndications'), 7, value)
+            return True
+        except (IOError, OSError) as error:
+            self.error = str(error)
+            return False
+
+    def restart(self):
+        if self.mode != 'real':
+            out(T('would restart (test mode: nothing is restarted)', 'would restart (tryb testowy: nic nie jest restartowane)'))
+            return True
+        if which('systemctl'):
+            return self.tool(['systemctl', 'reboot'])
+        return self.tool(['reboot'])
+
+
+def write_efivar(path, attributes, data):
+    """Write one efivarfs file: clear the immutable flag, then attributes + data in a single write."""
+    try:
+        import fcntl
+        size = struct.calcsize('l')
+        get_flags = 0x80000000 | (size << 16) | 0x6601   # FS_IOC_GETFLAGS
+        set_flags = 0x40000000 | (size << 16) | 0x6602   # FS_IOC_SETFLAGS
+        if os.path.exists(path):
+            fd = os.open(path, os.O_RDONLY)
+            try:
+                buffer = bytearray(size)
+                fcntl.ioctl(fd, get_flags, buffer, True)
+                flags = struct.unpack_from('i', buffer, 0)[0]
+                if flags & 0x10:                          # FS_IMMUTABLE_FL
+                    struct.pack_into('i', buffer, 0, flags & ~0x10)
+                    fcntl.ioctl(fd, set_flags, buffer, True)
+            finally:
+                os.close(fd)
+    except (ImportError, IOError, OSError):
+        pass
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT, 0o644)
+    try:
+        os.write(fd, struct.pack('<I', attributes) + data)
+    finally:
+        os.close(fd)
+
+
+# ---- the state shown and changed -------------------------------------------
+class State(object):
+    def __init__(self, fw, hak):
+        self.fw = fw
+        self.hak = hak
+        self.reload()
+
+    def reload(self):
+        fw = self.fw
+        self.order = fw.order('BootOrder')
+        self.entries = {}
+        for number in sorted(set(self.order) | set(fw.boot_numbers())):
+            self.entries[number] = describe_option(number, fw.get('Boot' + hex4(number)))
+        data = fw.get('BootNext')
+        self.boot_next = u16(data, 0) if data and len(data) >= 2 else None
+        data = fw.get('BootCurrent')
+        self.boot_current = u16(data, 0) if data and len(data) >= 2 else None
+        data = fw.get('Timeout')
+        self.timeout = u16(data, 0) if data and len(data) >= 2 else None
+        data = fw.get('SecureBoot')
+        self.secure = None if not data else bool(bytearray(data)[0])
+        data = fw.get('SetupMode')
+        self.setup_mode = None if not data else bool(bytearray(data)[0])
+        self.setup_supported = bool(fw.os_indications('OsIndicationsSupported') & 1)
+        self.setup_pending = bool(fw.os_indications('OsIndications') & 1)
+        self.read_continue()
+
+    def read_continue(self):
+        """status none / ok / stale / invalid, as Charon's ReadContinue + ValidateContinueTarget see the file."""
+        self.target = dict(status='none', number=None, reason='', configured=False)
+        if not self.hak:
+            self.target['reason'] = T('the EFI partition was not found', 'nie znaleziono partycji EFI')
+            return
+        self.target['configured'] = os.path.exists(ci_path(self.hak, 'continue-set'))
+        path = ci_path(self.hak, 'continue.bin')
+        if not os.path.isfile(path):
+            return
+        try:
+            with open(path, 'rb') as handle:
+                data = handle.read(CONTINUE_CAPACITY + 1)
+        except (IOError, OSError) as error:
+            self.target.update(status='invalid', reason=str(error))
+            return
+        parsed = parse_continue(data)
+        if parsed is None:
+            self.target.update(status='invalid', reason=T('continue.bin is damaged', 'plik continue.bin jest uszkodzony'))
+            return
+        number, payload = parsed
+        self.target['number'] = number
+        entry = self.entries.get(number)
+        if number not in self.order:
+            self.target.update(status='stale', reason=T('Boot%s is no longer in the boot order' % hex4(number),
+                                                        'Boot%s nie ma już w kolejności rozruchu' % hex4(number)))
+        elif entry and entry['charon']:
+            self.target.update(status='stale', reason=T('it names Charon itself', 'wskazuje samego Charona'))
+        elif not entry or entry['data'] != payload:
+            self.target.update(status='stale', reason=T('Boot%s has changed since the target was saved' % hex4(number),
+                                                        'Boot%s zmienił się od zapisania celu' % hex4(number)))
+        else:
+            self.target['status'] = 'ok'
+
+    def charon_entry(self):
+        """Charon's own entry: the first one in the boot order, else the lowest-numbered one outside it."""
+        for number in self.order:
+            if number in self.entries and self.entries[number]['charon']:
+                return number
+        for number in sorted(self.entries):
+            if self.entries[number]['charon']:
+                return number
+        return None
+
+    def flags(self, number):
+        entry = self.entries.get(number)
+        text = ''
+        if entry and entry['charon']:
+            text += 'C'
+        if self.boot_next == number:
+            text += 'N'
+        if self.target['status'] == 'ok' and self.target['number'] == number:
+            text += 'T'
+        return text or '-'
+
+    def name(self, number):
+        entry = self.entries.get(number)
+        return 'Boot%s %s' % (hex4(number), entry['description'] if entry else T('(variable missing)', '(brak zmiennej)'))
+
+
+def list_lines(state):
+    lines = []
+    for position, number in enumerate(state.order):
+        entry = state.entries[number]
+        lines.append('%d Boot%s %s %s' % (position + 1, hex4(number), state.flags(number), entry['description']))
+    lines.append('bootnext=%s' % (hex4(state.boot_next) if state.boot_next is not None else 'none'))
+    lines.append('secureboot=%s' % ('unknown' if state.secure is None else 'on' if state.secure else 'off'))
+    target = state.target
+    lines.append('continue=%s' % ('none' if target['status'] == 'none' else hex4(target['number']) if target['status'] == 'ok' else 'invalid'))
+    return lines
+
+
+def spoken_list(state):
+    out(T('Boot order, %d entries.' % len(state.order), 'Kolejność rozruchu, %d wpisów.' % len(state.order)))
+    for position, number in enumerate(state.order):
+        entry = state.entries[number]
+        parts = ['%d. Boot%s, %s' % (position + 1, hex4(number), entry['description'])]
+        if entry['file']:
+            parts.append(T('file %s', 'plik %s') % entry['file'])
+        if entry['present'] and not entry['active']:
+            parts.append(T('inactive', 'nieaktywny'))
+        if entry['charon']:
+            parts.append(T('this is Charon', 'to jest Charon'))
+        if state.boot_next == number:
+            parts.append(T('starts at the next restart only', 'uruchomi się tylko przy następnym restarcie'))
+        if state.target['status'] == 'ok' and state.target['number'] == number:
+            parts.append(T('Charon\'s Continue target', 'cel Kontynuuj Charona'))
+        if state.boot_current == number:
+            parts.append(T('started this session', 'uruchomił tę sesję'))
+        out(', '.join(parts))
+    outside = [n for n in sorted(state.entries) if n not in state.order and state.entries[n]['charon']]
+    for number in outside:
+        out(T('Charon\'s entry %s exists but is not in the boot order.' % state.name(number),
+              'Wpis Charona %s istnieje, ale nie ma go w kolejności rozruchu.' % state.name(number)))
+    if state.charon_entry() is None:
+        out(T('No boot entry of Charon was found (the boot manager is not installed; the reader add-on does not need one).',
+              'Nie znaleziono wpisu rozruchowego Charona (menedżer rozruchu nie jest zainstalowany; dodatek czytnika go nie potrzebuje).'))
+
+
+def order_text(state, numbers):
+    return '; '.join('%d. %s' % (index + 1, state.name(number)) for index, number in enumerate(numbers)) or T('empty', 'pusta')
+
+
+def apply_order(state, new, en, pl):
+    if new == state.order:
+        out(T('Nothing to change: the boot order already is like that.', 'Nie ma czego zmieniać: kolejność rozruchu już taka jest.'))
+        return EXIT_OK
+    question = T(en, pl) + ' ' + T('New boot order: %s.' % order_text(state, new), 'Nowa kolejność rozruchu: %s.' % order_text(state, new))
+    if not confirm(question + ' ' + T(TPM_EN, TPM_PL)):
+        out(T('Not changed.', 'Bez zmian.'))
+        return EXIT_VALUE
+    done = state.fw.set_boot_order(new)
+    state.reload()
+    out('bootorder=%s' % ','.join(hex4(n) for n in state.order))
+    out(T('Read back from firmware: %s.' % order_text(state, state.order), 'Odczytano z firmware: %s.' % order_text(state, state.order)))
+    if not done or state.order != new:
+        out(T('The firmware did not take the new boot order. %s' % state.fw.error, 'Firmware nie przyjęło nowej kolejności rozruchu. %s' % state.fw.error))
+        return EXIT_ERROR
+    return EXIT_OK
+
+
+def move_entry(state, number, direction):
+    if number not in state.order:
+        out(T('Boot%s is not in the boot order.' % hex4(number), 'Boot%s nie ma w kolejności rozruchu.' % hex4(number)))
+        return EXIT_VALUE
+    at = state.order.index(number)
+    to = at - 1 if direction == 'up' else at + 1
+    if to < 0 or to >= len(state.order):
+        out(T('%s is already %s.' % (state.name(number), 'first' if direction == 'up' else 'last'),
+              '%s jest już %s.' % (state.name(number), 'pierwszy' if direction == 'up' else 'ostatni')))
+        return EXIT_VALUE
+    new = list(state.order)
+    new[at], new[to] = new[to], new[at]
+    return apply_order(state, new,
+                       'Move %s from position %d to position %d?' % (state.name(number), at + 1, to + 1),
+                       'Przenieść %s z pozycji %d na pozycję %d?' % (state.name(number), at + 1, to + 1))
+
+
+def addon_installed(fw):
+    wanted = (VOICE_NAME + '\0').encode('utf-16-le')
+    for number in fw.order('DriverOrder'):
+        option = fw.get('Driver' + hex4(number))
+        if option and option[6:6 + len(wanted)] == wanted:
+            return True
+    return False
+
+
+def place_charon(state, where, restore_first=False):
+    charon = state.charon_entry()
+    if charon is None:
+        out(T('No boot entry of Charon was found; install the Charon boot manager first.',
+              'Nie znaleziono wpisu rozruchowego Charona; najpierw zainstaluj menedżer rozruchu Charon.'))
+        return EXIT_VALUE
+    in_order = charon in state.order
+    others = [n for n in state.order if n != charon]
+    if where == 'restore':
+        if in_order:
+            out(T('Charon is already in the boot order.', 'Charon już jest w kolejności rozruchu.'))
+            return EXIT_OK
+        new = [charon] + state.order if restore_first else state.order + [charon]
+        return apply_order(state, new,
+                           'Put %s back into the boot order, %s?' % (state.name(charon), 'first' if restore_first else 'last'),
+                           'Przywrócić %s do kolejności rozruchu, na %s?' % (state.name(charon), 'początek' if restore_first else 'koniec'))
+    if where == 'remove':
+        kept = [n for n in state.order if not (n in state.entries and state.entries[n]['charon'])]
+        if kept == state.order:
+            out(T('Charon is not in the boot order.', 'Charona nie ma w kolejności rozruchu.'))
+            return EXIT_OK
+        if not kept:
+            out(T('Refused: the boot order would be empty.', 'Odmowa: kolejność rozruchu byłaby pusta.'))
+            return EXIT_VALUE
+        voice = addon_installed(state.fw)
+        note_en = ('Its boot entry and all its files stay. The reader add-on is %s, so %s will speak before the system starts.'
+                   % (('installed', 'the screen reader') if voice else ('not installed', 'nothing')))
+        note_pl = ('Wpis rozruchowy i wszystkie pliki zostają. Dodatek czytnika %s, więc przed startem systemu %s.'
+                   % (('jest zainstalowany', 'będzie mówił czytnik ekranu') if voice else ('nie jest zainstalowany', 'nic nie będzie mówić')))
+        return apply_order(state, kept, 'Remove Charon from the boot order? ' + note_en, 'Usunąć Charona z kolejności rozruchu? ' + note_pl)
+    if not in_order:
+        out(T('Charon is not in the boot order; put it back first.', 'Charona nie ma w kolejności rozruchu; najpierw go przywróć.'))
+        return EXIT_VALUE
+    if where == 'first':
+        return apply_order(state, [charon] + others,
+                           'Make Charon the first boot entry? The computer will then start with Charon\'s menu.',
+                           'Ustawić Charona jako pierwszy wpis rozruchu? Komputer będzie startował od menu Charona.')
+    system = None
+    for index, number in enumerate(others):
+        if not (number in state.entries and state.entries[number]['charon']):
+            system = index
+            break
+    if system is None:
+        out(T('Refused: there is no other entry to put before Charon.', 'Odmowa: nie ma innego wpisu, który mógłby stać przed Charonem.'))
+        return EXIT_VALUE
+    new = others[:system + 1] + [charon] + others[system + 1:]
+    return apply_order(state, new,
+                       'Make Charon the second boot entry, after %s? The computer will start %s directly.'
+                       % (state.name(others[system]), state.name(others[system])),
+                       'Ustawić Charona jako drugi wpis rozruchu, za %s? Komputer będzie od razu uruchamiał %s.'
+                       % (state.name(others[system]), state.name(others[system])))
+
+
+def set_continue(state, number):
+    """SaveContinue: the marker continue-set first, then continue.bin = HAKCONT1 + id + size + Boot#### + HEND."""
+    if not state.hak or not os.path.isdir(state.hak):
+        out(T('Charon\'s folder EFI/HAK was not found on the EFI partition, so the Continue target cannot be saved.',
+              'Nie znaleziono folderu Charona EFI/HAK na partycji EFI, więc nie można zapisać celu Kontynuuj.'))
+        return EXIT_NO_ESP
+    entry = state.entries.get(number)
+    if number not in state.order or not entry or not entry['present']:
+        out(T('Boot%s is not in the boot order.' % hex4(number), 'Boot%s nie ma w kolejności rozruchu.' % hex4(number)))
+        return EXIT_VALUE
+    if entry['charon']:
+        out(T('Refused: Charon cannot continue with itself.', 'Odmowa: Charon nie może kontynuować samym sobą.'))
+        return EXIT_VALUE
+    data = entry['data']
+    if parse_option(data) is None or 18 + len(data) >= CONTINUE_CAPACITY:
+        out(T('Refused: Charon does not start %s (inactive, not a boot entry, or damaged).' % state.name(number),
+              'Odmowa: Charon nie uruchamia %s (nieaktywny, nie jest wpisem rozruchu albo uszkodzony).' % state.name(number)))
+        return EXIT_VALUE
+    if not confirm(T('Set Charon\'s Continue target to %s? Charon will start it by itself after the auto-continue time.' % state.name(number),
+                     'Ustawić cel Kontynuuj Charona na %s? Charon uruchomi go sam po czasie autostartu.' % state.name(number))):
+        out(T('Not changed.', 'Bez zmian.'))
+        return EXIT_VALUE
+    record = b'HAKCONT1' + struct.pack('<HI', number, len(data)) + data + b'HEND'
+    marker = ci_path(state.hak, 'continue-set')
+    target = ci_path(state.hak, 'continue.bin')
+    binary = getattr(os, 'O_BINARY', 0)
+    try:
+        fd = os.open(marker, os.O_WRONLY | os.O_CREAT | binary, 0o644)   # durable intent first, as Charon does
+        try:
+            os.write(fd, b'\x01')
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        if os.path.exists(target):
+            os.remove(target)
+        fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | binary, 0o644)
+        try:
+            os.write(fd, record)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        sync_dir(state.hak)
+        with open(target, 'rb') as handle:
+            back = handle.read(CONTINUE_CAPACITY + 1)
+    except (IOError, OSError) as error:
+        out(T('Writing the Continue target failed: %s' % error, 'Zapis celu Kontynuuj nie powiódł się: %s' % error))
+        return EXIT_ERROR
+    state.reload()
+    if back != record or state.target['status'] != 'ok' or state.target['number'] != number:
+        out(T('The Continue target read back differs from what was written.', 'Odczytany cel Kontynuuj różni się od zapisanego.'))
+        return EXIT_ERROR
+    out('continue=%s' % hex4(number))
+    out(T('Saved and read back: Charon continues with %s.' % state.name(number),
+          'Zapisano i odczytano kontrolnie: Charon kontynuuje wpisem %s.' % state.name(number)))
+    return EXIT_OK
+
+
+def show_continue(state):
+    target = state.target
+    if target['status'] == 'none':
+        out(T('Continue target: not set. Charon continues with the first other entry of the boot order.',
+              'Cel Kontynuuj: nieustawiony. Charon kontynuuje pierwszym innym wpisem kolejności rozruchu.'))
+        if target['reason']:
+            out(target['reason'])
+    elif target['status'] == 'ok':
+        out(T('Continue target: %s. It matches the firmware entry byte for byte, as Charon requires.' % state.name(target['number']),
+              'Cel Kontynuuj: %s. Zgadza się z wpisem firmware bajt w bajt, jak wymaga Charon.' % state.name(target['number'])))
+    else:
+        out(T('Continue target: Charon will not accept the saved one, %s. Set it again.' % target['reason'],
+              'Cel Kontynuuj: Charon nie przyjmie zapisanego, %s. Ustaw go ponownie.' % target['reason']))
+
+
+def boot_next_charon(state):
+    charon = state.charon_entry()
+    if charon is None:
+        out(T('No boot entry of Charon was found; install the Charon boot manager first.',
+              'Nie znaleziono wpisu rozruchowego Charona; najpierw zainstaluj menedżer rozruchu Charon.'))
+        return EXIT_VALUE
+    if not confirm(T('Start Charon\'s menu at the next restart only (BootNext = %s)? The boot order stays as it is.' % state.name(charon),
+                     'Uruchomić menu Charona tylko przy następnym restarcie (BootNext = %s)? Kolejność rozruchu zostaje bez zmian.' % state.name(charon))
+                   + ' ' + T(TPM_EN, TPM_PL)):
+        out(T('Not changed.', 'Bez zmian.'))
+        return EXIT_VALUE
+    done = state.fw.set_boot_next(charon)
+    state.reload()
+    out('bootnext=%s' % (hex4(state.boot_next) if state.boot_next is not None else 'none'))
+    if not done or state.boot_next != charon:
+        out(T('The firmware did not take BootNext. %s' % state.fw.error, 'Firmware nie przyjęło BootNext. %s' % state.fw.error))
+        return EXIT_ERROR
+    out(T('Read back from firmware: the next restart starts %s.' % state.name(charon),
+          'Odczytano z firmware: następny restart uruchomi %s.' % state.name(charon)))
+    return EXIT_OK
+
+
+def firmware_setup(state):
+    if not state.setup_supported:
+        out(T('This firmware does not offer restarting into its setup from the system.',
+              'To firmware nie pozwala z systemu zlecić restartu do swoich ustawień.'))
+        return EXIT_VALUE
+    if not confirm(T('Open firmware setup at the next restart? Firmware setup screens are read by the Charon reader add-on '
+                     'only if it is installed.',
+                     'Otworzyć ustawienia firmware przy następnym restarcie? Ekrany ustawień firmware czyta dodatek czytnika '
+                     'Charon, tylko jeśli jest zainstalowany.')):
+        out(T('Not changed.', 'Bez zmian.'))
+        return EXIT_VALUE
+    done = state.fw.set_firmware_setup()
+    state.reload()
+    out('osindications=0x%x' % state.fw.os_indications())
+    if not done or not state.setup_pending:
+        out(T('The firmware did not take the request. %s' % state.fw.error, 'Firmware nie przyjęło zlecenia. %s' % state.fw.error))
+        return EXIT_ERROR
+    out(T('Read back from firmware: the next restart opens firmware setup.', 'Odczytano z firmware: następny restart otworzy ustawienia firmware.'))
+    return EXIT_OK
+
+
+def restart_now(state):
+    if not confirm(T('Restart the computer now? Unsaved work in other programs will be lost.',
+                     'Zrestartować komputer teraz? Niezapisana praca w innych programach przepadnie.')):
+        out(T('Not restarted.', 'Bez restartu.'))
+        return EXIT_VALUE
+    if not state.fw.restart():
+        out(T('The restart could not be started. %s' % state.fw.error, 'Nie udało się rozpocząć restartu. %s' % state.fw.error))
+        return EXIT_ERROR
+    return EXIT_OK
+
+
+def secure_boot_info(state):
+    if state.secure is None:
+        out(T('Secure Boot: state unknown (the firmware has no SecureBoot variable).', 'Secure Boot: stan nieznany (firmware nie ma zmiennej SecureBoot).'))
+    else:
+        out(T('Secure Boot is %s.' % ('on' if state.secure else 'off'), 'Secure Boot jest %s.' % ('włączony' if state.secure else 'wyłączony')))
+    if state.setup_mode:
+        out(T('The firmware is in setup mode (no platform key).', 'Firmware jest w trybie konfiguracji (brak klucza platformy).'))
+    if state.fw.mode == 'real' and which('mokutil'):
+        code, stdout, _ = run(['mokutil', '--sb-state'])
+        if not code and stdout.strip():
+            out('mokutil: ' + ' '.join(stdout.split()))
+    out(T('With Secure Boot on, firmware starts Charon only when its files are signed with a key the firmware or shim '
+          'trusts; Charon\'s installer does that. This program does not change Secure Boot: it is changed in firmware setup.',
+          'Przy włączonym Secure Boot firmware uruchamia Charona tylko wtedy, gdy jego pliki są podpisane kluczem zaufanym '
+          'dla firmware lub shima; robi to instalator Charona. Ten program nie zmienia Secure Boot: zmienia się go w ustawieniach firmware.'))
+    if state.timeout is not None:
+        out(T('Firmware boot menu timeout: %d seconds.' % state.timeout, 'Czas menu rozruchu firmware: %d sekund.' % state.timeout))
+
+
+# ---- the interactive menu ----------------------------------------------------
+def menu_answer(count, top=False):
+    """A number 0..count, 'list' (L or an empty line: say the items again), or None for anything else."""
+    if top:
+        prompt = T('Type a number and press Enter; L lists the items again:', 'Wpisz numer i naciśnij Enter; L czyta pozycje ponownie:')
+    else:
+        prompt = T('Type a number and press Enter; 0 goes back, L lists the items again:',
+                   'Wpisz numer i naciśnij Enter; 0 wraca, L czyta pozycje ponownie:')
+    answer = ask(prompt)
+    if answer.lower() in ('', 'l'):
+        return 'list'
+    try:
+        number = int(answer)
+    except ValueError:
+        out(T('That is not a number.', 'To nie jest numer.'))
+        return None
+    if number < 0 or number > count:
+        out(T('There are only %d items.' % count, 'Jest tylko %d pozycji.' % count))
+        return None
+    return number
+
+
+def choose_number(count, prompt=None):
+    answer = ask(prompt or T('Type a number and press Enter, 0 goes back:', 'Wpisz numer i naciśnij Enter, 0 wraca:'))
+    try:
+        number = int(answer)
+    except ValueError:
+        out(T('That is not a number.', 'To nie jest numer.'))
+        return None
+    if number < 0 or number > count:
+        out(T('There are only %d items.' % count, 'Jest tylko %d pozycji.' % count))
+        return None
+    return number
+
+
+def pick_entry(state, question, skip_charon=False):
+    numbers = [n for n in state.order if not (skip_charon and state.entries[n]['charon'])]
+    if not numbers:
+        out(T('There is no entry to choose.', 'Nie ma wpisu do wyboru.'))
+        return None
+    out(question + ' ' + T('%d entries.' % len(numbers), '%d wpisów.' % len(numbers)))
+    for index, number in enumerate(numbers):
+        out('%d. %s' % (index + 1, state.name(number)))
+    choice = choose_number(len(numbers))
+    return numbers[choice - 1] if choice else None
+
+
+def interactive(state):
+    global POLISH
+    out(T('Charon boot manager', 'Menedżer rozruchu Charon'))
+    spoken_list(state)
+    listing = True
+    while True:
+        items = [
+            (T('List the boot order', 'Pokaż kolejność rozruchu'), 'list'),
+            (T('Move an entry up', 'Przenieś wpis w górę'), 'up'),
+            (T('Move an entry down', 'Przenieś wpis w dół'), 'down'),
+            (T('Make Charon first', 'Ustaw Charona jako pierwszy'), 'first'),
+            (T('Make Charon second, after the system\'s own boot manager', 'Ustaw Charona jako drugi, za menedżerem rozruchu systemu'), 'second'),
+            (T('Remove Charon from the boot order (its files stay)', 'Usuń Charona z kolejności rozruchu (pliki zostają)'), 'remove'),
+            (T('Put Charon back into the boot order', 'Przywróć Charona do kolejności rozruchu'), 'restore'),
+            (T('Set Charon\'s Continue target', 'Ustaw cel Kontynuuj Charona'), 'continue'),
+            (T('Show Charon\'s Continue target', 'Pokaż cel Kontynuuj Charona'), 'showcontinue'),
+            (T('Start Charon\'s menu at the next restart only', 'Uruchom menu Charona tylko przy następnym restarcie'), 'bootnext'),
+            (T('Open firmware setup at the next restart', 'Otwórz ustawienia firmware przy następnym restarcie'), 'setup'),
+            (T('Restart now', 'Zrestartuj teraz'), 'restart'),
+            (T('Secure Boot state', 'Stan Secure Boot'), 'secure'),
+            (T('Language of this program: English', 'Język tego programu: polski'), 'language'),
+            (T('Quit', 'Zakończ'), 'quit'),
+        ]
+        if listing:
+            out(T('Main menu, %d items.' % len(items), 'Menu główne, %d pozycji.' % len(items)))
+            for index, item in enumerate(items):
+                out('%d. %s' % (index + 1, item[0]))
+        number = menu_answer(len(items), top=True)
+        listing = number == 'list'
+        if not number or listing:
+            continue
+        action = items[number - 1][1]
+        listing = action == 'language'
+        if action == 'list':
+            state.reload()
+            spoken_list(state)
+        elif action in ('up', 'down'):
+            entry = pick_entry(state, T('Which entry moves %s?' % action, 'Który wpis przenieść w %s?' % ('górę' if action == 'up' else 'dół')))
+            if entry is not None:
+                move_entry(state, entry, action)
+        elif action in ('first', 'second', 'remove'):
+            place_charon(state, action)
+        elif action == 'restore':
+            charon = state.charon_entry()
+            if charon is not None and charon not in state.order:
+                out(T('Where? 2 items.', 'Gdzie? 2 pozycje.'))
+                out('1. ' + T('First', 'Na początek'))
+                out('2. ' + T('Last', 'Na koniec'))
+                where = choose_number(2)
+                if where:
+                    place_charon(state, 'restore', restore_first=(where == 1))
+            else:
+                place_charon(state, 'restore')
+        elif action == 'continue':
+            show_continue(state)
+            entry = pick_entry(state, T('Which entry should Charon continue with?', 'Którym wpisem Charon ma kontynuować?'), skip_charon=True)
+            if entry is not None:
+                set_continue(state, entry)
+        elif action == 'showcontinue':
+            state.reload()
+            show_continue(state)
+        elif action == 'bootnext':
+            boot_next_charon(state)
+        elif action == 'setup':
+            if firmware_setup(state) == EXIT_OK:
+                restart_now(state)
+        elif action == 'restart':
+            restart_now(state)
+        elif action == 'secure':
+            secure_boot_info(state)
+        elif action == 'language':
+            POLISH = not POLISH
+            out(T('This program now speaks English.', 'Ten program mówi teraz po polsku.'))
+        else:
+            out(T('Goodbye.', 'Do widzenia.'))
+            return EXIT_OK
+
+
+# ---- start -------------------------------------------------------------------
+def find_esp(explicit):
+    if explicit:
+        return explicit if os.path.isdir(explicit) else None
+    candidates = ['/boot/efi', '/efi', '/boot']
+    code, stdout, _ = run(['findmnt', '-n', '-l', '-t', 'vfat', '-o', 'TARGET'])
+    if not code:
+        for line in stdout.splitlines():
+            if line.strip() and line.strip() not in candidates:
+                candidates.append(line.strip())
+    for candidate in candidates:                      # a systemd automount mounts on first access
+        try:
+            os.listdir(candidate)
+        except OSError:
+            pass
+    for parts in (('EFI', 'HAK'), ('EFI',)):
+        for candidate in candidates:
+            if os.path.isdir(ci_path(candidate, *parts)):
+                return candidate
+    return None
+
+
+def environment_polish():
+    for name in ('LC_ALL', 'LC_MESSAGES', 'LANG'):
+        if os.environ.get(name, '').lower().startswith('pl'):
+            return True
+    return False
+
+
+def become_root(args):
+    geteuid = getattr(os, 'geteuid', None)
+    if geteuid is None or geteuid() == 0:
+        return
+    if args.esp and (args.no_firmware or args.firmware_dir):
+        return
+    out(T('The EFI partition and the firmware variables can be changed only by the administrator, so this program '
+          'starts itself again through sudo.',
+          'Partycję EFI i zmienne firmware może zmieniać tylko administrator, więc ten program uruchomi się ponownie przez sudo.'))
+    script = os.path.abspath(sys.argv[0])
+    for tool in ('sudo', 'pkexec'):
+        if which(tool):
+            try:
+                os.execvp(tool, [tool, sys.executable, script] + sys.argv[1:])
+            except OSError:
+                pass
+    out(T('Neither sudo nor pkexec was found. Run as root: %s %s' % (sys.executable, script),
+          'Nie znaleziono sudo ani pkexec. Uruchom jako root: %s %s' % (sys.executable, script)))
+    sys.exit(EXIT_ERROR)
+
+
+def boot_number(text):
+    match = re.match(r'^(?:boot)?([0-9a-f]{1,4})$', text.strip(), re.I)
+    return int(match.group(1), 16) if match else None
+
+
+def main(argv):
+    global POLISH, ASSUME_YES
+    parser = argparse.ArgumentParser(prog=PROGRAM, description='Charon boot manager / Menedżer rozruchu Charon')
+    parser.add_argument('--esp', metavar='DIR', help='folder of the EFI system partition (or a folder standing in for it)')
+    parser.add_argument('--no-firmware', action='store_true', help='never touch firmware variables')
+    parser.add_argument('--firmware-dir', metavar='DIR', help='test stand-in for the firmware variables (efivarfs file format)')
+    parser.add_argument('--lang', choices=['en', 'pl'], help='language of this program')
+    parser.add_argument('--list', action='store_true', help='print the boot order, BootNext, Secure Boot and the Continue target')
+    parser.add_argument('--move', nargs=2, metavar=('XXXX', 'up|down'), help='move a boot entry one place')
+    parser.add_argument('--charon', choices=['first', 'second', 'remove', 'restore'], help='place Charon in the boot order')
+    parser.add_argument('--continue', dest='target', metavar='XXXX', help="set Charon's Continue target")
+    parser.add_argument('--bootnext-charon', action='store_true', help="start Charon's menu at the next restart only")
+    parser.add_argument('--firmware-setup', action='store_true', help='open firmware setup at the next restart')
+    parser.add_argument('--restart', action='store_true', help='restart now')
+    parser.add_argument('--yes', action='store_true', help='answer yes to confirmations')
+    parser.add_argument('--version', action='store_true')
+    args = parser.parse_args(argv)
+    if args.version:
+        print('%s %s' % (PROGRAM, RELEASE))
+        return EXIT_OK
+    ASSUME_YES = args.yes
+    POLISH = args.lang == 'pl' or (args.lang is None and environment_polish())
+    become_root(args)
+    esp = find_esp(args.esp)
+    hak = ci_path(esp, 'EFI', 'HAK') if esp else None
+    if hak and args.lang is None and not POLISH:
+        try:
+            with open(ci_path(hak, 'audio-language'), 'rb') as handle:
+                POLISH = handle.read(2).lower() == b'pl'
+        except (IOError, OSError):
+            pass
+    if args.firmware_dir:
+        fw = Firmware('dir', args.firmware_dir)
+    elif args.no_firmware:
+        fw = Firmware('none')
+    else:
+        fw = Firmware('real')
+    if not fw.available():
+        out(fw.why_not())
+        return EXIT_NO_FIRMWARE
+    state = State(fw, hak)
+    try:
+        batch = args.list or args.move or args.charon or args.target or args.bootnext_charon or args.firmware_setup or args.restart
+        if not batch:
+            return interactive(state)
+        if args.move:
+            number = boot_number(args.move[0])
+            if number is None or args.move[1] not in ('up', 'down'):
+                out(T('Write --move XXXX up or --move XXXX down, XXXX being the four hexadecimal digits of the entry.',
+                      'Napisz --move XXXX up albo --move XXXX down, gdzie XXXX to cztery cyfry szesnastkowe wpisu.'))
+                return EXIT_VALUE
+            code = move_entry(state, number, args.move[1])
+            if code:
+                return code
+        if args.charon:
+            code = place_charon(state, args.charon)
+            if code:
+                return code
+        if args.target:
+            number = boot_number(args.target)
+            if number is None:
+                out(T('Write --continue XXXX, XXXX being the four hexadecimal digits of the entry.',
+                      'Napisz --continue XXXX, gdzie XXXX to cztery cyfry szesnastkowe wpisu.'))
+                return EXIT_VALUE
+            code = set_continue(state, number)
+            if code:
+                return code
+        if args.bootnext_charon:
+            code = boot_next_charon(state)
+            if code:
+                return code
+        if args.firmware_setup:
+            code = firmware_setup(state)
+            if code:
+                return code
+        if args.list:
+            state.reload()
+            for line in list_lines(state):
+                out(line)
+        if args.restart:
+            return restart_now(state)
+        return EXIT_OK
+    except EndOfInput:
+        out(T('End of input: quitting.', 'Koniec danych wejściowych: kończę.'))
+        return EXIT_OK
+    except KeyboardInterrupt:
+        out(T('Interrupted: quitting.', 'Przerwano: kończę.'))
+        return EXIT_OK
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

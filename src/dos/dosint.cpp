@@ -1069,5 +1069,6 @@ void dos_init(void)
     env_set("COMSPEC", "C:\\COMMAND.COM");
     env_set("PATH", "C:\\");
     env_set("PROMPT", "$P$G");
+    env_set("BLASTER", "A220 I5 D1 T3");                // r407: sound.cpp
     memory_reset();
 }

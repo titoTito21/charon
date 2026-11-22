@@ -1,0 +1,234 @@
+Charon r406 - trial builds and trials, 2026-11-21, about 05:00-08:57 UTC (no release, no packaging)
+==================================================================================================
+Record written afterwards from the transcripts of the two work sessions and of the two driver helpers;
+times are UTC. Test machines moved from QEMU to VMware Workstation 17.6.3 in this round (firmware
+VMW201.00V, UEFI, e1000 NAT, NVMe disk, HD Audio unless said otherwise, serial port to a file or pipe,
+keys over VNC with work/vnc-keys.py and work/vmw-step.py). Machines: work/vmware-deb1, deb2, arch1, ubu1,
+di1, es1371, hda406, win1, dos1, me1. Sound was measured from outside the guest with
+work/es1371-peak.ps1: the peak meter of the Windows audio session of vmware-vmx.exe, one sample every
+50 ms; results below are written "loud samples / all samples, highest peak" (loud = above -60 dB).
+
+Builds (tools/build-charon-windows.py, all PASS): CHARON.EFI r406a-n and r406q; CHARONVOICE.EFI r406a, c,
+d, e, f, n, o, p, q (-drv folders). Last: work/charon-win-r406q/CHARON.EFI 20 076 800 bytes, SHA-256
+f93ece68c79b9ff7f9d73e450338fa700100f26681e170217d7dd4463295da61; work/charon-win-r406q-drv/
+CHARONVOICE.EFI 17 677 312 bytes, SHA-256 09f46a021f050506acca74be6b7e55e21d0a1164f7abede3473ba06820d8bf07.
+CharonPC: tools/build-charon-bochs.py, work/charon-pc-build-r406a-i (r406e failed to compile: an edit
+script broke a string literal in pc_efi.cpp; fixed by hand), last CHARONPC.EFI 1 591 168 bytes.
+Tone program: work/charon-tone-r406, 4400 bytes, SHA-256 b432ca40...48866252 (build PASS).
+The r406q pair was built at 08:56 and was NOT run in any machine in this record.
+
+Code changed
+------------
+Sound drivers (UEFI):
+- src/efi/CharonUsbAudio.h, tests/CharonUsbAudioTests.cpp, CharonAudioDevice.h, CharonVoiceProvider.h:
+  the USB Audio Class output written the day before in work/charon-src-usbaudio merged into this tree.
+- src/efi/CharonEs1371.h (new), tests/CharonEs1371Tests.cpp (new), CharonAudioDevice.h (7 lines marked
+  r406): own driver for Ensoniq ES1371/ES1373 (VMware's default card): DAC2, 48 kHz stereo 16-bit, polled
+  DMA, no interrupts; opened after AC'97. VMware's model hands over one period and waits until the serial
+  register is rewritten, so the driver rewrites it at every 10 ms service (2048-frame period).
+- src/efi/audio_stream/driver/HakHdaCompat.h, HakHdaCompat.c, HakHdaCodecCompat.c (new),
+  apply-driver-extension.py, BUILD-NOTES.md, audio_stream/AUDIO-HARDWARE.txt (new): AudioDxe-r406 for
+  newer laptops: binds Intel class 04/01 and 04/80 controllers only with a memory BAR0, a sane HDA
+  register block and an answering codec; 1 ms in reset, Skylake+ clock gating off during reset, ATI/AMD/
+  NVIDIA snoop bits; codec D0 waited for, EAPD on every capable pin, headphone amp bit, Realtek amplifier
+  GPIO by codec subsystem ID. Driver: work/charon-audio-driver-r406/AudioDxe-r406.efi (+ -trace).
+- CharonAc97.h: DisconnectFirmwareHda also covers Intel 04/01 and 04/80 with a memory BAR0.
+- CharonVoiceProvider.h: a device that stopped with an error other than a timeout is restarted (at most
+  8 times, maximumFaultRestarts) - after speech stopped in the installer dialogue, see trial 4.
+- CharonAc97.h, CharonVoiceProvider.h, CharonAudioDevice.h, HAKBootEFI.cpp, CharonResident.h
+  (work/edit-hdadrv-r406.py, edit-drvtrace-r406.py, edit-hdatpl-r406.py): the sound card is taken over
+  from a firmware HD Audio driver only at TPL_APPLICATION; above it nothing is disconnected and a
+  controller held by a firmware driver is not connected; the reader driver does both when firmware starts
+  a boot option (its StartImage hook). Trace lines "CHARON driver: ..." added. Reason: trial 14.
+
+Linux installs, desktops, screen readers, progress sounds:
+- src/linux/ (new folder): speech.sh, live-speech.sh, install-charon.sh (texts taken out of the C headers
+  with work/render-cstring.py), progress.sh, firstboot.sh, charon-tone.c (new); tools/
+  gen-charon-linux-scripts.py writes src/efi/CharonLinuxScripts.h from them (round trip checked, sh -n
+  PASS for all five); tools/build-charon-tone.py; CharonWsInstall.h, CharonWsInstall2.h,
+  CharonWsInstall3.h wired to them (work/edit-install-r406.py).
+- charon-tone.c + progress.sh: progress tones as NVDA's progress bar (110 Hz at 0 percent, higher with
+  progress, 40 ms), from a static program without a C library, so they sound before any sound package is
+  installed; used by the first start of ready images (firstboot.sh), by the Debian installer (preseed
+  early_command "progress.sh watch /target") and by the Ubuntu installer script (live-speech.sh).
+- firstboot.sh (new) replaces the package list given to cloud-init: speech first, then the desktop, with
+  tones and a log in /var/lib/charon/firstboot.log; downloads are retried, speech is announced only
+  when it is there (work/edit-retry-r406.py).
+- speech.sh: speaking sign-in screen (GDM, LightDM; mute SDDM replaced), accessibility switched on for
+  GTK/Qt programs, Orca's speech language; console reader and desktop share the sound card
+  (charon-audio-share): no step waits (Fenrir's stop had hung a session start), TimeoutStopSec=3; system
+  services play straight to the card (ALSA default = plug:sysdefault) because the PipeWire default
+  refused root ("Host is down"); on a system without a sound server no reader is stopped.
+- Sign-in mode asked in the dialogue: graphical, or console with startx (work/edit-login-r406.py;
+  speech.sh, firstboot.sh, CharonWsReaders.h, answer files).
+- progress.sh charon_tls_check: when HTTPS with the large TLS 1.3 greeting gets no answer but the classic
+  key exchange does, OPENSSL_CONF in /etc/environment selects the classic one (found in trial 6);
+  pacman run with LC_ALL=C.
+- install-charon.sh + HAKBootEFI.cpp (work/edit-register-r406.py): the reader add-on sets a volatile
+  variable CharonVoiceLoaded; "charon-register check" at every start of the installed system: when
+  firmware did not load the add-on, the marker \EFI\HAK\reader-only is written and the entry Charon goes
+  first in BootOrder (Charon then speaks and goes straight on to the system).
+- CharonWsInstall.h, CharonWsCore.h (work/edit-hakboot-r406.py): Charon started from its boot disc is
+  \EFI\BOOT\BOOTX64.EFI and has no \EFI\HAK\HAKBOOT.EFI; the installed copy now gets the running program
+  under that name (the boot entry "Charon" had no target); space reserved for it 8 -> 40 MB.
+- BootMenu.h (work/edit-shortform-r406.py): Charon resolves short-form boot options (HD(partition)/File,
+  as efibootmgr writes them) itself; LoadImage did not expand them (trial 7).
+- BootMenu.h (work/edit-greet-r406.py): in reader-only mode time is left for the greeting "Charon."
+  before the system is started.
+- CharonWsInstall.h: the tone watcher started by the Debian preseed closes descriptors 3-6; it had kept
+  debconf's channel open and the installer waited for ever (trial 8).
+
+Windows:
+- tools/charon-addon/Charon-Readers.ps1 (work/edit-readers-ps-r406.py and hand edits): NVDA 2026 is a
+  64-bit program in Program Files (older ones in Program Files (x86)), winget installer x64, start-at-
+  sign-in token nvda_nvda_v1.
+- CharonWsInstall2.h: the check "exactly one internal disk" for the automatic Windows install runs
+  before the questions, not after them (trial 11); Windows Setup always speaks with Narrator, NVDA on
+  the media is only installed at first logon (work/edit-nvdasetup-r406.py; trial 11); an edit for media
+  that hold two Windows images (Setup stopped at the edition question in trial 11).
+
+CharonDOS / CharonPC:
+- CharonWsDosSystem.h, CharonWsDisks.h (work/edit-disc-r406.py): Windows profiles take the user's own
+  disc in a CD/DVD drive; it is read whole into the profile as SETUP.ISO.
+- src/pc/pc_config.cpp (work/edit-pccfg-r406.py): the emulator accepts the profile keys the installer
+  writes (size of the empty disk to make, state = install | no-media | installed); it had refused them,
+  which stopped every Windows profile. An installing profile boots "cdrom,disk".
+- src/pc/pc_efi.cpp (work/edit-pclog-r406.py, edit-pcdiag3-r406.py): Bochs log mirrored to COM1 and
+  written to disk every two seconds; the console mode is no longer switched when it already is 80x25.
+- src/pc/pc_gui.cc (work/edit-pcdiag*.py, edit-pccursor-r406.py, edit-pcmenu-r406.py): a state line
+  every 5 s in the log; firmware cursor hidden while cells are written; the start menu of a Windows 98 /
+  ME disc ("1. Boot from Hard Disk  2. Boot from CD-ROM") is answered with 2 by the emulator while the
+  profile's disk holds no system (a boot sector alone does not count), with a spoken message.
+
+Test tools written in work/: make-vmware-vm.py, vmw-step.py, vmw-image-test.sh, serial-pipe.py,
+serial-send.py, push-file.py, es1371-peak.ps1, es1371-round.sh, make-charon-iso-es1371.py,
+make-charon-iso-hda406.py, charon-r406-hda-test.py, di-run-r406.sh, make-me-vm.py, me-put.py, me-step.sh,
+shot-wait.py, dos-run-r406.sh, drv-put.py, drv-try.sh; vnc-keys.py got --combo.
+
+Trials
+------
+ 1. ES1371 driver, work/vmware-es1371 (sound.virtualDev = "es1371"), builds work/charon-win-es1371d
+    (+ -drv) from the helper's own tree. Card found as 1274:1371 rev 2, codec Cirrus CS4297A, master
+    0x0000, PCM 0x0808; trace "es1371 start=0", "audio open=0"; DMA position about 48 000 frames/s, 0 late
+    writes over 2.5 M frames; session peak 0.15-0.37 during Charon's speech, 0.000 in pauses and for 50 s
+    idle. Host test CharonEs1371Tests.cpp passes. PASS in VMware. Not listened to (level only).
+ 2. AudioDxe-r406, work/vmware-hda406 (hdaudio, release and trace driver): "firmware hda disconnected=1",
+    setup=0, begin=0, speak status=0 twice, no faults (serial-*.txt). Before the move to VMware, QEMU
+    ich9-intel-hda: setup/begin=0, live.wav RMS 1617 over 2.5 s. PASS as "still plays"; the VMware codec
+    took none of the new branches (no r406 trace lines), so nothing new was exercised.
+ 3. USB audio: merged and compiled only. No machine in this record had a USB sound card; the VMware traces
+    show "CHARON usb audio primary=800000000000000e" (not found). Host test not run here. NOT VERIFIED.
+ 4. Ready image Debian 13 from Charon's dialogue (MATE, Orca + Fenrir, graphical sign-in), vmware-deb1,
+    builds r406a-e. Charon spoke through VMware's HD Audio, network by DHCP, image (3 GB) written, Charon
+    copied to the EFI partition, system started by itself from the disk. Seen on the way: once the
+    dialogue went silent after "Polaczono" (trace "CHARON cue deferred" repeating) - restart fix above,
+    the next run did not show it (random; fix not proven). First start: fenrir.service hung in
+    "deactivating" and was killed after the stop time-out; script fixed and put into the guest by hand.
+    After a restart: sign-in screen with Orca 43/220, 0.0646; MATE after sign-in 51/632, 0.0646; Fenrir on
+    tty1 with the desktop running 63/223, 0.0646; espeak-ng through the shared socket 25/190, 0.0582.
+    tty2 0/253 (getty@tty2 was inactive: nothing to read). PASS with the hand-applied script.
+    No CHARON line in the serial log of these starts: firmware did not load the reader add-on (see 7).
+ 5. Both helpers and vmware-deb1: at 05:18:22-24 two machines were hard-stopped within two seconds; each
+    helper reports having stopped only its own .vmx. Cause not found.
+ 6. Ready image Arch Linux (Xfce, Orca + Speakup, console sign-in), vmware-arch1, build r406f. Started by
+    itself from the disk to the login prompt. First start FAILED to get packages: pacman "Connection timed
+    out" from both mirrors; in the guest curl to HTTPS sites timed out by default but answered 200 with
+    --curves X25519 or TLS 1.2, plain HTTP 200, the host answered 200. Fixed scripts pushed over the
+    serial console and the first start run again: log "this network drops HTTPS connections with the large
+    TLS greeting; the classic key exchange is now used", "mowa dziala", "every chosen reader is
+    installed", "console login, startx starts startxfce4"; sound during that run 169/3784, 0.2235.
+    Console speech was then silent (0/220, 0/344; espeakup running, aplay default: device off,
+    sysdefault: plays) - after the ALSA default for system services 171/408, 0.2224. After a restart:
+    boot and console sign-in 279/631, 0.2229; in Xfce (xfce4-session, orca, speech-dispatcher running)
+    34/220, 0.0646. PASS after the fixes; no fresh install was made with the final scripts.
+ 7. Ready image Debian 13 again (MATE, Orca + Fenrir), vmware-deb2, build r406h with AudioDxe-r406: fresh
+    install, first start finished: log "this firmware does not load the reader add-on; the reader now
+    starts with the Charon boot manager, first in the boot order, which goes straight on to the system",
+    "mowa dziala...", "system gotowy"; BootOrder 0005 (Charon), 0004 (Debian); \EFI\HAK\HAKBOOT.EFI and
+    reader-only present; sound during the first start 227/1909, 0.1592. Restart: FAIL - Charon started
+    first but said "Firmware nie znalazlo programu rozruchowego..." (0x800000000000000E) instead of going
+    on. With HAKBOOT.EFI of r406i (short-form fix) put on the disk by hand: Charon went on by itself, its
+    reader read GRUB ("Booting Debian GNU slash Linux ... Loading Linux 6.12.117 ..."), login prompt
+    reached, 175/950, 0.2833. PASS with r406i.
+ 8. Classic Debian installer (automatic, speech, no desktop, Orca + Speakup chosen), vmware-di1.
+    r406h: FAIL - kernel and installer loaded into memory, "System przejmuje sterowanie", then a black
+    screen for more than 20 minutes; VMware's log shows HD Audio activity every minute and wave streams
+    starting (tones kept playing; 4/127, 0.0478 in an 8 s sample). Cause: the tone watcher held debconf's
+    descriptors. r406k: installation ran to the end and restarted by itself; in the installed system
+    the speech service is "active", BootOrder 0005 (Charon, \EFI\HAK\HAKBOOT.EFI), 0004 (debian, shim),
+    \EFI\HAK holds CHARONVOICE.EFI, HAKBOOT.EFI, reader-only. PASS. Tones in the passing run were not
+    measured separately.
+ 9. Greeting in reader-only mode, vmware-di1 after 8, restart: trace "Charon." spoken, then "System
+    przejmuje sterowanie."; 340/714, 0.3785. PASS.
+10. Ready image Ubuntu (no desktop, Speakup), vmware-ubu1, build r406i: cloud-init finished about 40 s
+    after start; log "mowa dziala", "system gotowy", BootOrder 0005 (Charon), 0004 (Ubuntu), reader-only
+    present; but espeakup.service "failed" (killed by the sound-sharing script, which has nothing to share
+    on a system without a sound server). After the fix: console 148/223, 0.2506. PASS for this guest;
+    the image was not installed again with the fixed script.
+11. Windows 11 from Charon's dialogue with NVDA + Narrator checked, vmware-win1 (64 GB NVMe disk, install
+    media image copied from work/wintest-r401/ltsc-media.img).
+    r406k, media as a second internal disk: FAIL - after all questions and the typed confirmation Charon
+    refused ("... tylko wtedy, gdy komputer ma dokladnie jeden dysk wewnetrzny ..."). r406l, media as a
+    USB stick: the disk check passed before the questions, plan accepted, "Kopiuje Charona na nosnik
+    instalacyjny", "Uruchamiam instalator Windows z nosnika ...", Setup ran (12 percent at 08:34), VMware
+    log 08:42 "About to do EFI boot: Windows Boot Manager", lock screen at 08:56. The user heard
+    Narrator, not NVDA, in Setup; making the portable NVDA by hand at Setup's command prompt failed
+    (noted in the edit script as "side-by-side configuration is incorrect"; screenshot
+    work/vmware-win1/w5.png). Sign-in was typed and the check whether NVDA got installed and speaks was
+    interrupted by the user at 08:57. Install: PASS. NVDA and the readers script: NOT JUDGED.
+12. Charon-Readers.ps1: parses (PARSE-OK) and a -DryRun with nvda,jaws,narrator printed the expected
+    registry value. A side machine (work/vmware-winprof, make-readers.py) started its old installed
+    Windows instead of installing, proved nothing and was stopped. Not run on a real Windows.
+13. Windows ME Setup in CharonPC directly, vmware-me1 (CHARONPC.EFI as BOOTX64.EFI on a FAT32 disk,
+    profile WINME, SETUP.ISO = the user's "Windows Me OEM (English)" image, 522 991 616 bytes, empty
+    2 GB DISK.IMG). r406a-d: the emulator ran (log on the serial port: BIOS, "Booting from 07c0:0000",
+    text updates counted) but VMware showed a black screen after the console had been switched to the
+    80x25 mode. r406f (no switch): text visible, "Microsoft Windows Me Setup. Welcome to Setup".
+    r406h: on the empty disk the emulator chose "Boot from CD-ROM" itself (log line); screen clean.
+    Then by keys: partition made, large-disk support, format, restart, ScanDisk, graphical wizard in
+    640x480 drawn through UEFI (log "guest graphics 640x480"), directory, Typical, components, network
+    identification, time zone, file copy (25 percent at 08:17, 45 percent at 08:20), restart by itself
+    after the copy (third "Booting from" at about 08:32), last questions at 08:54: user name typed,
+    licence accepted with Alt+A, Next. State at 08:57: Setup still running. PASS so far; not finished.
+14. CharonDOS with a Windows ME profile from Charon's dialogue, vmware-dos1 (Charon disc of r406m,
+    second CD drive = the ME image, 8 GB NVMe disk). The media question offered "plyta w napedzie:
+    WINDOWS ME, 499 MB, 1 z 3" (new); reader JAWS 4.02 taken; whole disk, partition 4 GB; Charon made the
+    partition table, formatted FAT32, copied CharonDOS, Charon and the disc, downloaded the reader and
+    said CharonDOS is installed. PASS. In CharonDOS (dir c:\pc\winme, screenshot b1.png): CHARONPC.CFG,
+    the reader's folder and SETUP.ISO with 522 991 616 bytes, the size of the image.
+    Restart with the reader add-on as Driver0000 (attributes 3: active + force reconnect): FAIL -
+    firmware page fault (#PF, RIP 0FFDC6CE) with the driver of the r406m disc and with r406n-drv;
+    r406o-drv traced as far as
+    "CHARON driver: started, returning to firmware", then the machine hung; r406p-drv: reader said
+    "Charon." and read firmware's "Attempting to start up from: -> CharonDOS...", then "HDA: Install
+    protocols - Invalid Parameter" and the page fault. With the attribute patched to 1 in the nvram file
+    firmware did not load the driver at all: CharonDOS started, mute. Fix (TPL_APPLICATION, above)
+    built as r406q-drv: NOT RUN.
+15. Windows ME Setup started from CharonDOS with the command WIN (vmware-dos1, driver not loaded): the
+    emulator chose the CD start twice by itself and Setup reached the graphical wizard (screenshot
+    c1.png, 08:56). PASS so far; not finished.
+
+Open / not verified
+-------------------
+- r406q (CHARON.EFI and CHARONVOICE.EFI): built, not run. With it: the HDA take-over at TPL_APPLICATION
+  (the page fault of trial 14), Narrator-only speech in Windows Setup, the two-image edition edit.
+- The voice driver loaded by VMware's firmware as Driver#### still crashed or stayed unloaded at the
+  end of this record; every Linux trial here spoke at start-up only through "Charon first, reader-only".
+- USB audio: no trial with a USB sound card. ES1371: real ES1371/CT5880/EV1938 hardware untested; the
+  driver ran only from the helper's tree, not from a main-tree build; CHARONVOICE.EFI with it was built,
+  not run as a firmware-loaded driver; SRC RAM and codec volumes are not restored on Stop.
+- AudioDxe-r406: nothing of the new hardware support was exercised (04/01 and 04/80 binding, clock
+  gating, snoop, EAPD, GPIO, headphone amp); hda-micro and the refusal of an AC'97 card untested;
+  the CharonAc97.h part was syntax-checked only in the helper's run.
+- Arch and Ubuntu images: fixes were applied inside the running guests; no fresh install with the final
+  scripts. Debian image: fresh install with r406h, restart path fixed only by a hand-copied r406i.
+- Not run at all: Ubuntu autoinstall with live-speech.sh tones, Arch from the network, GNOME/KDE/Cinnamon
+  desktops, GDM and the SDDM replacement, the console sign-in with startx on Debian, Cthulhu, Emacspeak.
+- Progress tones: sound was measured during first starts and the installer, but tones were not told
+  apart from speech and their pitch against progress was not measured.
+- Windows: NVDA after first logon, JAWS, Charon-Readers.ps1 on a real Windows, the installer scripts.
+- Windows ME: neither Setup run had finished; no Windows ME desktop seen yet; JAWS in ME not started.
+- The random silence after "Polaczono" (trial 4) and the two hard stops (trial 5) are unexplained.
+- No regression of the boot managers was run in this round.
+
+Continued in charon-r407-results.txt.

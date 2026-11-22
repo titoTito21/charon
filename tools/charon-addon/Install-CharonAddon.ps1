@@ -53,7 +53,20 @@ $DriverFile = '\EFI\HAK\CHARONVOICE.EFI'
 $EspType = '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}'
 . (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'CharonEfiSign.ps1')
 $Pl = if ($Language) { $Language -eq 'pl' } else { (Get-UICulture).Name -like 'pl*' }
-function Say([string]$textPl, [string]$textEn) { if ($Pl) { Write-Host $textPl } else { Write-Host $textEn } }   # r402: a parameter named $pl hid the $Pl flag (names are case-insensitive): everything was said in Polish
+# r408: what the installer said and why it stopped also goes to %ProgramData%\Charon\install-charon.log, in
+# English: at the first sign-in after an unattended installation nobody reads this window. -DryRun and
+# -Status write nothing.
+$LogPath = Join-Path (Join-Path $env:ProgramData 'Charon') 'install-charon.log'
+function Write-InstallLog([string]$Text) {
+    if ($DryRun -or $Status -or -not $Text) { return }
+    try {
+        $dir = Split-Path -Parent $LogPath
+        if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        Add-Content -LiteralPath $LogPath -Value ('{0:yyyy-MM-dd HH:mm:ss} {1}' -f (Get-Date), $Text) -Encoding UTF8
+    } catch { }
+}
+trap { Write-InstallLog ('ERROR: ' + $_.Exception.Message); break }
+function Say([string]$textPl, [string]$textEn) { if ($Pl) { Write-Host $textPl } else { Write-Host $textEn }; Write-InstallLog $textEn }   # r402: a parameter named $pl hid the $Pl flag (names are case-insensitive): everything was said in Polish
 function Fail([string]$textPl, [string]$textEn) { if ($Pl) { throw $textPl } else { throw $textEn } }
 
 # ---- load option bytes (UEFI 2.10, 3.1.3 and 10.3) --------------------------
@@ -100,6 +113,8 @@ public struct TokenPrivileges { public uint Count; public long Luid; public uint
 public static extern bool AdjustTokenPrivileges(IntPtr token, bool disableAll, ref TokenPrivileges state, uint length, IntPtr previous, IntPtr returned);
 [DllImport("kernel32.dll")]
 public static extern IntPtr GetCurrentProcess();
+[DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+public static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFileW(string name, uint access, uint share, IntPtr security, uint creation, uint flags, IntPtr template);
 '@
 function Enable-FirmwarePrivilege {
     $token = [IntPtr]::Zero; $luid = 0
@@ -111,14 +126,16 @@ function Enable-FirmwarePrivilege {
     if ([Runtime.InteropServices.Marshal]::GetLastWin32Error() -ne 0) { Fail 'Windows nie przyznał uprawnienia do zmiennych firmware (uruchom jako administrator).' 'Windows did not grant the firmware variable privilege (run as administrator).' }
 }
 function Get-Var([string]$Name) {
-    $buffer = New-Object byte[] 4096; $attr = 0
-    $n = [CharonAddon.Native]::GetFirmwareEnvironmentVariableExW($Name, $GlobalGuid, $buffer, 4096, [ref]$attr)
-    if ($n -eq 0) {
+    $e = 0
+    foreach ($capacity in 4096, 1048576) {                 # r408: a load option with much optional data is larger than 4 KiB
+        $buffer = New-Object byte[] $capacity; $attr = 0
+        $n = [CharonAddon.Native]::GetFirmwareEnvironmentVariableExW($Name, $GlobalGuid, $buffer, [uint32]$capacity, [ref]$attr)
+        if ($n -ne 0) { return [byte[]]$buffer[0..($n - 1)] }
         $e = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
         if ($e -eq 203) { return $null }                   # ERROR_ENVVAR_NOT_FOUND
-        Fail "Odczyt zmiennej $Name nie powiódł się (błąd $e)." "Reading variable $Name failed (error $e)."
+        if ($e -ne 122) { break }                          # ERROR_INSUFFICIENT_BUFFER: once more, with the larger buffer
     }
-    return [byte[]]$buffer[0..($n - 1)]
+    Fail "Odczyt zmiennej $Name nie powiódł się (błąd $e)." "Reading variable $Name failed (error $e)."
 }
 function Set-Var([string]$Name, [byte[]]$Data) {
     $size = if ($Data) { $Data.Length } else { 0 }
@@ -156,17 +173,94 @@ if ($Status) {
 }
 
 $esp = Get-Partition | Where-Object { $_.GptType -eq $EspType -and $_.IsSystem } | Select-Object -First 1
-if (-not $esp) { $esp = Get-Partition | Where-Object { $_.GptType -eq $EspType } | Select-Object -First 1 }
+if (-not $esp) {
+    # r408: never the EFI partition of some other disk (the installation stick has one too): only the one on the disk Windows is on.
+    $windowsDisk = (Get-Partition -DriveLetter "$env:SystemDrive".Substring(0, 1)).DiskNumber
+    $esp = Get-Partition -DiskNumber $windowsDisk | Where-Object { $_.GptType -eq $EspType } | Select-Object -First 1
+}
 if (-not $esp) { Fail 'Nie znaleziono partycji systemowej EFI (dysk GPT).' 'No EFI system partition found (GPT disk).' }
 $disk = Get-Disk -Number $esp.DiskNumber
 $sector = [uint64]$disk.LogicalSectorSize
+# r408: mounting the EFI partition. A letter it already has is used and left in place. Otherwise a letter that
+# is no drive of any kind (GetLogicalDrives: disks, empty card readers and CD drives, SUBST and connected
+# network drives; Test-Path alone took an empty CD drive or a disconnected network drive for free) and is not
+# remembered for a network drive of this user. If Windows refuses the letter, the next one is tried, and for
+# the partition this Windows started from also "mountvol X: /S" (documented: mounts the EFI system partition).
+$script:EspMounted = ''
 function Mount-Esp {
-    $letter = [char[]](90..68) | Where-Object { -not (Test-Path "$($_):\") } | Select-Object -First 1
-    if (-not $letter) { Fail 'Brak wolnej litery dysku do zamontowania partycji EFI.' 'No free drive letter to mount the EFI partition.' }
-    Add-PartitionAccessPath -DiskNumber $esp.DiskNumber -PartitionNumber $esp.PartitionNumber -AccessPath "$($letter):\"
-    return "$($letter):"
+    $have = "$($esp.DriveLetter)".Trim([char]0, ' ')
+    if ($have) { $script:EspMounted = ''; return "$($have):" }
+    $used = @([Environment]::GetLogicalDrives() | ForEach-Object { $_.Substring(0, 1).ToUpperInvariant() })
+    try { $used += @(Get-ChildItem 'HKCU:\Network' -ErrorAction Stop | ForEach-Object { $_.PSChildName.ToUpperInvariant() }) } catch { }
+    $why = ''
+    foreach ($code in 90..68) {
+        $letter = [string][char]$code
+        if ($used -contains $letter) { continue }
+        try {
+            Add-PartitionAccessPath -DiskNumber $esp.DiskNumber -PartitionNumber $esp.PartitionNumber -AccessPath "$($letter):\" -ErrorAction Stop
+            $script:EspMounted = 'partition'; return "$($letter):"
+        } catch { $why = $_.Exception.Message }
+        if ($esp.IsSystem) {
+            & (Join-Path $env:SystemRoot 'System32\mountvol.exe') "$($letter):" /S | Out-Null
+            if ($LASTEXITCODE -eq 0 -and (Test-Path "$($letter):\")) { $script:EspMounted = 'mountvol'; return "$($letter):" }
+        }
+    }
+    Fail "Nie udało się zamontować partycji EFI pod żadną wolną literą dysku ($why)." "The EFI partition could not be mounted on any free drive letter ($why)."
 }
-function Dismount-Esp([string]$Root) { Remove-PartitionAccessPath -DiskNumber $esp.DiskNumber -PartitionNumber $esp.PartitionNumber -AccessPath "$Root\" -ErrorAction SilentlyContinue }
+function Dismount-Esp([string]$Root) {
+    if ($script:EspMounted -eq 'partition') { Remove-PartitionAccessPath -DiskNumber $esp.DiskNumber -PartitionNumber $esp.PartitionNumber -AccessPath "$Root\" -ErrorAction SilentlyContinue }
+    elseif ($script:EspMounted -eq 'mountvol') { & (Join-Path $env:SystemRoot 'System32\mountvol.exe') $Root /D | Out-Null }
+    $script:EspMounted = ''
+}
+# r408: where the EFI partition is, as the firmware counts it. UEFI's hard drive device path wants "the entry
+# in the partition table, starting with entry 1", the first LBA and the size in logical blocks (512 or 4096
+# bytes), and edk2 matches a short path by signature AND partition number. Windows' partition number counts
+# the used entries only, which is another number when the GPT entry array has gaps (tables made by other
+# systems), so the entry is read from the disk itself: LBA 1 is the GPT header, entries follow at the LBA it
+# names. If the disk cannot be read, Windows' own numbers are used, as before.
+function Read-GptEntry([IO.Stream]$Stream, [uint32]$SectorSize, [guid]$Unique) {
+    $read = {
+        param([uint64]$lba, [int]$sectors)
+        $bytes = New-Object byte[] ([int]($sectors * $SectorSize))
+        [void]$Stream.Seek([int64]($lba * $SectorSize), [IO.SeekOrigin]::Begin)
+        $got = 0
+        while ($got -lt $bytes.Length) { $n = $Stream.Read($bytes, $got, $bytes.Length - $got); if ($n -le 0) { throw 'short read' }; $got += $n }
+        return , $bytes
+    }
+    $header = & $read 1 1
+    if ([Text.Encoding]::ASCII.GetString($header, 0, 8) -ne 'EFI PART') { return $null }
+    $entriesLba = [BitConverter]::ToUInt64($header, 72); $count = [int][BitConverter]::ToUInt32($header, 80); $entrySize = [int][BitConverter]::ToUInt32($header, 84)
+    if ($entrySize -lt 128 -or $entrySize -gt 4096 -or $count -lt 1 -or $count -gt 4096) { return $null }
+    $table = & $read $entriesLba ([int][Math]::Ceiling(($count * $entrySize) / [double]$SectorSize))
+    $want = $Unique.ToByteArray()
+    for ($i = 0; $i -lt $count; $i++) {
+        $at = $i * $entrySize; $same = $true
+        for ($k = 0; $k -lt 16 -and $same; $k++) { if ($table[$at + 16 + $k] -ne $want[$k]) { $same = $false } }
+        if ($same) {
+            $first = [BitConverter]::ToUInt64($table, $at + 32); $last = [BitConverter]::ToUInt64($table, $at + 40)
+            if ($last -lt $first) { return $null }
+            return [pscustomobject]@{ Number = [uint32]($i + 1); Start = [uint64]$first; Size = [uint64]($last - $first + [uint64]1) }
+        }
+    }
+    return $null
+}
+function Get-EspLocation {
+    $location = [pscustomobject]@{ Number = [uint32]$esp.PartitionNumber; Start = [uint64]($esp.Offset / $sector); Size = [uint64]($esp.Size / $sector) }
+    $entry = $null
+    try {
+        $handle = [CharonAddon.Native]::CreateFileW("\\.\PhysicalDrive$($esp.DiskNumber)", [uint32]2147483648, 3, [IntPtr]::Zero, 3, 0, [IntPtr]::Zero)   # GENERIC_READ, shared, OPEN_EXISTING
+        if (-not $handle.IsInvalid) {
+            $stream = New-Object IO.FileStream($handle, [IO.FileAccess]::Read, 1, $false)
+            try { $entry = Read-GptEntry $stream ([uint32]$sector) ([guid]$esp.Guid) } finally { $stream.Dispose() }
+        }
+    } catch { Write-InstallLog ('GPT not read from the disk: ' + $_.Exception.Message) }
+    if (-not $entry) { return $location }
+    if ($entry.Number -ne $location.Number -or $entry.Start -ne $location.Start -or $entry.Size -ne $location.Size) {
+        Say ("Partycja EFI w tablicy GPT: wpis {0}, pierwszy blok {1}, {2} bloków (Windows podaje numer {3}, blok {4}, {5} bloków). Do firmware trafiają wartości z dysku." -f $entry.Number, $entry.Start, $entry.Size, $location.Number, $location.Start, $location.Size) `
+            ("The EFI partition in the GPT: entry {0}, first block {1}, {2} blocks (Windows reports number {3}, block {4}, {5} blocks). The firmware gets the values from the disk." -f $entry.Number, $entry.Start, $entry.Size, $location.Number, $location.Start, $location.Size)
+    }
+    return $entry
+}
 
 if ($Uninstall) {
     if ($null -ne $existing) {
@@ -195,11 +289,25 @@ foreach ($n in 'CHARONVOICE.EFI', 'AudioDxe.efi') { if (-not (Test-Path (Join-Pa
 try { $secure = Confirm-SecureBootUEFI } catch { $secure = $false }
 $Sign = $Sign -or $secure
 if ($secure) { Say 'Secure Boot jest włączony: sterownik zostanie podpisany certyfikatem tego komputera.' 'Secure Boot is on: the driver will be signed with this computer''s certificate.' }
-$bitlocker = $null
-try { $bitlocker = Get-BitLockerVolume -MountPoint $env:SystemDrive -ErrorAction Stop } catch { }
-if ($bitlocker -and $bitlocker.ProtectionStatus -eq 'On') {
+# r408: protection is read with the BitLocker cmdlets and, where they are missing or fail, from the WMI class
+# behind manage-bde (Win32_EncryptableVolume, ProtectionStatus 1 = on). "Cannot tell" is said, not taken for "off".
+$protected = $null
+try { $protected = ("$((Get-BitLockerVolume -MountPoint $env:SystemDrive -ErrorAction Stop).ProtectionStatus)" -eq 'On') } catch { }
+if ($null -eq $protected) {
+    try {
+        $encryptable = Get-CimInstance -Namespace 'root\CIMV2\Security\MicrosoftVolumeEncryption' -ClassName Win32_EncryptableVolume -Filter ("DriveLetter='{0}'" -f $env:SystemDrive) -ErrorAction Stop
+        $protected = [bool]($encryptable -and ([int]$encryptable.ProtectionStatus -eq 1))
+    } catch { }
+}
+if ($null -eq $protected) { Say 'Nie udało się odczytać stanu BitLockera. Jeśli dysk jest zaszyfrowany, przygotuj klucz odzyskiwania przed następnym uruchomieniem komputera.' 'The BitLocker state could not be read. If the drive is encrypted, have the recovery key ready before the next start of the computer.' }
+if ($protected) {
     if (-not $SuspendBitLocker) { Fail 'BitLocker jest włączony. Nowy sterownik firmware zmienia pomiar rozruchu i Windows może zażądać klucza odzyskiwania. Uruchom instalator z -SuspendBitLocker (zawiesza ochronę na jeden restart) albo przygotuj klucz odzyskiwania. Nic nie zmieniono.' 'BitLocker is on. A new firmware driver changes the measured boot and Windows may ask for the recovery key. Run the installer with -SuspendBitLocker (suspends protection for one restart) or have the recovery key ready. Nothing was changed.' }
-    Suspend-BitLocker -MountPoint $env:SystemDrive -RebootCount 1 | Out-Null
+    try { Suspend-BitLocker -MountPoint $env:SystemDrive -RebootCount 1 -ErrorAction Stop | Out-Null }
+    catch {
+        # Without the cmdlet: the same through manage-bde (-protectors -disable <drive> -RebootCount n).
+        & (Join-Path $env:SystemRoot 'System32\manage-bde.exe') -protectors -disable $env:SystemDrive -RebootCount 1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { Fail 'Nie udało się zawiesić BitLockera. Nic nie zmieniono.' 'BitLocker could not be suspended. Nothing was changed.' }
+    }
     Say 'BitLocker zawieszony na jeden restart.' 'BitLocker suspended for one restart.'
 }
 
@@ -212,7 +320,10 @@ if ($Sign) {
     $staged = Join-Path $env:TEMP ('charon-addon-' + [guid]::NewGuid().ToString('n'))
     New-Item -ItemType Directory $staged | Out-Null
     foreach ($n in $files) { Copy-Item (Join-Path $Source $n) (Join-Path $staged $n); [void](Invoke-CharonEfiSign (Join-Path $staged $n) $certificate) }
-    [IO.File]::WriteAllBytes((Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'charon-db.cer'), $certificate.RawData)
+    # r408: the copy next to the installer is a convenience (the certificate is also saved on the EFI partition, below):
+    # read-only installation media must not stop the installation.
+    try { [IO.File]::WriteAllBytes((Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'charon-db.cer'), $certificate.RawData) }
+    catch { Write-InstallLog ('charon-db.cer not written next to the installer: ' + $_.Exception.Message) }
 }
 $root = Mount-Esp
 try {
@@ -233,13 +344,15 @@ try {
     [IO.File]::WriteAllText((Join-Path $hak 'addon.txt'), "Charon UEFI screen reader add-on r385; installed by Install-CharonAddon.ps1`r`n")
 } finally { Dismount-Esp $root; if ($Sign -and $staged -ne $Source) { Remove-Item $staged -Recurse -Force -ErrorAction SilentlyContinue } }
 
-$option = New-DriverOption $esp.PartitionNumber ([uint64]($esp.Offset / $sector)) ([uint64]($esp.Size / $sector)) ([guid]$esp.Guid)
+$espAt = Get-EspLocation
+$option = New-DriverOption $espAt.Number $espAt.Start $espAt.Size ([guid]$esp.Guid)
 $id = $existing
 if ($null -eq $id) {
     for ($c = 0; $c -lt 0x1000; $c++) { if ($null -eq (Get-Var (VarName $c))) { $id = $c; break } }
     if ($null -eq $id) { Fail 'Brak wolnego numeru Driver####.' 'No free Driver#### number.' }
 }
-Set-Var (VarName $id) $option
+$current = Get-Var (VarName $id)
+if (-not $current -or -not [Linq.Enumerable]::SequenceEqual([byte[]]$current, [byte[]]$option)) { Set-Var (VarName $id) $option }   # r408: an entry that is already right is not written again
 $order = Get-Order
 if ($order -notcontains [uint16]$id) {
     try { Set-Order ([uint16[]](@([uint16]$id) + $order)) }

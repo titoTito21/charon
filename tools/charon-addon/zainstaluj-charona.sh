@@ -43,10 +43,20 @@ ask() { # ask "question" default -> answer
 [ "$(id -u)" = 0 ] || [ $dry = 1 ] || { say "Uruchom jako root (sudo).";exit 1; }
 [ -d /sys/firmware/efi ] || { say "System nie wystartował w trybie UEFI; Charon nie zadziała (tryb BIOS).";exit 1; }
 command -v efibootmgr >/dev/null || { say "Brak efibootmgr (zainstaluj pakiet efibootmgr).";exit 1; }
-esp=$(findmnt -n -o TARGET /boot/efi 2>/dev/null || findmnt -n -o TARGET /efi 2>/dev/null || findmnt -n -o TARGET /boot 2>/dev/null || true)
-[ -n "$esp" ] && [ -d "$esp/EFI" ] || { say "Nie znaleziono zamontowanej partycji EFI (/boot/efi, /efi, /boot).";exit 1; }
-src_dev=$(findmnt -n -o SOURCE "$esp");disk=/dev/$(lsblk -n -o PKNAME "$src_dev" | head -n1)
-part=$(cat "/sys/class/block/$(basename "$src_dev")/partition")
+# The EFI partition: a FAT file system at /boot/efi, /efi or /boot. One mounted on demand
+# (systemd automount) shows twice in findmnt, as "systemd-1" (autofs) and, once it has been
+# used, as the FAT file system itself: it is touched first and only the FAT line is taken.
+esp=''
+for m in /boot/efi /efi /boot; do
+    ls "$m" >/dev/null 2>&1 || true
+    if findmnt -n -t vfat -o TARGET "$m" >/dev/null 2>&1 && [ -d "$m/EFI" ]; then esp=$m;break; fi
+done
+[ -n "$esp" ] || { say "Nie znaleziono zamontowanej partycji EFI (/boot/efi, /efi, /boot).";exit 1; }
+src_dev=$(findmnt -n -t vfat -o SOURCE "$esp" | tail -n1)
+# Whole disk and partition number as the kernel names them: right for sda1, nvme0n1p1 and mmcblk0p1.
+disk=/dev/$(lsblk -n -o PKNAME "$src_dev" | head -n1)
+part=$(cat "/sys/class/block/$(basename "$src_dev")/partition" 2>/dev/null || true)
+[ -n "$part" ] && [ "$disk" != /dev/ ] || { say "Partycja EFI ($src_dev) nie jest zwykłą partycją dysku; nic nie zmieniono.";exit 1; }
 secure=0
 if command -v mokutil >/dev/null && mokutil --sb-state 2>/dev/null | grep -q enabled; then secure=1; fi
 vars=/sys/firmware/efi/efivars;g=8be4df61-93ca-11d2-aa0d-00e098032b8c
@@ -183,11 +193,14 @@ else
     n=$(entry_of "$label" '' Boot);[ -n "$n" ] && run efibootmgr --bootnum "$n" --delete-bootnum >/dev/null
     before=$(efibootmgr | sed -n 's/^BootOrder: //p')
     run efibootmgr --create --disk "$disk" --part "$part" --loader "$loader" --label "$label" >/dev/null
-    # efibootmgr --create puts the new entry first; keep the old order when not default.
+    # efibootmgr --create puts the new entry first. When Charon is not to be the default, the
+    # system that was first stays first and Charon comes second, before everything else.
     if [ "$default" = no ] && [ -n "$before" ] && [ $dry = 0 ]; then
-        new=$(entry_of "$label" '' Boot);efibootmgr --bootorder "$before,$new" >/dev/null
+        new=$(entry_of "$label" '' Boot)
+        case "$before" in *,*) order="${before%%,*},$new,${before#*,}";; *) order="$before,$new";; esac
+        efibootmgr --bootorder "$order" >/dev/null
     fi
-    say "Zainstalowano: $label$( [ "$default" = yes ] && printf ', pierwszy w kolejności rozruchu')."
+    say "Zainstalowano: $label$( if [ "$default" = yes ]; then printf ', pierwszy w kolejności rozruchu'; else printf ', drugi w kolejności rozruchu, zaraz po dotychczasowym systemie'; fi)."
     if [ "$withreader" = yes ]; then
         n=$(entry_of 'Charon voice' --driver Driver);[ -n "$n" ] && run efibootmgr --driver --bootnum "$n" --delete-bootnum >/dev/null
         run efibootmgr --driver --create --disk "$disk" --part "$part" --loader '\EFI\HAK\CHARONVOICE.EFI' --label 'Charon voice' >/dev/null

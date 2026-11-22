@@ -2,6 +2,7 @@
 #include "BootMenuVoice.h"
 #include "CharonAudioAssets.h"
 #include "CharonAudioDevice.h"
+#include "CharonPcmSink.h"   // r407: another program's sound (CharonPC's Sound Blaster) under the speech
 #include "CharonPoolEFI.h"
 #include "CharonTrace.h"
 #include "../tts/runtime/CharonLiveVoice.h"
@@ -41,17 +42,20 @@ public:
         // Finish file I/O before starting DMA; the menu will pump promptly
         // once Open has established the actual device stream.
         assetsStatus_=assets_.Load(root,&pool_);
-        status=device_.Open(boot);
+        // r405: a USB sound card is the last choice: not before AudioDxe had its chance.
+        status=device_.Open(boot,false);
         charontrace::Value("CHARON audio open",uint64_t(status));
         if(status==EFI_NOT_FOUND && !device_.NeedsStop()) {
             status=LoadDriver(self,root,!deferDevice);
             charontrace::Value("CHARON audio driver",uint64_t(status));
-            if(status==EFI_SUCCESS)status=device_.Open(boot);
+            // r405: also without the driver (no AudioDxe file, load refused): a USB sound card may be there.
+            const auto opened=device_.Open(boot);
+            if(status==EFI_SUCCESS || opened==EFI_SUCCESS)status=opened;
             charontrace::Value("CHARON audio open2",uint64_t(status));
         }
-        if(deferDevice && status!=EFI_SUCCESS && !device_.NeedsStop()) {ready_=true;return EFI_SUCCESS;}
+        if(deferDevice && status!=EFI_SUCCESS && !device_.NeedsStop()) {ready_=true;pcm_.Publish(boot_);return EFI_SUCCESS;}
         if(status!=EFI_SUCCESS)return status;
-        ready_=true;
+        ready_=true;pcm_.Publish(boot_);   // r407
         return EFI_SUCCESS; // Speech can work without optional effects assets.
     }
     hakefi::MenuVoice* Voice() {return ready_?&bridge_.api.base:nullptr;}
@@ -65,6 +69,7 @@ public:
     // retains all storage and the driver binding; callers must not unload us.
     efi_status Shutdown() {
         const auto status=Stop();if(status!=EFI_SUCCESS)return status;
+        if(pcm_.Withdraw()!=EFI_SUCCESS)return EFI_ACCESS_DENIED;   // r407: its callbacks point into this object
         if(messagesReady_)intro_.Shutdown();
         messagesReady_=false;voice_.Shutdown();assets_.Clear();
         if(preparationDeadline_)boot_->CloseEvent(preparationDeadline_);
@@ -123,6 +128,10 @@ private:
         // r402: firmware took the audio driver away (it reconnects controllers at
         // start-up). Speech stays queued and sound returns when the card is bound again.
         if(device_.Vanished()) {
+            // r407: once the tries are used up, look for a card only now and then: every call
+            // searched all sound cards and USB devices again (hundreds of times a second).
+            // r407: at once when a USB device was plugged in (a USB sound card put back is heard without a wait).
+            if(reconnects_>=12 && (++vanishedCalls_&1023) && !device_.UsbChanged(boot_))return EFI_SUCCESS;
             auto reopened=device_.Open(boot_);
             if(reopened!=EFI_SUCCESS) {
                 if(reconnects_<12)charontrace::Value("CHARON audio reopen status",reopened);
@@ -136,7 +145,19 @@ private:
             }
             charontrace::Value("CHARON audio reopened",1);
         }
-        if(device_.NeedsStop())return device_.LastError()==EFI_TIMEOUT?Recover():device_.LastError();
+        if(device_.NeedsStop()) {
+            const auto fault=device_.LastError();
+            if(fault==EFI_TIMEOUT)return Recover();
+            if(fault==EFI_SUCCESS)return EFI_SUCCESS;
+            // r406: any other fault of the stream (seen in VMware right after the network
+            // came up: the dialogue went on, silent for good). The device is stopped and
+            // opened again, a few times in a row at most; speech asked for meanwhile is lost,
+            // the next utterance is heard.
+            if(faultRestarts_>=maximumFaultRestarts)return fault;
+            ++faultRestarts_;charontrace::Value("CHARON audio fault restart",uint64_t(fault));
+            device_.Stop();
+            if(device_.NeedsStop()) {device_.MarkVanished();return EFI_SUCCESS;}   // the stream would not stop: found again as a vanished one
+        }
         const auto status=device_.Open(boot_);
         if(status==EFI_SUCCESS && assets_.Ready()) {
             const auto sound=assets_.Background(background_);
@@ -167,7 +188,7 @@ private:
         size_t bytes=0;while(bytes<=charon::LiveVoice::maximumTextBytes && text[bytes])++bytes;
         if(bytes>charon::LiveVoice::maximumTextBytes)return EFI_BAD_BUFFER_SIZE;
         const auto status=self->EnsureRunning();if(status!=EFI_SUCCESS)return status;
-        self->recoveries_=0;   // r400: the bound is per utterance, or a long session went mute after 64 stalls
+        self->faultRestarts_=0;self->recoveries_=0;   // r400: the bound is per utterance, or a long session went mute after 64 stalls
         charontrace::Text("CHARON speak");charontrace::Text(language);charontrace::Text(text);
         // r389: an interruption drops the old speech the driver still holds
         // (up to 150 ms before), so the new text is heard at once.
@@ -232,13 +253,15 @@ private:
         const size_t sinkFrames=maximumFrames<2048?2048:maximumFrames;
         // r389: the reader's voice first (interactive), then the message voice
         // (it only feeds the second channel; the first voice writes the mix).
-        const int result=self->voice_.Pump({32768,1024,0,PreparationDeadline,self},self->device_.Sink(),&progress);
+        const auto mixed=self->pcm_.Wrap(self->device_.Sink());   // r407: with a PCM client, its sound is added to every block
+        const int result=self->voice_.Pump({32768,1024,0,PreparationDeadline,self},mixed,&progress);
         if(self->messagesReady_) {
             charon::LiveVoice::Progress other;
-            if(self->intro_.Pump({32768,1024,0,PreparationDeadline,self},self->device_.Sink(),&other))self->intro_.CancelSpeech();
+            if(self->intro_.Pump({32768,1024,0,PreparationDeadline,self},mixed,&other))self->intro_.CancelSpeech();
         }
         self->device_.LimitLead(self->messagesReady_ && !self->intro_.SpeechIdle()?4096:0);   // r389: 85 ms while a message speaks
-        if(!result) {charon::LiveVoice::Progress out;self->voice_.Pump({0,0,sinkFrames},self->device_.Sink(),&out);progress.sinkFrames=out.sinkFrames;}
+        if(!result) {charon::LiveVoice::Progress out;self->voice_.Pump({0,0,sinkFrames},mixed,&out);progress.sinkFrames=out.sinkFrames;}
+        self->pcm_.Service(self->device_.Sink());   // r407: no speech was written: the client's sound goes out alone
         ++self->tracePump_;self->traceCheckpoints_+=progress.frontend;
         if(!self->traceGenerated_ && (self->tracePump_<=3 || !(self->tracePump_%128))) {
             charontrace::Value("CHARON prep pump",self->tracePump_);
@@ -563,6 +586,22 @@ private:
     }
     static void PreloadThunk(void* context) {
         auto* self=static_cast<VoiceProvider*>(context);
+        // r406: called when firmware starts a program, at TPL_APPLICATION: the moment at which the reader
+        // that came as a firmware driver may take the sound card over from the firmware's own HD Audio
+        // driver (never from its timer or a notification, see CharonAc97.h).
+        if(self->driver_ && (!self->device_.NeedsStop() || self->device_.Vanished()) && AtApplicationLevel(self->boot_) && self->applicationConnects_<3) {
+            ++self->applicationConnects_;
+            if(self->device_.NeedsStop())self->device_.Stop();
+            const size_t taken=DisconnectFirmwareHda(self->boot_,self->driver_);
+            ConnectAudioControllers(self->boot_);
+            // r407: VMware's firmware has its own codec driver too; it bound the codec that Charon's
+            // controller driver published, so the stream had no codec driver of ours (Open = unsupported).
+            charontrace::Value("CHARON audio codecs claimed",uint64_t(Device::ClaimCodecs(self->boot_,self->driver_)));
+            const auto opened=self->device_.Open(self->boot_);
+            charontrace::Value("CHARON audio taken at program start",uint64_t(taken));
+            charontrace::Value("CHARON audio open at program start",uint64_t(opened));
+            if(opened==EFI_SUCCESS)self->reconnects_=0;
+        }
         if(self->preloaded_ || self->loading_)return;   // r402: never inside a load (see SetSynthThunk)
         self->preloaded_=true;
         const uint8_t before=self->activeSynth_==SIZE_MAX?0:self->loaded_[self->activeSynth_].key;const uint32_t beforeVoice=self->activeVoice_;
@@ -622,6 +661,7 @@ private:
         status=boot_->StartImage(driver_,nullptr,nullptr);
         charontrace::Value("CHARON audio driver started",uint64_t(status));
         if(status!=EFI_SUCCESS) {boot_->UnloadImage(driver_);driver_=nullptr;return status;}
+        audioDriverImage=driver_;   // r406
         // A started driver owns its bindings and must stay resident. Never
         // bypass firmware authentication or unload it beneath connected devices.
         if(!connect)return EFI_SUCCESS;
@@ -642,10 +682,10 @@ private:
     static constexpr size_t maxLoaded=4;bool loading_=false;   // r402
     LoadedSynth loaded_[maxLoaded]={};size_t loadedCount_=0;size_t activeSynth_=SIZE_MAX;uint32_t activeVoice_=0;
     Other otherReader_=Other::None,otherMessage_=Other::None;uint32_t otherVoice_=0;
-    efi_boot_services* boot_=nullptr;efi_handle driver_=nullptr;
+    efi_boot_services* boot_=nullptr;efi_handle driver_=nullptr;unsigned applicationConnects_=0,vanishedCalls_=0;
     efi_event preparationDeadline_=nullptr;efi_status deadlineError_=EFI_SUCCESS;
     size_t deadlineCheckpoint_=0;uint64_t tracePump_=0,traceCheckpoints_=0;
-    CharonPool pool_{};charon::LiveVoice voice_;Device device_;Assets assets_;
+    CharonPool pool_{};charon::LiveVoice voice_;Device device_;Assets assets_;PcmMix pcm_;
     charon::LiveVoice intro_;bool messagesReady_=false;double messageRate_=1.4,messagePitch_=1;   // r389 boot messages
     efi_status assetsStatus_=EFI_NOT_READY;
     efi_status playbackError_=EFI_SUCCESS;unsigned reopenTick_=0,reconnects_=0;
@@ -656,7 +696,7 @@ private:
     double rate_=1,pitch_=1;
     static constexpr unsigned toneMaxMs=500;  // r384: 500 ms countdown end tone
     int16_t tone_[2][48*toneMaxMs*2]={};unsigned toneSlot_=0;
-    static constexpr unsigned maximumRecoveries=64;unsigned recoveries_=0;
+    static constexpr unsigned maximumRecoveries=64;unsigned recoveries_=0;static constexpr unsigned maximumFaultRestarts=8;unsigned faultRestarts_=0;   // r406
     char lastText_[charon::LiveVoice::maximumTextBytes+1]={};size_t lastTextBytes_=0;
     charon::LiveVoice::Language lastLanguage_=charon::LiveVoice::Language::Polish;
     unsigned start_=0,background_=0;

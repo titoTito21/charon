@@ -20,6 +20,7 @@
 #pragma once
 #include "BootMenuVoice.h"
 #include "CharonCues.h"
+#include "CharonReaderControl.h"   // r407: graphicsOwnerGuid
 #include "CharonTrace.h"
 #include "CharonGraphicsTypes.h"
 #include "CharonOcr.h"
@@ -41,6 +42,7 @@
 #include "CharonFormatting.h"
 #include "CharonProgress.h"
 #include "CharonManagerProbe.h"
+#include "CharonSecretInput.h"   // r407: VeraCrypt password entry
 #include <efi/protocol/simple-file-system.h>
 #include <efi/protocol/file.h>
 #include <efi/protocol/loaded-image.h>
@@ -302,6 +304,7 @@ private:
     // ---- shadow screen -------------------------------------------------
     void ResetShadow() {
         for(size_t r=0;r<maxRows;++r) {for(size_t c=0;c<maxColumns;++c) {text_[r][c]=u' ';attr_[r][c]=0;cellFont_[r][c]=0;}dirty_[r]=false;}
+        secret_.Reset();
         column_=row_=0;highlight_=SIZE_MAX;anyDirty_=false;hooksRemoved_=false;foreignConOut_=false;lastPercent_=-1;menuAnnounced_=false;everKey_=false;quietMenu_=0;rereadAfterKey_=false;menuIntro_=false;
         spoken_[0]=0;
         for(size_t r=0;r<maxRows;++r)for(size_t c=0;c<maxColumns;++c)prevRaw_[r][c]=0;
@@ -332,6 +335,7 @@ private:
         }
         for(size_t c=0;c<columns_;++c) {text_[rows_-1][c]=u' ';attr_[rows_-1][c]=0;cellFont_[rows_-1][c]=0;}
         dirty_[rows_-1]=false;for(size_t c=0;c<columns_;++c)prevRaw_[rows_-1][c]=0;
+        secret_.ScrollUp(rows_,columns_);   // r407
         if(highlight_!=SIZE_MAX)highlight_=highlight_?highlight_-1:SIZE_MAX;
         lastScroll_=tick_;   // r389: scrolling output = a console
     }
@@ -434,6 +438,9 @@ private:
     bool CaretKnown() const {size_t r,c;return CursorShown() || DrawnCaret(r,c);}
     void EchoFromCaret() {CaretPos(echoRow_,echoCol_);}
     void Capture(const char16_t* text) {
+        // r407: characters written into a secret entry (CharonSecretInput.h) are kept as '*'.
+        const bool notice=secret_.active && secretinput::PublicNotice(text);
+        const size_t inked=secret_.active?secretinput::Inked(text):0;
         for(;*text;++text) {
             const char16_t ch=*text;
             if(ch==u'\r') {column_=0;continue;}
@@ -442,14 +449,88 @@ private:
             if(ch<32 || ch==127)continue;
             if(row_>=rows_)row_=rows_-1;   // never outside the shadow (rows_ is at least 1)
             if(column_>=columns_) {column_=0;NewLine();}
-            text_[row_][column_]=ch;attr_[row_][column_]=uint8_t(0x80|(attribute_&0x7f));cellFont_[row_][column_]=0;
+            bool mask=false;
+            if(secret_.active) {
+                if(row_!=secret_.row || column_<secret_.column)SecretLeave();
+                else if(secret_.secret) {
+                    mask=secret_.Masks(row_,column_,inked,notice);
+                    if(!mask && !notice && ch!=u' ')SecretLeave();   // the program's own output: the entry is over
+                }
+            }
+            text_[row_][column_]=secret_.Put(row_,column_,ch,mask);attr_[row_][column_]=uint8_t(0x80|(attribute_&0x7f));cellFont_[row_][column_]=0;
             if(!anyDirty_)firstDirty_=tick_;
             dirty_[row_]=true;anyDirty_=true;
             if(Highlighted(attribute_) && ch!=u' ')highlight_=row_;
             ++column_;
         }
+        if(secret_.active && (row_!=secret_.row || column_<secret_.column))SecretLeave();   // Enter, a carriage return
         lastOutput_=tick_;lastText_=tick_;lastConsoleText_=tick_;
     }
+    // ---- r407 secret typed input (VeraCrypt's password and PIM) ----------
+    // See CharonSecretInput.h. The screen model holds '*' in a secret entry;
+    // nothing automatic (speech, braille, history, "what changed", the
+    // clipboard, recognised graphics) ever sees the real characters.
+    secretinput::Mask<maxRows,maxColumns> secret_{};bool revealing_=false;
+    bool SecretScreen() const {return secret_.marks!=0 || secret_.Entry();}
+    // A program with secret input (VeraCrypt) showing console text: one prompt line on a black screen, waiting for the user.
+    bool SecretConsole() const {
+        const auto* profile=RunningProfile();
+        if(!profile || !profile->secretInput)return false;
+        for(size_t r=0;r<rows_;++r)for(size_t c=0;c<columns_;++c)if((attr_[r][c]&0x80) && !cellFont_[r][c] && text_[r][c]!=u' ' && text_[r][c])return true;
+        return false;
+    }
+    // The entry row is done with: what was typed is no news. A prompt that
+    // has not been read yet stays to be read.
+    void SecretSync(size_t r,size_t from) {
+        if(r>=rows_ || r>=maxRows)return;
+        bool promptNew=false;
+        for(size_t c=0;c<from && c<columns_;++c)if(text_[r][c]!=(prevRaw_[r][c]?prevRaw_[r][c]:u' '))promptNew=true;
+        for(size_t c=from;c<columns_;++c)prevRaw_[r][c]=text_[r][c];
+        if(!promptNew)dirty_[r]=false;
+    }
+    void SecretLeave() {
+        const bool was=secret_.secret;const size_t r=secret_.row,from=secret_.column;
+        secret_.Leave();
+        if(was)SecretSync(r,from);
+    }
+    // A key the program reads: an entry begins at the caret when the running
+    // program's typed input is secret (its profile says so).
+    void SecretKey() {
+        const auto* profile=RunningProfile();
+        if(!profile || !profile->secretInput) {if(secret_.active)SecretLeave();return;}
+        if(row_>=rows_ || row_>=maxRows || column_>maxColumns)return;
+        if(secret_.active && (row_!=secret_.row || column_<secret_.column))SecretLeave();
+        secret_.Key(row_,column_,text_[row_]);
+    }
+    // The cue of a secret entry: one neutral word for every character the
+    // program accepted (it echoed one more cell) or removed, as for password
+    // fields of the accessibility protocol. Notices stay readable.
+    void SecretEcho() {
+        const size_t r=secret_.row;
+        if(r>=rows_ || !dirty_[r])return;
+        const bool pl=options_.polish;
+        const size_t now=secret_.Count(r);const char16_t* cue=nullptr;
+        if(now>secret_.counted)cue=pl?u"gwiazdka":u"star";else if(now<secret_.counted)cue=pl?u"usunięto":u"deleted";
+        secret_.counted=now;
+        char16_t notice[maxColumns+1];size_t n=0;bool changed=false;
+        for(size_t c=secret_.column;c<columns_;++c) {
+            const char16_t ch=secret_.clear[r][c]?u' ':(text_[r][c]?text_[r][c]:u' ');
+            if(ch!=u' ' && ch!=(prevRaw_[r][c]?prevRaw_[r][c]:u' '))changed=true;
+            if(ch!=u' ' || n)notice[n++]=ch;
+        }
+        while(n && notice[n-1]==u' ')--n;notice[n]=0;
+        SecretSync(r,secret_.column);
+        EchoFromCaret();keyPending_=false;
+        reviewRow_=row_;reviewCol_=column_<columns_?column_:columns_-1;   // review and braille follow the caret (braille shows the stars)
+        if(quiet_)return;
+        if(changed && n)Speak(notice);else if(cue)SayOwn(cue);
+    }
+    // An explicit review command reads the real characters (F5 shows them on
+    // the screen as well); they are put back before anything else runs.
+    void SecretSwap() {
+        for(size_t r=0;r<maxRows;++r)for(size_t c=0;c<maxColumns;++c)if(secret_.clear[r][c]) {const char16_t t=text_[r][c];text_[r][c]=secret_.clear[r][c];secret_.clear[r][c]=t?t:u'*';}
+    }
+    static bool GrubFamily(const char16_t* name) {return name && (name[0]==u'G' || (name[0]==u'V' && name[1]==u'e' && name[2]==u'n'));}   // GRUB, Ventoy (not VeraCrypt)
     // ---- graphics (r357) -----------------------------------------------
     void HookGraphics() {
         efi_handle* handles=nullptr;size_t count=0;
@@ -509,6 +590,7 @@ private:
     void CaptureCells(size_t x,size_t y,const char16_t* text,uint32_t foreground,uint32_t background,size_t cellHeight) {
         size_t column=x/8,row=y/cellHeight;
         if(row>=maxRows || column>=maxColumns)return;
+        if(SecretScreen()) {captureFont_=0;return;}   // r407: only the console's own text counts beside a secret entry
         const uint8_t attribute=uint8_t((ConsoleColor(foreground)&0x0f)|((ConsoleColor(background)&7)<<4));
         const uint16_t font=captureFont_;captureFont_=0;
 #if defined(HAK_CHARON_READER_TRACE) || defined(HAK_CHARON_POLL_DIAG)
@@ -567,10 +649,21 @@ private:
         else if(!r->suspended_)r->ObserveBlt(self,buffer,operation,x,y,width,height);
         return status;
     }
+    // r407: true while another program reads the graphical screen itself (graphicsOwnerGuid).
+    // Looked up at most once per tick: the Blt hook asks for every tile.
+    bool GraphicsOwned() {
+        if(ownedTick_!=tick_ || !ownedKnown_) {
+            void* any=nullptr;ownedTick_=tick_;ownedKnown_=true;
+            owned_=boot_ && boot_->LocateProtocol(&graphicsOwnerGuid,nullptr,&any)==EFI_SUCCESS;
+            if(owned_) {graphicsActivity_=0;graphicsAnnounced_=false;pixelDirty_=false;}
+        }
+        return owned_;
+    }
     void ObserveBlt(Gop* gop,const uint32_t* buffer,uint32_t operation,size_t x,size_t y,size_t width,size_t height) {
 #ifdef HAK_CHARON_READER_TRACE
         charontrace::Value("reader blit",(uint64_t(operation)<<60)|(uint64_t(x)<<45)|(uint64_t(y)<<30)|(uint64_t(width)<<15)|height);
 #endif
+        if(GraphicsOwned())return;
         const size_t screen=size_t(gop->Mode->info->horizontal)*gop->Mode->info->vertical;
         const size_t area=width*height;
         if(!screen || !area)return;
@@ -708,7 +801,7 @@ private:
     // poll once drawing pauses, so arrows in a graphical menu are read
     // within about 0.2 s instead of at the next one-second poll.
     void SampleFrameBuffer() {
-        if(options_.reviewOnly) {pixelDirty_=false;return;}   // r401: Charon's own screens are console text; no frame-buffer work beside Charon
+        if(options_.reviewOnly || GraphicsOwned()) {pixelDirty_=false;return;}   // r401: Charon's own screens are console text; no frame-buffer work beside Charon
         Gop* gop=DeviceGop();
         if(!gop)return;
         FrameGeometry g{};size_t pages=1;bool exact=false;
@@ -1003,7 +1096,7 @@ private:
         if(tick_>=pumpRetry_ && options_.voice->Pump(options_.voice,2048)!=EFI_SUCCESS)pumpRetry_=tick_+50;
     }
     void PollFrameBuffer() {
-        if(options_.reviewOnly) {pixelDirty_=false;return;}   // r401: Charon's own screens are console text; no frame-buffer work beside Charon
+        if(options_.reviewOnly || GraphicsOwned()) {pixelDirty_=false;return;}   // r401: Charon's own screens are console text; no frame-buffer work beside Charon
         lastPoll_=tick_;
         Gop* gop=DeviceGop();
         const GopBltFn original=OriginalBlt(gop);
@@ -1294,6 +1387,7 @@ private:
         bool rowCleared[maxRows]={};   // r396
         bool baselineRows=false;  // r367: TrueType/bitmap lines sit in rows by their baseline
         auto emit=[&](const char16_t* text,size_t x,size_t y,uint32_t fg,uint32_t bg) {
+            if(SecretScreen())return;   // r407
             if(!lines++) {
                 // Replace what this area showed before (only when it holds
                 // text), but only cells that lie wholly inside the area: a
@@ -1345,8 +1439,8 @@ private:
 #ifdef HAK_CHARON_POLL_DIAG
         const uint64_t diag0=Tsc();
 #endif
-        ocr_.bandsEnabled=!bootManager_ || (bootManager_[0]==u'G' || bootManager_[0]==u'V');  // r386: GRUB or a program without a known manager
-        ocr_.bandsAlways=bootManager_ && (bootManager_[0]==u'G' || bootManager_[0]==u'V');
+        ocr_.bandsEnabled=!bootManager_ || GrubFamily(bootManager_);  // r386: GRUB or a program without a known manager
+        ocr_.bandsAlways=GrubFamily(bootManager_);
         size_t recognized=ocr_.Recognize(area,width,height,stride,left,top,unifont,[&]() {FeedAudio();});
         if(!wordLines)recognized=0;
 #ifdef HAK_CHARON_POLL_DIAG
@@ -2302,6 +2396,7 @@ private:
             anyDirty_=false;menuIntro_=false;menuMoved_=false;keyPending_=false;return;
         }
         event_=formatting::Event::none;
+        if(secret_.Entry())SecretEcho();   // r407: a password being typed is never read; one cue per character
         {size_t used=0;for(size_t r=0;r<rows_;++r)for(size_t c=used;c<columns_;++c)if(attr_[r][c]&0x80)used=c+1;usedColumns_=used?used:columns_;}
         // r397: a row the OCR reads as the old text with many cells changed is the old
         // text half painted over (Syslinux hides its countdown after Tab: "An omn ic hoo
@@ -3116,9 +3211,9 @@ private:
             // frame characters between words are no text (a dialog's sides around its field)
             if(frame && !own) {static char16_t clean[1600];size_t k=0;for(;text[k] && k+1<1600;++k)clean[k]=(text[k]>=0x2500 && text[k]<=0x257f)?u' ':text[k];clean[k]=0;text=clean;}}
 #ifdef HAK_CHARON_READER_TRACE
-        {char t[600];Utf8(text,t,sizeof(t));charontrace::Text("reader say");charontrace::Text(t);}
+        {char t[600];Utf8(text,t,sizeof(t));charontrace::Text("reader say");charontrace::Text(revealing_?"(review of a secret entry: not logged)":t);}
 #endif
-        if(!historyOpen_)AddHistory(text);
+        if(!historyOpen_ && !revealing_)AddHistory(text);   // r407: revealed secret text is spoken once and kept nowhere
         const char16_t* source=text;
         if(!rawSpeech_ && FormatSpeech(text,formatted_,sizeof(formatted_)/2,ownSpeech_))source=formatted_;
         ComposeSpeech(source,ownSpeech_ || rawSpeech_,pending_,sizeof(pending_)/2,pendingLanguage_);
@@ -3201,7 +3296,11 @@ private:
                     :u"Charon shortcuts. NVDA desktop layout: Insert, then a numpad digit: 7, 8, 9 lines, 4, 5, 6 words, 1, 2, 3 characters, plus read on, star the whole screen, Tab the highlighted entry, End the key-hint bar, T where am I, F colours, F12 time, Insert twice sends a real Insert. Laptop layout: Control Alt and a letter: R whole screen, A read on, S stop, U, I, O lines, J, K, L words, M, comma, period characters, T and B top and bottom, E highlighted entry, P position, N colours, C time, Q automatic reading, equals and minus rate, Left and Right choose rate, volume or pitch, Up and Down change it, W where am I, Y key-hint bar, V verbosity, D symbol level, Z screen text language, X input help, H this help. A line or word twice: spelled, a character twice: phonetic, three times: its code. The numpad alone with NumLock off reviews the screen on USB keyboards, as in NVDA; Insert P symbol level, Insert 0 input help. Alt layout: Alt Up and Down lines, Left and Right characters, Alt backslash pauses the boot for screen review; plain arrows then read lines and characters, Escape goes on.");
             return;
         }
-        if(Review(c))return;
+        {const bool reveal=secret_.marks!=0;   // r407: only these explicit commands read a secret entry's real text
+         if(reveal) {SecretSwap();revealing_=true;}
+         const bool done=Review(c);
+         if(reveal) {SecretSwap();revealing_=false;}
+         if(done)return;}
         // Read again: every row counts as new, the menu is introduced again.
         bool any=false;
         for(size_t r=0;r<rows_ && !any;++r)any=TextStart(r)!=SIZE_MAX;
@@ -3818,9 +3917,10 @@ private:
     // a moved cursor is read (NVDA: character or line under the caret).
     void NoteKey(uint16_t scan,char16_t ch) {
         if(stopped_ || suspended_)return;
+        SecretKey();   // r407
         if(!keyPending_)EchoFromCaret();
         if(!keyPending_ || tick_-keyTick_>20)SnapshotBeforeKey();   // r393 "what changed"
-        keyPending_=true;keyTick_=tick_;keyScan_=scan;keyChar_=ch;
+        keyPending_=true;keyTick_=tick_;keyScan_=scan;keyChar_=secret_.Entry() && ch>=32?u'*':ch;   // r407: a secret key is not remembered
         everKey_=true;if(quietMenu_) {quietMenu_=0;rereadAfterKey_=true;}   // r400: the held menu is read now
     }
     bool KeyRecent() const {return keyPending_ && tick_-keyTick_<50;}
@@ -3831,6 +3931,7 @@ private:
     bool CursorShown() const {return real_ && real_->Mode && real_->Mode->CursorVisible;}
     void CursorEcho() {
         if(options_.reviewOnly)return;   // r401: Charon echoes its own keys
+        if(secret_.Entry() && row_==secret_.row) {echoRow_=row_;echoCol_=column_;keyPending_=false;return;}   // r407: nothing under the caret of a secret entry is read
         size_t cr=0,cc=0;const bool drawn=DrawnCaret(cr,cc);
         if(!drawn) {cr=row_;cc=column_;}
         if(!KeyRecent() || !(drawn || CursorShown()) || cr>=rows_)return;
@@ -4160,7 +4261,7 @@ private:
         // r393 (user: an installed Linux): GRUB's real grub.cfg is on the
         // system partition (ext4), the ESP holds a stub: the menu may be hidden.
         hiddenMaybe_=false;
-        if(!hidden && summary.elsewhere && (name[0]==u'G' || name[0]==u'V')) {hidden=true;hiddenMaybe_=true;}
+        if(!hidden && summary.elsewhere && GrubFamily(name)) {hidden=true;hiddenMaybe_=true;}
         root->Close(root);
 #ifdef HAK_CHARON_READER_TRACE
         charontrace::Value("reader hidden menu",(uint64_t(hidden)<<32)|uint64_t(summary.timeout&0xffff));
@@ -4339,10 +4440,11 @@ private:
     // r397: the screen shown now (CharonManagerProfiles.h screens and the
     // screenkey= lines of profile files), by text it shows.
     const keyhelp::Entry* screenKeys_[24]={};size_t screenKeyCount_=0;const keyhelp::Entry* screenName_=nullptr;
-    bool ScreenShows(const char16_t* marker) const {
+    bool ScreenShows(const char16_t* marker,size_t only=SIZE_MAX) const {
         size_t n=0;while(marker[n])++n;
         if(!n || n>maxColumns)return false;
         for(size_t r=0;r<maxRows;++r)for(size_t c=0;c+n<=maxColumns;++c) {
+            if(only!=SIZE_MAX && r!=only)break;
             if(text_[r][c]!=marker[0])continue;
             size_t k=1;while(k<n && text_[r][c+k]==marker[k])++k;
             if(k==n)return true;
@@ -4357,7 +4459,15 @@ private:
         }
         uint32_t groups=0;
         for(const auto& s:managers::screens) {
-            if((groups>>s.group)&1 || !ScreenShows(s.marker))continue;
+            // r407: a marker of the caret's row (a prompt) or of the text row above it (the answer to the last entry)
+            size_t only=SIZE_MAX;
+            if(s.where==managers::ScreenKeys::caretRow) {if(row_>=rows_)continue;only=row_;}
+            else if(s.where==managers::ScreenKeys::aboveCaret) {
+                size_t k=row_<rows_?row_:0;bool found=false;
+                while(k-->0)if(RowHasText(k)) {found=true;break;}
+                if(!found)continue;only=k;
+            }
+            if((groups>>s.group)&1 || !ScreenShows(s.marker,only))continue;
             groups|=1u<<s.group;
             if(!screenName_)screenName_=&s.name;
             for(size_t k=0;k<s.keyCount && screenKeyCount_<24;++k)screenKeys_[screenKeyCount_++]=&s.keys[k];
@@ -4550,7 +4660,7 @@ private:
         const bool eaten=r->FilterKey(*key);
         if(!eaten)r->NoteKey(key->ScanCode,key->UnicodeChar);
 #ifdef HAK_CHARON_READER_TRACE
-        charontrace::Value("reader key read",(uint64_t(eaten)<<40)|(uint64_t(key->ScanCode)<<16)|key->UnicodeChar);
+        charontrace::Value("reader key read",(uint64_t(eaten)<<40)|(uint64_t(key->ScanCode)<<16)|(r->secret_.Entry() && key->UnicodeChar>=32?u'*':key->UnicodeChar));   // r407: no secret key in the trace
 #endif
         // Some programs (GRUB) look at the buffer, not only the status: an
         // eaten key leaves an empty key behind.
@@ -4592,7 +4702,7 @@ private:
         const bool eaten=r->FilterKey(data->key);
         if(!eaten)r->NoteKey(data->key.ScanCode,data->key.UnicodeChar);
 #ifdef HAK_CHARON_READER_TRACE
-        charontrace::Value("reader key readex",(uint64_t(eaten)<<40)|(uint64_t(data->key.ScanCode)<<16)|data->key.UnicodeChar);
+        charontrace::Value("reader key readex",(uint64_t(eaten)<<40)|(uint64_t(data->key.ScanCode)<<16)|(r->secret_.Entry() && data->key.UnicodeChar>=32?u'*':data->key.UnicodeChar));   // r407
 #endif
         if(eaten) {data->key.ScanCode=0;data->key.UnicodeChar=0;data->state.shift=0;data->state.toggle=0;}
         return eaten?EFI_NOT_READY:EFI_SUCCESS;
@@ -4687,7 +4797,7 @@ private:
         // text, no key) and then the blank frame holds for a further 3 s.
         if(!self.options_.reviewOnly && !self.pixelDirty_ && self.tick_-self.lastOutput_>=250 && self.tick_-self.lastBlt_>=250
             && self.tick_-self.lastText_>=250 && self.tick_-self.keyTick_>=250 && !(self.tick_%20)) {
-            const int kind=self.ClassifyBlankScreen();
+            const int kind=self.SecretConsole()?0:self.ClassifyBlankScreen();   // r407: a password prompt on a black console is no stuck screen
             if(kind) {
                 if(kind!=self.blankKind_) {self.blankKind_=kind;self.blankSince_=self.tick_;self.blankAnnounced_=false;}
                 // ~7 s of a stuck blank frame. The cooldown only suppresses the
@@ -4703,7 +4813,7 @@ private:
             self.blankKind_=0;self.blankAnnounced_=false;   // activity resumed: leave the blank state
         }
         self.DriveBlankTone();
-        if(self.options_.reviewOnly) {}
+        if(self.options_.reviewOnly || self.GraphicsOwned()) {}
         else if(self.graphicsActivity_ && !self.graphicsAnnounced_ && !self.blankKind_ && self.tick_-self.graphicsActivity_>=150
             && self.lastText_<self.graphicsActivity_) {
             // r397 (user): describe the strictly graphical screen (regions,
@@ -4952,13 +5062,13 @@ private:
         if(!tool)NoteHiddenMenu(name,loaded);   // r393
         if(name[0]==u'W') {LoadBootFonts(loaded->DeviceHandle);HookBlockReads();}
         else LoadCellFont(static_cast<const uint8_t*>(loaded->ImageBase),size);
-        if(name[0]==u'G' || name[0]==u'V')LoadGrubFonts(loaded->DeviceHandle);
+        if(GrubFamily(name))LoadGrubFonts(loaded->DeviceHandle);
         // r384: OpenCanopy (OpenCore's graphical picker) draws its labels with
         // the BMFont atlas in EFI\OC\Resources\Font on the same disk.
         if(name[0]==u'O')LoadCanopyFonts(loaded->DeviceHandle);
         // r367: GRUB themes draw with PF2 fonts (DejaVu Sans of Debian's
         // starfield theme and others made by grub-mkfont).
-        if(name[0]==u'G' || name[0]==u'V') {ttfOcr_.SetAllocator(TtfAlloc,TtfFree,this);for(unsigned k=0;k<pf2FontCount;++k)ttfOcr_.AddPf2Font(pf2Fonts[k]);}
+        if(GrubFamily(name)) {ttfOcr_.SetAllocator(TtfAlloc,TtfFree,this);for(unsigned k=0;k<pf2FontCount;++k)ttfOcr_.AddPf2Font(pf2Fonts[k]);}
         return name;
     }
     // r363: a chain loader with its own PE loader (Debian's GRUB) moves its
@@ -5248,7 +5358,7 @@ private:
         if(text && self==r.real_) {char t[400];Utf8(text,t,sizeof(t));
             charontrace::Value("reader at",(uint64_t(r.row_)<<32)|(uint64_t(r.column_)<<16)|r.attribute_);
             if(self->Mode)charontrace::Value("reader end",(uint64_t(uint32_t(self->Mode->CursorRow))<<32)|(uint64_t(uint32_t(self->Mode->CursorColumn))<<16)|uint64_t(uint32_t(startColumn)&0xffff));
-            charontrace::Text(t);}
+            charontrace::Text(r.secret_.Masks(r.row_,r.column_,secretinput::Inked(text),secretinput::PublicNotice(text))?"(secret input)":t);}   // r407
 #endif
         if(text && !r.stopped_ && !r.suspended_ && self==r.real_) {Guard guard(r.boot_);r.Capture(text);}
         return status;
@@ -5293,6 +5403,7 @@ private:
     }
     void ClearShadow() {
         for(size_t r=0;r<maxRows;++r) {for(size_t c=0;c<maxColumns;++c) {text_[r][c]=u' ';attr_[r][c]=0;prevRaw_[r][c]=0;}dirty_[r]=false;}
+        secret_.Reset();   // r407
         column_=row_=0;highlight_=SIZE_MAX;anyDirty_=false;menuAnnounced_=false;
         // r397: a program that redraws its whole screen on every update
         // (Windows Memory Diagnostic's options) gets the same selection back
@@ -5354,6 +5465,7 @@ private:
     efi_event graphicsNotify_=nullptr;void* gopRegistration_=nullptr;void* fontRegistration_=nullptr;
     bool inConOut_=false,graphicsAnnounced_=false;
     uint64_t graphicsActivity_=0,lastText_=0;
+    uint64_t ownedTick_=0;bool ownedKnown_=false,owned_=false;   // r407 GraphicsOwned
     bool busyAnnounced_=false;uint64_t busyAt_=0;   // r387 loading (disk reads)
     int blankKind_=0,lastBlankAnnouncedKind_=0;bool blankAnnounced_=false;uint64_t blankSince_=0,blankToneUntil_=0,blankToneNext_=0,blankCooldownUntil_=0;unsigned blankTonePhase_=0;   // r397 black/blue screen
     uint32_t graphicsSig_=0;   // r397: last described graphical layout, for navigation feedback

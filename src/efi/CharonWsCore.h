@@ -342,7 +342,7 @@ inline efi_file_protocol* OpenRoot(efi_handle volume) {
 inline efi_status OpenFile(const FileRef& ref,uint64_t mode,uint64_t attributes,efi_file_protocol** file) {
     *file=nullptr;efi_file_protocol* root=OpenRoot(ref.volume);if(!root)return EFI_NOT_FOUND;
     efi_status status;
-    if(ref.path[0]==u'\\' && !ref.path[1]) {*file=root;return EFI_SUCCESS;}
+    if(ref.path[0]==u'\\' && !ref.path[1]) {root->SetPosition(root,0);*file=root;return EFI_SUCCESS;}   // r408: some drivers (efifs) share one root file between OpenVolume calls: rewind
     status=root->Open(root,file,ref.path,mode,attributes);root->Close(root);
     if(status==EFI_SUCCESS && !*file)status=EFI_NOT_FOUND;
     return status;

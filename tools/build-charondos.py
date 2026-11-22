@@ -27,7 +27,7 @@ imagetool = Path(os.environ.get('CHARON_IMAGETOOL', container / 'work/ha/BaseToo
 clangxx = llvm / 'clang++.exe'
 lld = llvm / 'ld.lld.exe'
 dos = root / 'src/dos'
-shared = ['cpu', 'bios', 'video', 'dosfs', 'dosint', 'shell', 'util']
+shared = ['cpu', 'bios', 'video', 'dosfs', 'dosint', 'shell', 'util', 'sound', 'charon_cmd']   # r407: sound.cpp; charon_cmd: the CHARON command
 warn = ['-std=c++17', '-Wall', '-Wextra', '-Werror']
 
 

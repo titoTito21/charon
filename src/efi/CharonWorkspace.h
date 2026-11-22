@@ -6,6 +6,7 @@
 #include "CharonWsEditor.h"
 #include "CharonSynthHost.h"
 #include "CharonWsNet.h"
+#include "CharonDriverPack.h"   // r408: load storage/filesystem/input/USB-network drivers on demand (only for undriven controllers)
 #include "CharonWsDisks.h"
 #include "CharonWsAsk.h"
 namespace hakefi {
@@ -152,6 +153,7 @@ inline void ScanPrograms() {
     efi_handle volumes[32];const size_t volumeCount=Volumes(volumes,32);
     alignas(8) static uint8_t buffer[2048];unsigned ticks=0;bool stopped=false;
     for(size_t v=0;v<volumeCount && !stopped;++v) {
+        if(hakefi::selfram::IsVolume(volumes[v]) && hakefi::selfram::OriginalDevice())continue;   // r408: the start medium is listed; its copy in memory would list every program twice
         size_t head=0,tail=0;Set(walk->path[tail],200,u"\\");walk->depth[tail++]=0;
         while(head<tail && !stopped) {
             FileRef folder;folder.volume=volumes[v];Set(folder.path,pathUnits,walk->path[head]);const uint8_t depth=walk->depth[head];++head;
@@ -169,6 +171,8 @@ inline void ScanPrograms() {
                 if(p.count>=maxApps) {p.truncated=true;break;}
                 auto& app=p.apps[p.count];memset(&app,0,sizeof(app));app.volume=volumes[v];
                 if(!JoinPath(app.path,appPath,folder.path,name))continue;
+                // r408: the driver pack's own files are loaded by rules (CharonDriverPack.h), not picked as programs; drivers\manual is.
+                if(StartsFold(app.path,u"\\EFI\\HAK\\drivers\\") && !StartsFold(app.path,u"\\EFI\\HAK\\drivers\\manual\\"))continue;
                 if(ContainsFold(app.path,u"\\EFI\\HAK\\packages\\") || StartsFold(app.path,u"\\charon-packages\\"))app.flags|=appPackage;
                 ++p.count;
             }
@@ -246,6 +250,7 @@ inline void StartProgram(efi_handle volume,const char16_t* path,const char16_t* 
 }  // namespace ws
 }  // namespace hakefi
 #include "CharonWsInstall2.h"
+#include "CharonWsSelfInstall.h"   // r407
 #include "CharonWsBrowser.h"
 namespace hakefi {
 namespace ws {
@@ -615,12 +620,12 @@ inline void PackageRemove(size_t index) {
 }
 // ---- the workspace ------------------------------------------------------------
 enum class View : uint8_t {home,programs,files,packages,buffers,editor,calc,help,network,wifi};
-enum class Command : uint8_t {programs,files,packages,network,download,install,browser,newFile,findFile,notes,calculator,buffers,save,saveAs,search,replace,gotoLine,killBuffer,
+enum class Command : uint8_t {programs,files,packages,network,download,install,selfInstall,browser,newFile,findFile,notes,calculator,buffers,save,saveAs,search,replace,gotoLine,killBuffer,
     readBuffer,undo,voiceLock,clock,rescan,help,home,menu,devices,order,settings,firmware,shell,tools,continueBoot,restart,shutdown,count};
 struct CommandName {Command id;const char16_t* pl;const char16_t* en;};
 inline const CommandName commandNames[]={
     {Command::programs,u"programy uefi",u"uefi programs"},{Command::files,u"pliki",u"files"},{Command::packages,u"pakiety i dodatki",u"packages and add-ons"},
-    {Command::network,u"sieć ethernet i wi-fi",u"network ethernet and wi-fi"},{Command::download,u"pobierz plik z sieci",u"download a file"},{Command::install,u"instalacja systemu z sieci",u"install a system from the network"},{Command::browser,u"przeglądarka www",u"web browser"},
+    {Command::network,u"sieć ethernet i wi-fi",u"network ethernet and wi-fi"},{Command::download,u"pobierz plik z sieci",u"download a file"},{Command::install,u"instalacja systemu z sieci",u"install a system from the network"},{Command::selfInstall,u"zainstaluj charona na tym komputerze",u"install charon on this computer"},{Command::browser,u"przeglądarka www",u"web browser"},
     {Command::newFile,u"nowy plik tekstowy",u"new text file"},{Command::findFile,u"otwórz plik",u"find file"},{Command::notes,u"notatki",u"notes"},
     {Command::calculator,u"kalkulator",u"calculator"},{Command::buffers,u"bufory",u"buffers"},{Command::save,u"zapisz bufor",u"save buffer"},
     {Command::saveAs,u"zapisz jako",u"write file"},{Command::search,u"szukaj",u"search"},{Command::replace,u"zamień wszystko",u"replace all"},
@@ -640,7 +645,7 @@ struct Space {
     size_t matches[commandCount];size_t matchCount,matchIndex;
 };
 inline Space& S() {static Space space;return space;}
-inline const char16_t* const homeRows[][2]={{u"Programy UEFI",u"UEFI programs"},{u"Pliki",u"Files"},{u"Pakiety i dodatki",u"Packages and add-ons"},{u"Sieć: Ethernet i Wi-Fi",u"Network: Ethernet and Wi-Fi"},{u"Instalacja systemu z sieci",u"Install a system from the network"},{u"Przeglądarka WWW, tekstowa",u"Web browser, text"},
+inline const char16_t* const homeRows[][2]={{u"Programy UEFI",u"UEFI programs"},{u"Pliki",u"Files"},{u"Pakiety i dodatki",u"Packages and add-ons"},{u"Sieć: Ethernet i Wi-Fi",u"Network: Ethernet and Wi-Fi"},{u"Instalacja systemu z sieci",u"Install a system from the network"},{u"Zainstaluj Charona na tym komputerze",u"Install Charon on this computer"},{u"Przeglądarka WWW, tekstowa",u"Web browser, text"},
     {u"Nowy plik tekstowy",u"New text file"},{u"Notatki",u"Notes"},{u"Kalkulator",u"Calculator"},{u"Bufory",u"Buffers"},
     {u"Polecenia (Alt+X lub F10)",u"Commands (Alt+X or F10)"},{u"Zegar",u"Clock"},{u"Pomoc: klawisze",u"Help: keys"},{u"Wróć do menu Charona",u"Back to Charon's menu"}};
 constexpr size_t homeCount=sizeof(homeRows)/sizeof(homeRows[0]);
@@ -720,15 +725,16 @@ inline void Show(View view,bool push=true) {
     auto& s=S();
     if(push && s.view!=view && s.depth<10)s.stack[s.depth++]=s.view;
     s.view=view;Forget();Cursor(false);Cue(MenuCue::submenuOpen);
-    if(view==View::programs && !P().scanned) {Say(T(u"Szukam programów UEFI na wszystkich dyskach. Escape przerywa.",u"Looking for UEFI programs on every disk. Escape stops."));ScanPrograms();}
+    if(view==View::programs && !P().scanned) {Say(T(u"Szukam programów UEFI na wszystkich dyskach. Escape przerywa.",u"Looking for UEFI programs on every disk. Escape stops."));drivers::LoadStorage(false);ScanPrograms();}
     if(view==View::packages)ScanPackages();
     if(view==View::network) {
         net::LoadAdapters();
         // No adapter, or adapters without IPv4: try Charon's own drivers once.
         static bool tried=false;
         if(!tried && (!net::N().count || !net::HasProtocol(net::ip4Config2Guid))) {tried=true;if(net::LoadDrivers(false))net::LoadAdapters();}
+        if(drivers::LoadUsbNetwork(false))net::LoadAdapters();   // r408: a USB network adapter the firmware does not drive
     }
-    if(view==View::files)LoadFiles();
+    if(view==View::files) {drivers::LoadStorage(false);LoadFiles();}
     if(view==View::buffers)LoadBufferRows();
     Announce();
 }
@@ -783,6 +789,7 @@ inline void Execute(Command command) {
         case Command::packages:Show(View::packages);break;
         case Command::network:Show(View::network);break;
         case Command::install:install::Run();Forget();Announce();break;
+        case Command::selfInstall:selfinstall::Run();Forget();Announce();break;
         case Command::browser:
 #ifdef HAK_CHARON_HTTPS
             browser::Run();Reshape();Forget();Announce();
@@ -916,7 +923,7 @@ inline void ViewKey(const Key& key) {
     switch(s.view) {
         case View::home:
             if(enter || key.scan==scRight) {
-                static const Command rows[homeCount]={Command::programs,Command::files,Command::packages,Command::network,Command::install,Command::browser,Command::newFile,Command::notes,Command::calculator,
+                static const Command rows[homeCount]={Command::programs,Command::files,Command::packages,Command::network,Command::install,Command::selfInstall,Command::browser,Command::newFile,Command::notes,Command::calculator,
                     Command::buffers,Command::count,Command::clock,Command::help,Command::menu};
                 if(rows[v->index]==Command::count)Palette();else Execute(rows[v->index]);
             } else if(letter)JumpTo(*v,letter);
@@ -993,7 +1000,7 @@ inline void ViewKey(const Key& key) {
             if(space) {net::AdapterDetail(v->index);break;}
             if(letter==u'g' || key.scan==scF5) {net::LoadAdapters();Announce();break;}
             if(letter==u'd') {Execute(Command::download);break;}
-            if(letter==u'l') {net::LoadDrivers(true);net::LoadAdapters();Announce();break;}
+            if(letter==u'l') {net::LoadDrivers(true);drivers::LoadUsbNetwork(true,true);net::LoadAdapters();Announce();break;}
             if(enter && v->index<n.count) {
                 if(n.adapters[v->index].wifi) {
                     net::IpInfo info;
@@ -1071,6 +1078,7 @@ inline Leave Run(Host& host) {
     Reshape();Play(Icon::open);
     {static char16_t text[500];Set(text,500,T(u"Środowisko Charona. F1 pomoc, Alt+X polecenia. ",u"Charon workspace. F1 help, Alt+X commands. "));
         static char16_t row[100];HomeLabel(s.home.index,row,100,true,nullptr);Cat(text,500,row);Say(text);}
+    drivers::LoadInput(false);   // r408: a USB keyboard/mouse the firmware does not drive
     while(!u.quit) {
         Draw();
         const Key key=WaitKey();

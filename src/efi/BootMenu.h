@@ -21,6 +21,8 @@
 #include "CharonFileBrowser.h"
 #include "CharonMedia.h"
 #include "CharonSynthHost.h"
+#include "CharonSelfCopy.h"   // r407: Charon's own files into memory after the start
+#include "CharonSelfRam.h"    // r408: run Charon from a RAM volume so its own disk can be clean-installed
 #include "CharonWorkspace.h"
 
 namespace hakefi {
@@ -39,6 +41,22 @@ inline efi_status LoadCharSettings(efi_file_protocol* root,CharSettings& setting
     if(first==EFI_NOT_FOUND && second==EFI_NOT_FOUND)return EFI_NOT_FOUND;
     return ChooseSettings(a,aSize,b,bSize,settings)?EFI_SUCCESS:EFI_INVALID_PARAMETER;
 }
+// r408: once Charon runs from the RAM copy, SaveCharSettings writes to RAM (ephemeral). Mirror the
+// same record to the original medium when it is still present, so settings persist on a disk/stick;
+// a fresh OpenVolume each time means a pulled medium is simply skipped, never a stale-handle crash.
+inline void MirrorSettingsToMedium(unsigned slot,const uint8_t* bytes,size_t n) {
+    efi_handle device=selfram::OriginalDevice();if(!device)return;
+    auto* boot=systemTable->BootServices;
+    efi_simple_file_system_protocol* fs=nullptr;static efi_guid fsGuid=EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID;
+    if(boot->HandleProtocol(device,&fsGuid,(void**)&fs)!=EFI_SUCCESS || !fs)return;
+    efi_file_protocol* root=nullptr;if(fs->OpenVolume(fs,&root)!=EFI_SUCCESS || !root)return;
+    efi_file_protocol* file=nullptr;
+    if(root->Open(root,&file,SettingsSlot(slot),EFI_FILE_MODE_READ|EFI_FILE_MODE_WRITE,0)==EFI_SUCCESS)file->Delete(file);
+    if(root->Open(root,&file,SettingsSlot(slot),EFI_FILE_MODE_READ|EFI_FILE_MODE_WRITE|EFI_FILE_MODE_CREATE,0)==EFI_SUCCESS) {
+        Write(file,bytes,n);file->Flush(file);file->Close(file);
+    }
+    root->Close(root);
+}
 inline efi_status SaveCharSettings(efi_file_protocol* root,CharSettings& value) {
     if(value.sequence==UINT64_MAX)return EFI_INVALID_PARAMETER;
     CharSettings next=value;++next.sequence;uint8_t bytes[charSettingsBytes];
@@ -56,6 +74,7 @@ inline efi_status SaveCharSettings(efi_file_protocol* root,CharSettings& value) 
     uint8_t verified[charSettingsBytes+1];size_t length=0;
     status=ReadSettingsSlot(root,slot,verified,length);
     if(status!=EFI_SUCCESS || length!=sizeof(bytes) || !Same(bytes,verified,length))return EFI_DEVICE_ERROR;
+    if(selfram::Active())MirrorSettingsToMedium(slot,bytes,sizeof(bytes));   // r408: also persist to the original medium when present
     value=next;return EFI_SUCCESS;
 }
 inline void InstallationLocale(efi_file_protocol* root,char (&locale)[64]) {
@@ -258,6 +277,34 @@ struct LaunchNarration {
     efi_status (*BeforeStart)(void*)=nullptr;
 };
 inline bool launchWatchdog=true;   // r387: false for programs from the file browser
+// r406: a short-form boot option names only the partition and the file: HD(number,GPT,
+// identifier,start,size)/File(...). That is what efibootmgr, Windows Setup and Charon's own
+// installer write. The firmware's boot manager finds the partition among its disks before
+// loading; LoadImage itself does not (VMware: "not found" when Charon, started first as the
+// screen reader, went on to the system's entry). Charon looks the partition up the same way.
+inline efi_status LoadShortForm(efi_handle self,const uint8_t* path,size_t pathBytes,efi_handle& image) {
+    image=nullptr;
+    if(pathBytes<46 || pathBytes>1024 || path[0]!=4 || path[1]!=1 || U16(path+2)!=42)return EFI_NOT_FOUND;
+    auto* boot=systemTable->BootServices;efi_handle* handles=nullptr;size_t count=0;
+    if(boot->LocateHandleBuffer(ByProtocol,&fsGuid,nullptr,&count,&handles)!=EFI_SUCCESS || !handles)return EFI_NOT_FOUND;
+    static uint8_t full[4096];efi_status status=EFI_NOT_FOUND;
+    for(size_t i=0;i<count && status!=EFI_SUCCESS;++i) {
+        uint8_t* own=nullptr;
+        if(boot->HandleProtocol(handles[i],&devicePathGuid,(void**)&own)!=EFI_SUCCESS || !own)continue;
+        size_t at=0;bool found=false;
+        while(at+4<=2048) {
+            const size_t n=U16(own+at+2);
+            if(n<4 || own[at]==0x7f)break;
+            if(own[at]==4 && own[at+1]==1 && n==42) {bool same=true;for(size_t k=4;k<42 && same;++k)same=own[at+k]==path[k];found=same;break;}
+            at+=n;
+        }
+        if(!found || at+pathBytes>sizeof(full))continue;
+        memcpy(full,own,at);memcpy(full+at,path,pathBytes);
+        status=boot->LoadImage(true,self,(efi_device_path_protocol*)full,nullptr,0,&image);
+        if(status!=EFI_SUCCESS && image) {boot->UnloadImage(image);image=nullptr;}
+    }
+    boot->FreePool(handles);return status;
+}
 inline efi_status StartVerified(efi_handle self,uint16_t current,uint16_t id,const uint8_t* expected,size_t expectedSize,BootAttemptStage& stage,
     efi_status (*beforeTransfer)(void*)=nullptr,void* transferContext=nullptr,LaunchNarration* narration=nullptr) {
     stage=BootAttemptStage::validation;
@@ -276,6 +323,7 @@ inline efi_status StartVerified(efi_handle self,uint16_t current,uint16_t id,con
     stage=BootAttemptStage::load;
     auto status=boot->LoadImage(true,self,(efi_device_path_protocol*)(optionBytes+parsed.pathOffset),nullptr,0,&image);
     if(status!=EFI_SUCCESS && image) {boot->UnloadImage(image);image=nullptr;}
+    if(status!=EFI_SUCCESS && LoadShortForm(self,optionBytes+parsed.pathOffset,parsed.pathBytes,image)==EFI_SUCCESS)status=EFI_SUCCESS;   // r406
     if(status==EFI_NOT_FOUND && !PathNamesFile(optionBytes+parsed.pathOffset,parsed.pathBytes))
         status=LoadRemovableDefault(self,optionBytes+parsed.pathOffset,parsed.pathBytes,image);
     if(status!=EFI_SUCCESS) {if(image)boot->UnloadImage(image);return status;}
@@ -1471,7 +1519,7 @@ inline efi_status RunBootMenu(efi_handle self,efi_file_protocol* root,uint16_t c
         efi_event deadline=nullptr;
         status=boot->CreateEvent(EVT_TIMER,TPL_APPLICATION,nullptr,nullptr,&deadline);
         const uint64_t seconds=readerOnly?0:settings.autoSeconds==autoNever?10:settings.autoSeconds;
-        if(status==EFI_SUCCESS)status=boot->SetTimer(deadline,TimerRelative,seconds?seconds*10000000ull:1);
+        if(status==EFI_SUCCESS)status=boot->SetTimer(deadline,TimerRelative,seconds?seconds*10000000ull:readerOnly?16000000ull:1);   // r406: time for the reader's greeting
         if(status!=EFI_SUCCESS)problem(BootProblem::continueRead,status);
         else {
             char16_t prompt[512]={};
@@ -1497,6 +1545,9 @@ inline efi_status RunBootMenu(efi_handle self,efi_file_protocol* root,uint16_t c
             if(synthFailed) {char16_t why[400]={};SynthMessage(false,synthReport,pl,why,400);Append(spoken,512,u" ");Append(spoken,512,why);}   // r393
             {size_t end=0;while(spoken[end])++end;while(end && spoken[end-1]==u' ')spoken[--end]=0;}
             if((settings.autoSeconds || once) && spoken[0] && !readerOnly)announce(spoken);
+            // r406 (user): the reader greets at every start, also when it comes with the hidden boot manager:
+            // the same two rising tones and the name as the firmware driver gives.
+            if(readerOnly) {if(effects && effects->Beep)effects->Beep(effects->context,8000,320);announce(u"Charon.",true);}
             auto* console=systemTable->ConOut;
             if(console && console->OutputString && console->OutputString(console,(char16_t*)prompt)==EFI_SUCCESS) {
                 presented.Present(MenuPage::main,settings.sounds,cue);
@@ -1549,6 +1600,11 @@ inline efi_status RunBootMenu(efi_handle self,efi_file_protocol* root,uint16_t c
         if(idle)boot->CloseEvent(idle);
         idle=nullptr;}
     while(!done) {
+        selfcopy::Step(boot,root);   // r407: a quarter of a megabyte of Charon's own files into memory per turn
+        if(selfcopy::Ready() && !selfram::Active()) {   // r408: always run from the RAM copy once ready (any medium), so the disc/stick/disk can be pulled or wiped clean
+            static bool ramTried=false;
+            if(!ramTried) {ramTried=true;const efi_status r=selfram::Move(boot,self,nullptr,nullptr);charontrace::Value("CHARON selfram move",uint64_t(r)|(uint64_t(selfram::Active())<<32));}
+        }
         if(MenuReviewWanted() && !MenuReview().resident && !MenuReview().driverResumed) {MenuReviewWanted()=false;reviewOn();}
         if(render) {
             const bool failedBeforeSpeech=speechFailed;
@@ -1758,6 +1814,10 @@ inline efi_status RunBootMenu(efi_handle self,efi_file_protocol* root,uint16_t c
             // packages, the editor. It borrows the menu's voice and launcher.
             struct Bridge {efi_handle self;efi_file_protocol* root;decltype(announce)* announce;decltype(launch)* launch;MenuModel* model;char16_t* popupText;bool* watchdog;bool* mute;decltype(reviewOn)* reviewOn;};
             Bridge bridge{self,root,&announce,&launch,&model,popupText,&launchWatchdog,&muteAnnounce,&reviewOn};
+            // r408a: once Charon runs from memory, "Charon's device" is the original medium while it is
+            // still mounted (found by its device path, never by the old handle) and the volume in memory otherwise.
+            auto ownDevice=[&]() {if(selfram::Active()) {const efi_handle original=selfram::OriginalDevice();inventory.selfDevice=original?original:selfram::Handle();}};
+            ownDevice();
             ws::Host host{};host.system=systemTable;host.boot=boot;host.root=root;host.selfDevice=inventory.selfDevice;host.image=self;
             host.voice=speechFailed?nullptr:voice;host.effects=effects;host.pl=pl;host.sounds=settings.sounds && effectsAvailable;
             host.positions=(settings.detail&4)!=0;host.context=&bridge;
@@ -1777,6 +1837,7 @@ inline efi_status RunBootMenu(efi_handle self,efi_file_protocol* root,uint16_t c
                 report[k]=0;b.popupText[0]=0;*b.model=before;};
             host.ensureReader=[](void* c) {auto& b=*static_cast<Bridge*>(c);uint16_t id;return FindFirmwareVoice(id)==EFI_SUCCESS || InstallFirmwareVoice(b.self,b.root)==EFI_SUCCESS;};
             const auto leave=ws::Run(host);
+            ownDevice();   // r408a: an installation may have erased or re-read Charon's disk
             popupText[0]=0;statusText[0]=0;model.page=MenuPage::main;model.index=mainWorkspace;
             switch(leave) {
                 case ws::Leave::devices:model.index=mainDevices;break;case ws::Leave::order:model.index=mainOrder;break;

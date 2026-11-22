@@ -19,8 +19,23 @@ namespace charonaudioefi {
 // card may have no driver bound when Charon's reader add-on wants to speak
 // (the add-on loads before the PCI bus is enumerated and cannot bind it
 // then). Connects every PCI multimedia controller, and nothing else.
+// r406: Charon's own audio driver image, once started. Whoever connects the sound cards first takes
+// the firmware's own HD Audio driver off them (see DisconnectFirmwareHda): with both drivers on one
+// controller VMware's firmware crashed at start when the reader came as a firmware driver (Driver####).
+inline efi_handle audioDriverImage=nullptr;
+inline size_t DisconnectFirmwareHda(efi_boot_services* boot,efi_handle keep,bool onlyCount=false);
+// True below the level of notifications and timers: only there may drivers be disconnected and connected
+// when a firmware driver is involved (see DisconnectFirmwareHda).
+inline bool AtApplicationLevel(efi_boot_services* boot) {
+    if(!boot || !boot->RaiseTPL || !boot->RestoreTPL)return false;
+    const efi_tpl now=boot->RaiseTPL(TPL_HIGH_LEVEL);boot->RestoreTPL(now);
+    return now<=TPL_APPLICATION;
+}
 inline void ConnectAudioControllers(efi_boot_services* boot) {
     if(!boot || !boot->LocateHandleBuffer || !boot->ConnectController)return;
+    const bool application=AtApplicationLevel(boot);
+    if(application) {if(audioDriverImage)DisconnectFirmwareHda(boot,audioDriverImage);}
+    else if(DisconnectFirmwareHda(boot,audioDriverImage,true))return;   // a firmware driver holds a card: wait for application level
     efi_guid pciIoGuid={0x4cf5b200,0x68b8,0x4ca5,{0x9e,0xec,0xb2,0x3e,0x3f,0x50,0x02,0x9a}};
     struct Config {void* PollMem;void* PollIo;void* Mem[2];void* Io[2];efi_status (EFIAPI *Read)(void*,uint32_t width,uint32_t offset,size_t count,void* buffer);};
     efi_handle* handles=nullptr;size_t count=0;
@@ -41,8 +56,12 @@ inline void ConnectAudioControllers(efi_boot_services* boot) {
 // driver other than `keep` (Charon's AudioDxe) that holds an HDA controller
 // (PCI class 04/03) BY_DRIVER is disconnected before AudioDxe connects.
 // Returns how many were disconnected.
-inline size_t DisconnectFirmwareHda(efi_boot_services* boot,efi_handle keep) {
+// r406: onlyCount: nothing is disconnected, the number of such drivers is returned. Without it the
+// function works only at TPL_APPLICATION: from a notification or a timer it disconnects nothing (in
+// VMware's firmware doing so from the ReadyToBoot notification ended in a page fault at start).
+inline size_t DisconnectFirmwareHda(efi_boot_services* boot,efi_handle keep,bool onlyCount) {
     if(!boot || !boot->LocateHandleBuffer || !boot->OpenProtocolInformation || !boot->DisconnectController || !boot->FreePool)return 0;
+    if(!onlyCount && !AtApplicationLevel(boot))return 0;
     efi_guid pciIoGuid={0x4cf5b200,0x68b8,0x4ca5,{0x9e,0xec,0xb2,0x3e,0x3f,0x50,0x02,0x9a}};
     struct Config {void* PollMem;void* PollIo;void* Mem[2];void* Io[2];efi_status (EFIAPI *Read)(void*,uint32_t width,uint32_t offset,size_t count,void* buffer);};
     efi_handle* handles=nullptr;size_t count=0,done=0;
@@ -50,13 +69,24 @@ inline size_t DisconnectFirmwareHda(efi_boot_services* boot,efi_handle keep) {
     for(size_t i=0;i<count && i<4096;++i) {
         Config* io=nullptr;uint8_t classCode[3]={};
         if(boot->HandleProtocol(handles[i],&pciIoGuid,(void**)&io)!=EFI_SUCCESS || !io)continue;
-        if(io->Read(io,0,9,3,classCode)!=EFI_SUCCESS || classCode[2]!=0x04 || classCode[1]!=0x03)continue;
+        if(io->Read(io,0,9,3,classCode)!=EFI_SUCCESS || classCode[2]!=0x04)continue;
+        if(classCode[1]!=0x03) {
+            // r406: AudioDxe-r406 also binds Intel controllers that report class 04/01 or
+            // 04/80 (audio DSP enabled, Skylake and newer) when BAR0 is a memory BAR, so a
+            // firmware driver holding one of those is disconnected too. AC'97 (04/01 with an
+            // I/O BAR0) and every other vendor are left alone, as before.
+            uint8_t id[2]={},bar[4]={};
+            if(classCode[1]!=0x01 && classCode[1]!=0x80)continue;
+            if(io->Read(io,0,0,2,id)!=EFI_SUCCESS || id[0]!=0x86 || id[1]!=0x80)continue;
+            if(io->Read(io,0,0x10,4,bar)!=EFI_SUCCESS || (bar[0]&1))continue;
+        }
         efi_open_protocol_information_entry* entries=nullptr;size_t n=0;
         if(boot->OpenProtocolInformation(handles[i],&pciIoGuid,&entries,&n)!=EFI_SUCCESS || !entries)continue;
         efi_handle agents[8];size_t a=0;
         for(size_t k=0;k<n && a<8;++k)
             if((entries[k].attributes&EFI_OPEN_PROTOCOL_BY_DRIVER) && entries[k].agent_handle && entries[k].agent_handle!=keep)agents[a++]=entries[k].agent_handle;
         boot->FreePool(entries);
+        if(onlyCount) {done+=a;continue;}
         for(size_t k=0;k<a;++k)if(boot->DisconnectController(handles[i],agents[k],nullptr)==EFI_SUCCESS)++done;
     }
     boot->FreePool(handles);
@@ -95,7 +125,7 @@ public:
             if(io->Pci.Read(io,1,0,2,ids)!=EFI_SUCCESS || io->Pci.Read(io,0,9,3,classCode)!=EFI_SUCCESS)continue;
             if(classCode[2]!=0x04 || classCode[1]!=0x01)continue;   // multimedia / audio (AC'97)
             if(ids[0]!=0x8086 && ids[0]!=0x10de && ids[0]!=0x1022 && !(ids[0]==0x1039 && ids[1]==0x7012))continue;
-            status=Start(io);
+            handle_=handles[i];status=Start(io);
             if(status!=EFI_SUCCESS)Release();
         }
         boot->FreePool(handles);
@@ -106,6 +136,7 @@ public:
         if(!open_ || !samples)return 0;
         const efi_tpl old=boot_->RaiseTPL(TPL_NOTIFY);   // the timer's Service must not run in between
         Service();
+        if(!open_) {boot_->RestoreTPL(old);return 0;}         // the controller vanished during Service
         if(write_<played_+margin)write_=played_+margin;      // late: continue after a short silence
         const uint64_t limit=played_+maximumLead;
         if(write_>=limit) {boot_->RestoreTPL(old);return 0;}
@@ -113,11 +144,12 @@ public:
         for(size_t i=0;i<n;++i) {const size_t at=size_t((write_+i)%ringFrames);ring_[at*2]=samples[i*2];ring_[at*2+1]=samples[i*2+1];}
         write_+=n;boot_->RestoreTPL(old);return n;
     }
-    bool Drained() {if(!open_)return true;const efi_tpl old=boot_->RaiseTPL(TPL_NOTIFY);Service();const bool done=write_<=played_;boot_->RestoreTPL(old);return done;}
+    bool Drained() {if(!open_)return true;const efi_tpl old=boot_->RaiseTPL(TPL_NOTIFY);Service();const bool done=!open_||write_<=played_;boot_->RestoreTPL(old);return done;}
     void Discard() {
         if(!open_)return;
         const efi_tpl old=boot_->RaiseTPL(TPL_NOTIFY);
         Service();
+        if(!open_) {boot_->RestoreTPL(old);return;}
         const uint64_t keep=played_+margin;
         for(uint64_t p=keep;p<write_;++p) {const size_t at=size_t(p%ringFrames);ring_[at*2]=ring_[at*2+1]=0;}
         if(write_>keep)write_=keep;
@@ -126,9 +158,12 @@ public:
     efi_status Stop() {
         if(!open_)return EFI_SUCCESS;
         if(timer_) {boot_->SetTimer(timer_,TimerCancel,0);boot_->CloseEvent(timer_);timer_=nullptr;}
-        uint8_t cr=0;io_->Io.Write(io_,0,1,0x1b,1,&cr);       // stop the PCM out DMA
-        cr=2;io_->Io.Write(io_,0,1,0x1b,1,&cr);               // and reset its registers
-        Release();return EFI_SUCCESS;
+        if(Live()) {
+            uint8_t cr=0;io_->Io.Write(io_,0,1,0x1b,1,&cr);       // stop the PCM out DMA
+            cr=2;io_->Io.Write(io_,0,1,0x1b,1,&cr);               // and reset its registers
+            Release();
+        } else {io_=nullptr;handle_=nullptr;mapping_=nullptr;host_=nullptr;ring_=nullptr;attributesSet_=false;open_=false;}   // controller gone: drop state, never touch the freed driver
+        return EFI_SUCCESS;
     }
 private:
     struct Bdl {uint32_t address;uint16_t samples,flags;};
@@ -179,8 +214,23 @@ private:
     // The DMA position (frames, monotonic) from the current index and the
     // samples left in it; played frames are cleared; the last valid index
     // stays one buffer behind the current one, so the DMA never halts.
+    // Is the stored PciIo still the one the firmware has on this handle? Firmware may disconnect and
+    // reconnect the controller under us (e.g. a FORCE_RECONNECT boot option, re-enumeration), which
+    // frees the driver; calling into it then crashes (the bug r402 fixed for HDA). Same guard here.
+    bool Live() const {
+        efi_guid pciIoGuid={0x4cf5b200,0x68b8,0x4ca5,{0x9e,0xec,0xb2,0x3e,0x3f,0x50,0x02,0x9a}};void* now=nullptr;
+        return io_ && handle_ && boot_ && boot_->HandleProtocol(handle_,&pciIoGuid,&now)==EFI_SUCCESS && now==static_cast<void*>(io_);
+    }
+    // The controller was taken back: cancel the timer and drop every reference WITHOUT calling into
+    // the freed driver (Unmap/FreeBuffer/Attributes would dereference it). The DMA pages leak, but
+    // the controller is gone anyway; a leak beats a #GP in the service timer.
+    void Vanished() {
+        if(timer_) {boot_->SetTimer(timer_,TimerCancel,0);boot_->CloseEvent(timer_);timer_=nullptr;}
+        io_=nullptr;handle_=nullptr;mapping_=nullptr;host_=nullptr;ring_=nullptr;open_=false;attributesSet_=false;serving_=false;
+    }
     void Service() {
         if(!open_ || serving_)return;
+        if(!Live()) {Vanished();return;}
         serving_=true;
         uint8_t civ=0;uint16_t picb=0;
         io_->Io.Read(io_,0,1,0x14,1,&civ);io_->Io.Read(io_,1,1,0x18,1,&picb);
@@ -196,7 +246,7 @@ private:
         if(sr&0x1c)io_->Io.Write(io_,1,1,0x16,1,&sr);              // acknowledge status bits
         serving_=false;
     }
-    efi_boot_services* boot_=nullptr;PciIoFull* io_=nullptr;
+    efi_boot_services* boot_=nullptr;PciIoFull* io_=nullptr;efi_handle handle_=nullptr;
     void* host_=nullptr;void* mapping_=nullptr;size_t pages_=0;int16_t* ring_=nullptr;
     efi_event timer_=nullptr;
     uint64_t played_=0,write_=0,last_=0;

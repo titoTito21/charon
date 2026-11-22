@@ -215,7 +215,7 @@ typedef Bit64u bx_ptr_equiv_t;
 #define BX_SUPPORT_EVEX 0
 #define BX_SUPPORT_AMX 0
 #define BX_SUPPORT_REPEAT_SPEEDUPS 1
-#define BX_SUPPORT_HANDLERS_CHAINING_SPEEDUPS 0
+#define BX_SUPPORT_HANDLERS_CHAINING_SPEEDUPS 1
 #define BX_ENABLE_TRACE_LINKING 1
 #define BX_CPU_VENDOR_INTEL 1
 #define BX_CPUID_VENDOR_LEN 12
@@ -282,10 +282,13 @@ typedef Bit64u bx_ptr_equiv_t;
 #define BX_NETMOD_SLIRP   0
 #define BX_NETMOD_SOCKET  0
 #define BX_HAVE_LIBSLIRP  0
-#define BX_SUPPORT_SB16     0
+#define BX_SUPPORT_SB16     1   /* r407: with the sound driver "charon" (src/pc/pc_sound.cc) */
 #define BX_SUPPORT_ES1370   0
 #define BX_SUPPORT_GAMEPORT 0
-#define BX_SUPPORT_SOUNDLOW 0
+#define BX_SUPPORT_SOUNDLOW 1
+#define BX_SOUND_LOWLEVEL_NAME "dummy"   /* the default; sound=sb16 selects "charon" */
+#define BX_HAVE_LIBSAMPLERATE 0
+#define BX_HAVE_SOXR_LSR 0
 #define BX_HAVE_SOUND_ALSA  0
 #define BX_HAVE_SOUND_OSS   0
 #define BX_HAVE_SOUND_OSX   0

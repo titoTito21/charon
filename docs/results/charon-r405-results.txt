@@ -1,0 +1,48 @@
+Charon r405 - trials without builds (2026-11-20/21; the user: no build, batch or regression until "gotowe")
+==========================================================================================================
+
+Code changed (NOT compiled yet):
+- CharonWsDosSystem.h: the Windows XP profile downloads NVDA 2017.3 into READER\NVDA2017.EXE
+  (https://download.nvaccess.org/releases/2017.3/nvda_2017.3.exe, 21 216 304 bytes, SHA-256
+  a0ad10a9f33bc5bcde629524e873c3141976f1698915d38640c46f2c140c3972, computed from NV Access's server;
+  no official hash is published for that release).
+- src/pc/pc_gui.cc (CharonPC): Polish letters given as characters -> Right Alt (AltGr) + letter (Polish
+  programmer's layout); Right Alt from a US firmware layout passed on as AltGr; Ctrl+Shift+F11 types
+  Ctrl+Alt+Del into the guest.
+- CharonWsWinUsb.h: Windows media on a stick that has no \EFI\BOOT\BOOTX64.EFI keeps the ISO's loader
+  there (before: always renamed to \efi\microsoft\boot\bootmgfw.efi, so a stick made for another
+  computer started nowhere - found when the stick made by Charon was booted in VMware).
+- CharonWsInstall2.h (answer file): Narrator after sign-in is written into the DEFAULT user hive in
+  specialize (Configuration=narrator, NarratorAfterSigninResetCompleted=1, WinEnterLaunchEnabled=1),
+  and NarratorAfterSigninResetCompleted=1 also at first logon.
+- CharonWsInstall3.h: Arch from the network uses ip=:::::eth0:dhcp (plain ip=dhcp got no address in QEMU).
+- tools/charon-addon/Charon-WindowsProfile.ps1: keeps NarratorAfterSigninResetCompleted=1; ReviOS/AtlasOS
+  stop at once when the Windows Security app (Microsoft.SecHealthUI) is missing. Parses under PS 5.1.
+
+Trials (VMware Workstation, Windows installed unattended from real Microsoft media; scripts in
+work/vmware-winprof and work/vmware-winent, VNC helper work/vnc-keys.py):
+1. Profile Slim on Windows 11 Enterprise LTSC 2024 evaluation (26100): exit 0 in 83 s, nothing to remove
+   (LTSC has only Edge provisioned), Narrator/voices/audio/Defender/Windows Update untouched, Narrator
+   hotkey turned on. PASS.
+2. Profile Slim on Windows 11 Enterprise 26H2 evaluation (26300, from the fwlink ISO): exit 0 in 114 s;
+   22 provisioned packages removed (47 -> 25: Clipchamp, Bing News/Search/Weather, GamingApp, GetHelp,
+   Solitaire, Sticky Notes, Outlook, Paint, Power Automate, To Do, Dev Home, Alarms, Camera, Feedback Hub,
+   Xbox TCUI/overlay/identity, Phone Link, Media Player, Teams) and the same 22 from the user; Narrator,
+   3 OneCore + 2 SAPI voices, audio services, Defender, Windows Update kept. PASS.
+3. Profile AtlasOS on LTSC 26100: build accepted, AME CLI and playbook downloaded and hash-checked, then
+   Tamper Protection is on and the LTSC evaluation has NO Windows Security app (SecHealthUI neither
+   installed nor provisioned; windowsdefender: link "needs a new app"), so the AME CLI cannot run.
+   First run waited the full time (exit 3, Windows unchanged); after the script fix it stops in 85 s with
+   a spoken reason (exit 3). ReviOS/AtlasOS therefore need a Windows edition with the Security app
+   (not tested yet: 26H2 builds are refused by both playbooks' own lists).
+4. Narrator after sign-in: with only HKLM+HKCU Configuration=narrator (Charon's r404 answer file) Windows
+   cleared the user's value at the first sign-in (Configuration empty, NarratorAfterSigninResetCompleted=1
+   appeared) and Settings showed "Start Narrator after sign-in" off. Setting the value again -> Narrator
+   started by itself after the next restart. With the default-user values in specialize: Narrator
+   running at the first logon, Configuration=narrator, mark=1. PASS (first logon; the second-logon phase of
+   the trial script did not run, the restart case was only checked by hand before).
+5. Making room beside Windows from a Linux started from memory (Arch netboot + work/shrink-trial/shrink.sh,
+   ntfsresize): finds the Windows partition, BitLocker/hibernation checks, minimum size; Windows' dirty
+   bit stopped the dry run ("scheduled for check") -> allowed like GParted (--force; chkdsk at the next
+   Windows start), hibernation (hiberfil.sys HIBR/WAKE) still refused. A run on the Enterprise disk was cut
+   by the trial's own 30-minute limit during relocation (disk not judged). Rerun on the LTSC disk: see below.

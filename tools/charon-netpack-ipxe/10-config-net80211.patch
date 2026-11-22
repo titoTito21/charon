@@ -1,0 +1,17 @@
+--- a/src/config/config_net80211.c
++++ b/src/config/config_net80211.c
+@@ -47,6 +47,14 @@
+  * Drag in 802.11 cryptosystems and handshaking protocols
+  *
+  */
++/*
++ * Drag in the UEFI Wi-Fi face (Charon driver pack)
++ *
++ */
++#ifdef CHARON_EFI_WIFI
++REQUIRE_OBJECT ( efi_wifi );
++#endif
++
+ #ifdef CRYPTO_80211_WEP
+ REQUIRE_OBJECT ( wep );
+ #endif

@@ -1,0 +1,174 @@
+CharonDOS -> Charon: the CHARON command (r408)
+================================================
+
+CHARON is a CharonDOS shell built-in (src/dos/charon_cmd.cpp, dispatched from
+shell.cpp exactly like WIN / WINNT). From the CharonDOS prompt a blind user
+queries and changes Charon itself - its pre-boot screen reader and its boot
+manager - and Charon's reader speaks the result.
+
+Messages are bilingual: English by default, Polish when CharonDOS runs with the
+"pl" load option (the same switch WIN/WINNT already honour). Lines are kept
+short because Charon's reader reads the CharonDOS console.
+
+
+1. How CharonDOS reaches Charon
+-------------------------------
+A program running inside CharonDOS's 8086 emulator cannot call a UEFI protocol.
+But CHARON is NOT such a program: like WIN/WINNT it is native code in the
+CharonDOS UEFI application (shell.cpp), so it reaches Charon through the same
+platform layer those commands use (src/dos/dos_platform.h implementations). The
+new platform surface is declared in src/dos/charon_cmd.h and implemented in:
+
+  backend_uefi.cpp  the real one (the ONE UEFI-side file that also implements
+                    the WIN call-out plat_request_launch). It was extended with
+                    charon_plat_* and nothing else was touched there.
+  backend_host.cpp  a shim for the host tests (a directory stands in for
+                    \EFI\HAK; firmware facts are faked; nothing is rebooted).
+
+Three carriers are used, each the one that actually exists in this tree:
+
+  a) Live speech - Charon's published voice protocol MenuVoice
+     (src/efi/BootMenuVoice.h, guid 99e5faac-...). backend_uefi.cpp already
+     locates it (to Stop it before WINNT); CHARON calls its SpeakUtf8 so a
+     confirmation or a test phrase is spoken now, in Charon's own voice. The
+     resident reader (CHARONVOICE.EFI), which owns the voice, pumps it.
+
+  b) Reader settings - the CharSettings record on Charon's EFI system partition,
+     in the two slots \EFI\HAK\charon-settings-a.bin and -b.bin
+     (src/efi/CharSettings.h, src/efi/BootMenu.h SettingsSlot/Load/Save).
+     \EFI\HAK is NOT one of CharonDOS's emulated drives (drive C: is the
+     \EFI\CharonDOS\C subtree), so the slots are read/written by native code on
+     the boot volume (charon_plat_hak_read / charon_plat_hak_write). The record
+     format is re-derived (read-only) in charon_cmd.cpp; no Charon EFI header is
+     compiled into CharonDOS.
+
+  c) Boot manager - the standard firmware variables BootOrder, Boot####,
+     BootNext and OsIndications (read/written through RuntimeServices) and
+     ResetSystem. These are exactly what Charon's own installer and menu use.
+     NO Secure Boot key (db/KEK/PK) is ever read or written, and no entry is
+     added or reordered to bypass Secure Boot.
+
+
+2. When a change takes effect
+-----------------------------
+The resident reader loads the CharSettings record when it STARTS; it does not
+re-read it during a session (checked: CharonResident.h watches the frame buffer
+and the running image, not the settings file). So:
+
+  IMMEDIATE  : CHARON SAY, every spoken confirmation (carrier a); CHARON BOOT,
+               CONTINUE, MENU, FIRMWARE, RESTART, OFF (carrier c).
+  DEFERRED   : CHARON RATE / PITCH / VOLUME / VOICE / PUNCT / LANG / SOUNDS.
+               The value is persisted now and is heard after the next start of
+               Charon's reader. Each such command says so.
+
+There is no public, version-stable way to re-rate the LIVE resident voice from
+another image (ReaderControl in src/efi/CharonReaderControl.h is internal and
+same-release only, and feeding the voice during a change can crash it), so the
+reader-setting commands do not try to; they persist and defer, and the spoken
+confirmation uses the live voice as it currently sounds.
+
+
+3. Persisting a reader setting (the write)
+------------------------------------------
+Exactly as Charon's SaveCharSettings:
+  - read BOTH slots; a slot is valid only if it decodes AND its sequence parity
+    matches the slot (slot a = odd sequence, slot b = even), choose the newest.
+  - if either slot holds a record whose format is NEWER than this code
+    understands (magic "CHARS00" with a version byte past 'C'), REFUSE: the
+    store is not rewritten and the command says so.
+  - change only the requested field on the decoded record (every other byte is
+    kept), re-encode as the current CHARS00C 48-byte record with a fresh CRC.
+  - write the inactive slot (by the new sequence's parity), flush, close, read
+    it back and compare - and do this TWICE (sequence+1 then sequence+2), so
+    BOTH slots are refreshed and left in Charon's normal ping-pong state
+    (newest in one slot, previous in the other). A write that does not read
+    back identical is reported as a failure; the previous record stays valid.
+
+
+4. Commands
+-----------
+CHARON                      Speak/show status and list the sub-commands:
+                            Charon's release (from ReaderControl, else "reader
+                            not detected"), the reader voice (rate/pitch/volume
+                            as %, punctuation, language, sounds, synthesizer),
+                            the current Continue target, Secure Boot state if
+                            readable. Help/landing command. CHARON HELP lists
+                            the sub-commands only.
+
+Reader settings (persist now, take effect at the next reader start):
+CHARON RATE   [0-100]       Reader speech rate. Bare = report. The number is the
+CHARON PITCH  [0-100]       percentage Charon's own menu announces (NVDA scale:
+CHARON VOLUME [0-100]       50% = 1.0x = stored 10 tenths; 0% = slowest/lowest =
+                            5; 100% = fastest/highest = 20; volume 0-100% maps to
+                            the stored 1..10). Stored in the resident reader's
+                            own fields (CharSettings readerRate/Pitch/Volume,
+                            bytes 29/30/31).
+CHARON PUNCT  none|some|most|all   Symbol level (CharSettings punctuation 0..3).
+CHARON LANG   pl|en|auto           Reader language (0 auto / 1 en / 2 pl).
+CHARON SOUNDS on|off               Charon UI sounds (CharSettings sounds).
+CHARON VOICE  [name]        Synthesizer add-on. Bare = report current and list
+                            the manifests found in \EFI\HAK\synths plus TVox.
+                            "tvox"/"default" selects the built-in TVox (key 0);
+                            a listed add-on name selects it (CharSettings
+                            synthKey = the manifest's key, as CharonSynthHost.h
+                            computes it; voice index 0). Per-add-on voice beyond
+                            the first is chosen in Charon's own reader menu.
+CHARON SAY    <text>        Speak a test phrase now, through Charon's voice.
+
+Boot manager (act now):
+CHARON BOOT                 List the firmware boot entries in BootOrder, marking
+                            "Charon" (the boot manager) and "CharonDOS" (here).
+                            READ ONLY - never adds or reorders entries.
+CHARON CONTINUE <n>         Set Charon's Continue target to list entry n, writing
+                            \EFI\HAK\continue-set then continue.bin byte-for-byte
+                            as Charon's SaveContinue (validates the entry is in
+                            BootOrder and reads its Boot#### option). A file on
+                            Charon's partition, not a firmware variable; touches
+                            no platform key. If the entry cannot be encoded, says
+                            to set it from Charon's menu.
+CHARON MENU                 BootNext -> the "Charon" boot-manager entry, so its
+                            menu shows next restart. If BootNext is not writable
+                            here, or no "Charon" entry exists, says to open the
+                            menu from Charon.
+CHARON FIRMWARE             Restart into firmware setup via OsIndications
+                            (EFI_OS_INDICATIONS_BOOT_TO_FW_UI). If the firmware
+                            does not offer it, says so. Asks Y/T first.
+CHARON RESTART              Warm restart. Asks Y/T first.
+CHARON OFF                  Power off. Asks Y/T first.
+
+Confirmation: a destructive or firmware-touching action (FIRMWARE, RESTART,
+OFF) reads back the question and waits for a typed Y (yes) or T (Polish "tak")
+and Enter; anything else, or no input, cancels.
+
+
+5. Read-only / not done from CharonDOS
+--------------------------------------
+- Secure Boot: status is only READ (the SecureBoot variable). CHARON never
+  enrolls or changes db/KEK/PK and never arranges to boot anything under Secure
+  Boot without the owner's firmware-level consent. Out of scope and refused.
+- The live resident reader voice is not re-rated mid-session (no public
+  cross-image mechanism); reader settings are deferred to the next reader start.
+- CHARON MENU and CHARON FIRMWARE depend on the firmware allowing the standard
+  BootNext / OsIndications writes; where it does not, the command says to use
+  Charon's own menu rather than pretend.
+
+
+6. Build and test
+-----------------
+Built by tools/build-charondos.py (charon_cmd added to the shared source list):
+  python build-charondos.py OUT --host-only   -> charondos-host.exe
+  python build-charondos.py OUT --uefi-only    -> CHARONDOS.EFI
+Both with -std=c++17 -Wall -Wextra -Werror.
+
+Host tests: tests/CharonDosTests.py (the existing INT 21h harness). The CHARON
+cases (name part "charon") seed a CharSettings slot and a \EFI\HAK directory
+(--hak DIR) and check status, percent round-trip, both-slot persistence, the
+newer-format refusal, PUNCT/LANG, SAY, BOOT listing with Charon's position,
+CONTINUE writing continue.bin, the Y/T confirmation of RESTART/OFF/FIRMWARE, and
+VOICE listing/selection. The end-to-end spoken run on real firmware (a VM) is
+still pending; the host shim verifies dispatch, persistence and output.
+
+Files: src/dos/charon_cmd.h, src/dos/charon_cmd.cpp (new); small edits in
+src/dos/shell.cpp (register the built-in + help), src/dos/backend_uefi.cpp
+(charon_plat_* real), src/dos/backend_host.cpp (charon_plat_* host shim + --hak),
+tools/build-charondos.py (source list), tests/CharonDosTests.py (cases).

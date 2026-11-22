@@ -53,7 +53,8 @@ Limits (honest list; nothing here was run on a real fresh installation):
   ReviOS 26.04 is 7z (LZMA2 + AES), AtlasOS 0.5.0-hotfix is zip (ZipCrypto).
   Windows cannot unpack either, so 7zr.exe and the 7-Zip "extra" package
   (7za.exe) are downloaded from 7-zip.org.
-- ReviOS 26.04 (the last release on GitHub) lists builds 19044, 19045, 22631,
+- ReviOS 26.04 (the pinned release; 26.10 came out later and is NOT adopted: its
+  playbook.conf and option names were not read) lists builds 19044, 19045, 22631,
   26100, 26200 in its playbook.conf; AtlasOS 0.5.0-hotfix lists 26100 and
   26200. The list in the downloaded playbook is authoritative; other builds
   are refused.
@@ -283,6 +284,12 @@ $WatchedValues = @(
     @{ Id = 'NarratorHotkey'; Path = 'HKCU:\Software\Microsoft\Narrator\NoRoam'; Name = 'WinEnterLaunchEnabled'; Kind = 'DWord'; Force = 1 },
     @{ Id = 'LogonNarrator'; Path = 'HKLM:\Software\Microsoft\Windows NT\CurrentVersion\Accessibility'; Name = 'Configuration'; Kind = 'String'; Token = 'narrator' },
     @{ Id = 'UserNarrator'; Path = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Accessibility'; Name = 'Configuration'; Kind = 'String'; Token = 'narrator' },
+    # r407: NVDA on the same two lists (Charon-Readers.ps1 puts it there): kept if it was there before the profile.
+    @{ Id = 'LogonNvda'; Path = 'HKLM:\Software\Microsoft\Windows NT\CurrentVersion\Accessibility'; Name = 'Configuration'; Kind = 'String'; Token = 'nvda_nvda_v1' },
+    @{ Id = 'UserNvda'; Path = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Accessibility'; Name = 'Configuration'; Kind = 'String'; Token = 'nvda_nvda_v1' },
+    # r405: Windows clears the user's "Narrator after sign-in" once, at the first sign-in, unless
+    # this mark is set (seen on 26100: Configuration emptied, the mark appeared).
+    @{ Id = 'NarratorResetMark'; Path = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Accessibility'; Name = 'NarratorAfterSigninResetCompleted'; Kind = 'DWord'; Force = 1 },
     @{ Id = 'SpeechModelUpdate'; Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Speech'; Name = 'AllowSpeechModelUpdate'; Kind = 'DWord'; Revert = $true }
 )
 $AudioServices = @('AudioEndpointBuilder', 'Audiosrv')
@@ -425,7 +432,7 @@ function Protect-Speech($Before) {
         if ($w.ContainsKey('Force')) {
             Set-RegValue $w.Path $w.Name $w.Force $w.Kind
         } elseif ($w.ContainsKey('Token')) {
-            $wanted = ($NarratorAtLogon -eq 'On')
+            $wanted = ($NarratorAtLogon -eq 'On') -and ($w.Token -eq 'narrator')
             if ($Before -and (Test-HasToken $Before.($w.Id) $w.Token)) { $wanted = $true }
             if ($wanted -and -not (Test-HasToken $now $w.Token)) {
                 $list = @()
@@ -694,6 +701,16 @@ function Disable-SecurityToggles {
     $state = Get-DefenderState
     if (-not $state) { Note 'Microsoft Defender nie odpowiada (inny antywirus albo już usunięty); idę dalej.' 'Microsoft Defender does not answer (another antivirus, or already removed); continuing.'; return $true }
     if ($state.Tamper) {
+        # r405: without the Windows Security app (Windows 11 LTSC evaluation, build 26100: the
+        # package Microsoft.SecHealthUI is neither installed nor provisioned, and the
+        # windowsdefender: link "needs a new app") Tamper Protection cannot be turned off at all.
+        $securityApp = $null
+        try { $securityApp = Get-AppxPackage -AllUsers -Name 'Microsoft.SecHealthUI' -ErrorAction Stop } catch { }
+        if (-not $securityApp) {
+            Announce 'Charon: ten Windows nie ma aplikacji Zabezpieczenia Windows, więc ochrony przed naruszeniami nie da się wyłączyć. Bez tego narzędzie AME nie działa: profilu nie da się tu zastosować. Windows zostaje bez zmian.' `
+                'Charon: this Windows has no Windows Security app, so Tamper Protection cannot be turned off. The AME tool does not work without that: the profile cannot be applied here. Windows stays unchanged.'
+            return $false
+        }
         # Tamper Protection exists so that no program can do this. Only the user can.
         Start-NarratorIfSilent
         try { Start-Process 'windowsdefender://threatsettings' } catch { Write-Log ('cannot open Windows Security: {0}' -f $_.Exception.Message) }

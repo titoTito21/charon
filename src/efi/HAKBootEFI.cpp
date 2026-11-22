@@ -213,16 +213,25 @@ extern "C" efi_status EFIAPI efi_main(efi_handle self,efi_system_table* table) {
         char16_t report[200]={};const bool ok=effects->SetSynth(effects->context,settings.synthKey,settings.synthVoice,report,200);
         if(!ok)hakefi::SynthMessage(false,report,pl,synthNote,220);   // TVox falls in; say why so detection failures are not silent
     }
+    charontrace::Text("CHARON driver: before reader install");
     status=hakefi::residentReader.Install(table,options);
+    charontrace::Value("CHARON driver: reader installed",uint64_t(status));
     if(status!=EFI_SUCCESS)return EFI_SUCCESS;
     driverControl={1,sizeof(hakefi::ReaderControl),hakefi::charonRelease,0,driverProvider->Voice(),effects,DriverSuspend,DriverResume};
     efi_handle handle=nullptr;
     boot->InstallProtocolInterface(&handle,&hakefi::readerControlGuid,EFI_NATIVE_INTERFACE,&driverControl);
+    // r406: a mark that firmware loaded this add-on (a volatile variable the started system can
+    // read). Firmware that ignores driver options (VMware's) never sets it; the installed system
+    // then starts the reader through the Charon boot manager instead (install-charon.sh check).
+    {static efi_guid markGuid={0x7a3c5e21,0x4b9d,0x4f1e,{0xa6,0x52,0x1c,0x8e,0x93,0x0d,0x27,0xb5}};uint8_t one=1;
+     if(table->RuntimeServices && table->RuntimeServices->SetVariable)table->RuntimeServices->SetVariable((char16_t*)u"CharonVoiceLoaded",&markGuid,6,1,&one);}
     // r385: the add-on greets with one short PC-speaker style beep (as after
     // POST), not with the menu's welcome sound.
     // r400: fast-booting firmware never binds the sound card for us.
     // r402: not when firmware is about to reconnect everything (see ReconnectFollows).
+    charontrace::Value("CHARON driver: reconnect follows",uint64_t(ReconnectFollows()));
     if(!ReconnectFollows())charonaudioefi::ConnectAudioControllers(boot);
+    charontrace::Text("CHARON driver: sound cards connected");
     {static efi_guid readyToBoot={0x7ce88fb3,0x4bd7,0x4679,{0x87,0xa8,0xa8,0xd8,0xde,0xe5,0x0d,0x2b}};
      static efi_guid endOfDxe={0x02ce967a,0xdd7e,0x4ffc,{0x9e,0xe7,0x81,0x0c,0xf0,0x47,0x08,0x80}};
      static efi_event events[2];
@@ -234,7 +243,9 @@ extern "C" efi_status EFIAPI efi_main(efi_handle self,efi_system_table* table) {
     if(effects && effects->Beep)effects->Beep(effects->context,8000,320);
     char16_t greet[400]={};hakefi::Append(greet,400,u"Charon.");
     if(synthNote[0]) {hakefi::Append(greet,400,u" ");hakefi::Append(greet,400,synthNote);}
+    charontrace::Text("CHARON driver: before greeting");
     hakefi::residentReader.Announce(greet);
+    charontrace::Text("CHARON driver: started, returning to firmware");
     return EFI_SUCCESS;
 }
 #else
@@ -253,6 +264,7 @@ extern "C" efi_status EFIAPI efi_main(efi_handle self,efi_system_table* table) {
     if(status!=EFI_SUCCESS)return status;
     efi_file_protocol* root=nullptr;
     status=fs->OpenVolume(fs,&root);if(status!=EFI_SUCCESS)return status;
+    root=hakefi::selfram::Wrap(root);   // r408: so every holder of `root` follows a later switch to the RAM copy
     {hakefi::CharSettings saved;hakefi::LoadCharSettings(root,saved);char locale[64]={};hakefi::InstallationLocale(root,locale);
         consoleExplicit=saved.explicitMessages;consolePolish=hakefi::PolishSettings(saved,locale);}
     uint16_t current=0xffff;size_t size=sizeof(current);

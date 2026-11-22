@@ -96,7 +96,7 @@ void vid_tty(u8 ch, dchar16 uni, int attr)
     vid_get_cursor(&x, &y);
     const u32 v = vbase();
     switch (ch) {
-    case 7: return;
+    case 7: snd_bell(); return;                         // r407: BEL sounds
     case 8: if (x > 0) x--; break;
     case 13:
         if (s_native_scroll) tty_emit('\r', (u8)((s_tty_n && !(s_tty_attr & 0x70)) ? s_tty_attr : 0x07), x, y);

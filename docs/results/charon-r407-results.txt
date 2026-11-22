@@ -1,0 +1,127 @@
+Charon r407 - trial results (2026-11-21 and 2026-11-22). Not a release; no regression run yet.
+Machines: VMware Workstation, HD Audio, sound on the host speakers; QEMU only where said.
+Builds named below are in work/ (app charon-win-*, driver *-drv, emulator charon-pc-build-*).
+
+A. CharonPC (Windows 9x profiles of CharonDOS): Windows Millennium with sound and JAWS
+--------------------------------------------------------------------------------------
+Path tested: Charon's installer dialogue (group CharonDOS, profile Windows ME, reader JAWS 4.02,
+Setup questions answered there) -> CharonDOS installed on an empty NVMe disk -> restart ->
+CharonDOS prompt -> WIN -> Windows Setup without questions -> first desktop -> JAWS installer.
+Script work/dos-me.sh; machine vmware-dos8 (app r407j, driver r407j-drv, emulator r407w, later
+r407z..r407zc put on its disk).
+
+1. Sound device in Windows ME: PASS. The answer file's root device *PNPB003 makes Setup install the
+   in-box "Sound Blaster 16 or AWE32 or compatible (WDM)" driver; the tray shows the volume icon,
+   Windows plays its sounds, JAWS speaks through it.
+2. JAWS 4.02 with Eloquence: PASS. JAWS's "Automatic" installation installs Eloquence; the
+   installer itself starts a speaking JAWS when a sound card is there. After the restart JAWS runs
+   without errors and speaks (several hundred sound packets from the guest in the log).
+   A JAWS profile has no Braille 'n Speak on COM1 (com1=none): with it JAWS 4.02 stopped the guest
+   at its start in the trials of 2026-11-21 (cause not found).
+3. Charon's control reader steps back when JAWS runs: PASS. Log: "a guest screen reader's program
+   is on the screen" then "the guest's screen reader runs and the guest plays sound, Charon's
+   control reader steps back"; spoken once: "Czytnik w Windows mowi. Czytnik kontrolek Charona
+   milknie; Control Shift F8 wlacza go ponownie." When JAWS's installer ended, the reader came
+   back by itself ("Czytnik w Windows zakonczyl prace...") and stepped back again when JAWS started
+   after the restart.
+4. Guest sound under Charon (voice driver present): PASS after the fix. Before: 5 to 58
+   "CHARON audio fault restart" (EFI_DEVICE_ERROR) per session and the guest's sound was lost
+   (the user's report: sound only without Charon). Cause: a pump of the voice from the resident
+   reader's timer nested into Stop/Speak/Write from the emulator. Fix: nested calls are ignored in
+   CharonAudioDevice.h (Write, Drained, Discard) and pc::Say/StopVoice raise the TPL. After: 0.
+5. Cut and "strange" sound: three causes, all changed, last state measured on vmware-dos8 with
+   emulator r407zc: 0 frames skipped, 0 dropped, 0-3 short dry spells per start, playback speed
+   100-102 %.
+   - Bochs's slowdown timer let the machine run a second ahead of real time after it had fallen
+     behind (REALTIME_Q): the guest ran up to 1.28 times too fast for seconds (measured: 114 M
+     ticks a second at ips 88.7 M). Patched to 20 ms in tools/build-charon-bochs.py.
+   - ips is now measured per computer (HostIps), about 68-89 M here; clock sync default slowdown.
+   - The emulated card's FIFO is read at a speed that follows its average fill (0.98 .. 1.20),
+     instead of cutting the surplus. A first version (0.92 .. 1.40, not averaged) made the pitch
+     waver with every packet: the user called the sound strange; replaced.
+   Whether the result sounds right is the user's judgement; only the counters are measured here.
+6. Processor: default model Pentium III (p3_katmai), Windows 95 keeps the Pentium II at 60 M
+   (Windows 95 fails on fast processors). Handler chaining of Bochs enabled. Real speed of the
+   interpreter on the trial computer: 150 M instructions a second at most alone, about 73 M under
+   Charon with the control reader; a Pentium III of the period ran several times that. The
+   emulated machine therefore cannot be as fast as the top computers of the era on this build;
+   the remaining step would be a build without the large code model (PLAN.txt, 5.).
+   CharonDOS's own 8086 emulator is not throttled at all.
+7. Reader for a system that is already installed: PASS on vmware-me4 (emulator r407v): READER.ISO
+   made in the profile, attached as the second CD drive, "E:\J40252.EXE" typed into Start -> Run by
+   the emulator after the desktop appeared; the JAWS installer started.
+   An earlier attempt to write the installer into the guest's FAT32 volume from outside was
+   removed: Windows lost the file's chain; that machine was also hard-stopped several times and its
+   SYSTEM.INI ended up holding other data ("Jfw has caused an error in MMSYSTEM.DLL"). A fresh
+   installation (vmware-dos8) has no such error.
+8. Stale disk lock: PASS. After a machine was stopped without a shutdown the emulator refused the
+   disk ("image locked") at every later start; the lock is now removed at start (r407zc), seen on
+   vmware-dos8 (ScanDisk ran, Windows started).
+9. Leading the JAWS installer without the user (SteerReader): PARTLY. The first wizard page was
+   confirmed by Charon; the licence page and the later pages were not (all wizard pages look the
+   same to the engine, which does not read their text). Changed in r407y (licence "Yes", the same
+   page answered again after five seconds); a fresh run to confirm it is vmware-dos9 (see the end
+   of this file when it has finished). The wizard's page texts are still not read by Charon's
+   control reader (only "JAWS 4.02 Install, okno. Next, przycisk"); JAWS's own speaking installer
+   reads them once the sound card works.
+10. Not a defect: a test machine that started the emulator directly (CHARONPC.EFI as the disk's
+    boot loader, work/make-me-vm.py) made it look as if an installed Windows started without WIN.
+    The installed system starts CharonDOS; CharonDOS runs nothing by itself.
+
+B. Other work of the same days
+------------------------------
+- VeraCrypt pre-boot authentication: see work/veracrypt-evidence/README.txt and
+  FIRMWARE-COVERAGE.txt (recognition, key help, password and PIM never spoken; QEMU with the real
+  1.26.31 loader, no encrypted system: a successful unlock is untested).
+- NVDA inside Windows 11 Setup through Charon's dialogue: see work/r407-evidence (win3-*); the
+  user heard Narrator instead of NVDA in the first run - under repair at the time of writing.
+
+C. Later the same day (2026-11-22 afternoon)
+------------------------------------------
+11. Hands-free JAWS installation: PASS for the whole wizard on vmware-dos9 (emulator r407zc, no key
+    pressed by the tester): wizard pages, licence, file copy, Finish, the Q269244 update and the
+    restart; JAWS spoke after the restart and Charon's control reader stepped back. NOT answered by
+    Charon: the two windows of JAWS's first start ("Authorization Manager": Run as Demo, and the
+    question about starting with Windows). Cause not found yet; a trace line and the profile key
+    reader_lead=1 were added for it (r407zd) - run vmware-dos10.
+12. Lost key releases: on vmware-dos9 no key reached Windows any more after a quick series of
+    shortcuts while JAWS ran (a modifier stayed "held"). The emulator now releases the modifiers it
+    used once more after 0.4 s of quiet (r407ze). Not yet confirmed in a run.
+13. Windows key: Win+letter shortcuts are passed to the guest when the firmware reports the logo
+    key with the key stroke (r407zd). Not yet confirmed in a run; the Windows key alone is not
+    passed (Control+Escape opens the Start menu).
+14. Quiet control reader: when the guest's disk holds an installed JAWS, Charon's control reader
+    reads only the way to the desktop (ScanDisk, password window) and says nothing once the desktop
+    is up (user's rule of 2026-11-22). r407zd; not yet confirmed in a run.
+15. Power button: Control+Shift+F12 under a graphical Windows first presses the emulated ACPI power
+    button (Windows shuts down itself), a second press switches off at once (r407zf). Reason: three
+    test installations were damaged by switching the machine off under a running Windows (registry
+    error, safe mode, a desktop that no longer loads). Not yet confirmed in a run.
+16. "Install Charon on this computer" (Charon workspace, CharonWsSelfInstall.h + CharonSelfCopy.h,
+    app charon-win-r407si1): PASS in VMware (vmware-si1, a disk with an EFI partition holding a
+    GRUB loader): the row is spoken "Zainstaluj Charona na tym komputerze, 6 z 15"; three variants;
+    partition list "partycja EFI GRUBTEST, Debian, wolne 598 MB"; plan read out, typed TAK;
+    "Skopiowano plikow: 87"; after removing the Charon disc the machine started Charon from the
+    disk by itself, the voice driver was loaded by the firmware, and Continue named the GRUB disk.
+    Tested: variant "first" only. Not tested: "reader alone", "spare entry", a partition with too
+    little room, Secure Boot, a second installation over an older one, real hardware.
+    Charon's own files are copied into memory in the background after the start (a quarter of a
+    megabyte per turn of the menu loop); the installer used that copy.
+17. Installer wording: the three modes are now "tryb ekspresowy: jak najmniej pytan" / "express
+    mode: as few questions as possible", "tryb szczegolowy: wiecej pytan" / "detailed mode: more
+    questions", "zainstaluje ten system sam" / "I will install this system myself", with every
+    message that referred to the old names. A review of all installer texts in both languages was
+    in progress when this was written.
+18. NVDA in Windows 11 Setup through Charon's dialogue: PASS after a fix (see
+    work/r407-evidence/README.txt, win5): WinPE plays only streams of the "alerts" and "sound
+    effects" categories, so NVDA was silent although it "spoke"; peaudio.dll + the synthesizer
+    driver charonpe set the category. Sound measured on the host and heard by the user. NVDA in
+    Setup speaks English by default and Polish when the Windows language chosen is Polish (code
+    only, not run).
+
+Open
+----
+- Regression of the boot managers and a release (last release: r404).
+- JAWS 4.02 with a synthesizer on COM1 stopping the guest: cause unknown.
+- Guest sound level is low for some Windows sounds (peaks 3000-8700 of 32767).
+- Windows 95 / 98 profiles and the other readers (Window-Eyes, Hal: COM1) were not run in these days.

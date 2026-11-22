@@ -117,7 +117,7 @@ inline bool DecodeSettings(const uint8_t* bytes,size_t length,CharSettings& resu
     }
     if(version>='9') {
         if(bytes[36]>3 || bytes[37]>7 || bytes[38]>3 || bytes[39]>63)return false;
-        if(version>='A') {if((version<'C' && (bytes[40]>63 || bytes[41]>31)) || bytes[41]>127 || ((bytes[41]>>5)&3)>2 || (bytes[41]&3)>2 || (version=='A' && (bytes[42] || bytes[43])) || bytes[43]>15)return false;}
+        if(version>='A') {if((version<'C' && (bytes[40]>63 || bytes[41]>31)) || ((bytes[41]>>5)&3)>2 || (bytes[41]&3)>2 || (version=='A' && (bytes[42] || bytes[43])) || bytes[43]>15)return false;}   // r408: bytes[41] bit7 is extraLinger, which EncodeSettings writes (default 153); the old >127 reject blocked saving the default record
         else for(unsigned i=40;i<44;++i)if(bytes[i])return false;
     }
     CharSettings candidate;for(unsigned i=0;i<8;++i)candidate.sequence|=uint64_t(bytes[8+i])<<(i*8);

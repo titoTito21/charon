@@ -73,6 +73,39 @@ Boot-manager profiles            DONE (r393) for GRUB in QEMU: manager keys in t
   configurations read (GRUB, systemd-boot, rEFInd, Limine, Syslinux, OpenCore, Clover,
   BCD), hidden menu announce/reveal, countdown stop; Continue boots unchanged.
   Reveal for systemd-boot/rEFInd untested. ext4 grub.cfg not readable (stub noted).
+VeraCrypt pre-boot authentication PARTIAL (r407). VeraCrypt's UEFI loader (DCS: DcsBoot.efi
+  starts DcsInt.dcs; everything is UEFI console text, no graphics unless the picture
+  password is configured). Recognised by image text ("EFI\VeraCrypt\", before Windows
+  Boot Manager, which it starts afterwards); named in the device list, also when it
+  stands at \EFI\Microsoft\Boot\bootmgfw.efi as on a VeraCrypt system disk; rescue disk
+  program (DcsRe.efi) named "VeraCrypt Rescue Disk". Profiles with the loader's keys
+  (Enter, Escape, F5, F2, F7-F9, the 0.1 s key delay, the rescue menu letters) in Polish
+  and English; screens for the password prompt, PIM prompt, hash choice, failure
+  message and rescue menu (prompts by the caret's row).
+  Secret input (CharonSecretInput.h): in these programs every character written at a
+  prompt after a key is kept as '*' in the reader's screen model unless the prompt is
+  known to be public (menu letter, yes/no, hash, value with default); an unknown or
+  changed prompt text (PasswordMsg) is secret. Per accepted character the reader says
+  "gwiazdka"/"star", per removed one "usunięto"/"deleted" - the words of password
+  fields of the accessibility protocol. Typed characters never reach automatic
+  speech, braille, the speech history, "what changed", the clipboard or the
+  reader trace, also when F5 or AuthorizeVisible=1 shows them on the screen; text
+  recognised from pixels is ignored while such an entry is on the screen. Only the
+  explicit review commands (line, word, character, say all) read shown characters,
+  and that speech is not put into the history.
+  Tested in QEMU q35 + OVMF with the official 1.26.31 loader binaries on a GPT disk
+  laid out like a VeraCrypt system disk and like a rescue disk, without an encrypted
+  volume: prompt, typing, Backspace, F5, PIM, "Authorization failed", Escape into
+  the original Windows Boot Manager, rescue menu. [tests/CharonSecretInputTests.cpp,
+  work/veracrypt-evidence]
+  NOT TESTED: a successful unlock and the start of an encrypted Windows (no
+  encrypted system here), the rescue disk's decrypt and restore actions, F2 password
+  change, TPM/smart card/platform lock, the loader under Driver#### (CHARONVOICE.EFI
+  builds with the same code; not run with VeraCrypt), Secure Boot, real hardware.
+  NOT PORTED: the picture password (PasswordType 1, touch zones on a bitmap) - not
+  usable without sight and not described by the reader. With AuthorizeProgress=0 the
+  loader echoes nothing, so there is no per-character cue (the reader cannot know
+  which keys the loader accepted).
 Speech from power-on             DONE (r356/r385): CHARONVOICE.EFI Driver####, also as a
   UEFI add-on with the system's own loader as the default.
 After ExitBootServices           OUT OF REACH: boot services (audio, console hooks) end;

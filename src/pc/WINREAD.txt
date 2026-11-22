@@ -1,0 +1,347 @@
+WINREAD.txt - pc_winread: reading classic Windows screens for the screen reader
+===============================================================================
+
+Files:  src/pc/pc_winread.h, src/pc/pc_winread.cpp      (GPL-2.0-or-later)
+Test:   tests/CharonWinReadTests.cpp   (host; needs the user's fonts and frames)
+
+Purpose.  Windows 3.x/9x running in CharonPC draws its dialogs as pixels.
+pc_winread turns one still frame into a list of elements (static text, push
+button, edit field, check box, radio button, list, combo box, progress bar,
+group box) with their texts and states, finds the keyboard focus, and builds
+the sentences the reader speaks.  It is pure logic: no files, no devices, no
+threads, no exceptions, no global state; <stdint.h>, <stddef.h>, <string.h>,
+<stdlib.h> only.  All work memory is in one context block of about 11 MB.
+The largest object it puts on the stack is about 1.6 KB.
+
+No font data is in Charon.  The glyphs come from the .FON files of the
+user's own Windows medium (MINI.CAB of the Setup disc: SERIFE.FON,
+SSERIFE.FON, VGAFIX.FON, VGAOEM.FON, VGASYS.FON; later \WINDOWS\FONTS).
+Never copy those files, or tables made from them, into this tree.
+
+
+1. API
+------
+  namespace pcwin {
+    size_t   ContextBytes();
+    Context* Init(void* memory, size_t bytes);          // nullptr: block too small
+    bool     AddFon(Context*, const uint8_t* bytes, size_t size);
+    unsigned FontCount(const Context*);
+    void     ResetHistory(Context*);
+    void     ClearScreen(Screen*);
+    void     Analyse(Context*, const uint32_t* pixels, unsigned width,
+                     unsigned height, unsigned stride, Screen* out);
+    size_t   SpeakChange(const Screen& before, const Screen& now, unsigned flags,
+                         char* out, size_t capacity);
+    size_t   SpeakAll(const Screen& now, unsigned flags, char* out, size_t capacity);
+    size_t   SpeakElement(const Screen&, unsigned index, unsigned flags,
+                          char* out, size_t capacity);
+    bool     SetElementText(Screen*, unsigned index, const char* utf8);
+    int      ReviewStep(const Screen&, int index, int direction);
+    int      ReviewStepControl(const Screen&, int index, int direction);
+    const char* Text(const Screen&, const Element&);
+    const char* Label(const Screen&, const Element&);
+  }
+
+AddFon: once per file, any order, as many files as there are.  A file with
+nothing usable (vector font, not an NE/FNT file, tables full) returns false
+and is ignored.  The bytes are copied.  Limits: 96 font variants (a variant
+is one size, plain or synthetic bold), glyphs up to 48 pixels high.
+FNT versions 2.0 and 3.0.  Character sets: ANSI (Windows-1252) and
+EASTEUROPE (Windows-1250) are mapped to Unicode; any other set (OEM,
+symbol) gives its ASCII part only.
+
+Analyse: pixels are 0x00RRGGBB (the top byte is ignored), stride in pixels,
+16x16 up to 1024x768.  Any palette: nothing depends on particular colours.
+Call it when the picture has been still for a moment.  The only state kept
+between calls is (a) which fonts were read last (they are tried first) and
+(b) the edit field that had the caret, so that the dark half of the blink
+does not lose the focus; ResetHistory() drops (b) (call it on a mode switch).
+
+Screen (about 17 KB, keep it off small stacks; plain data, memcpy-able):
+  title, kind (kWindowNone / kWindowNormal / kWindowMessage), dialog (its
+  rectangle; w == 0 = no dialog found), focus (index or -1), pageHash,
+  items[count] in reading order (the dialog first: rows top to bottom, left
+  to right; then everything outside the dialog), pool (UTF-8 texts).
+
+Element:
+  role         kRoleText, Button, Edit, CheckBox, Radio, List, ListItem,
+               Combo, Progress, Group, Menu, MenuItem, Icon, Tab
+               kRoleMenu      an open pop-up menu (Start menu, submenu, drop-
+                              down menu of a window, context menu): rect = its
+                              frame, count = number of items, no text.  Its
+                              kRoleMenuItem elements follow it directly.
+               kRoleMenuItem  text = caption (plus the shortcut, "Cut Ctrl+X");
+                              kFlagSelected = under the highlight bar,
+                              kFlagSubmenu, kFlagChecked (check mark or
+                              bullet), kFlagDisabled, kFlagDamaged (something,
+                              e.g. a tool tip, lies on the row: the caption
+                              may be cut); position/count within its menu.
+               kRoleIcon      caption of an icon on the desktop or in a folder
+                              window.  Reported only while one caption has the
+                              dotted focus rectangle (otherwise the captions
+                              are kRoleText); position/count in reading order.
+               kRoleTab       tab of a property sheet; kFlagSelected = the
+                              open page; position/count from the left.
+  rect         control together with its caption (radio, check box)
+  text         caption of a button / check box / radio button / group;
+               content of an edit field or combo box; selected row of a
+               list; the paragraph of a static text
+  label        caption found left of or above an edit field, list, combo
+               box (it must end with ':' or have an underlined letter) or
+               above a progress bar; that static is not listed separately
+  flags        kFlagFocused, kFlagDefault, kFlagDisabled, kFlagChecked,
+               kFlagSelected (list row; edit field with a selection),
+               kFlagHighlighted (text outside the dialog in the minority,
+               saturated colour: the current step of Setup, the time left),
+               kFlagOutside (not in the dialog), kFlagBold (heading),
+               kFlagMultiline, kFlagDamaged (letters hidden by the mouse
+               pointer are missing), kFlagChild (list row), kFlagCaret,
+               kFlagUnread (see 4), kFlagSubmenu (menu item that opens
+               another menu)
+  accelerator  Unicode of the underlined letter, 0 = none
+  position, count   radio buttons of one column, unlabelled edit fields of
+               one row ("1 of 5"); for a list and its rows: the place among
+               the VISIBLE rows (the total number of rows cannot be seen)
+  percent      progress bar, else -1
+  colour       text colour of a static
+
+Speech (flags: kSpeakPolish = 1 so that "true" means Polish, kSpeakTerse,
+kSpeakOutside).  The words of the screen stay as they are; only role and
+state words are English or Polish.  Order: label, role, state, value,
+position.
+  button        "Cancel, przycisk" / "Next, przycisk, niedostepny"
+                ("< Back" and "Next >" lose the arrows in speech only)
+  edit          "User name, pole edycji, <text or 'puste'>[, N z M]"
+  check box     "X, pole wyboru, zaznaczony|niezaznaczony"
+  radio         "X, przycisk opcji, zaznaczony|niezaznaczony, N z M"
+  list          "Time zone, lista, <selected row>, N z M"
+  combo box     "Drive, lista rozwijana, <text>"
+  progress      "Copying..., pasek postepu, 37%"
+  group         "Settings, grupa"
+  list row      "<text>[, wybrany]"            (review cursor)
+  menu          "menu"
+  menu item     "Run..., pozycja menu, 7 z 9" / "Programs, podmenu, 2 z 9" /
+                "Status Bar, pozycja menu, zaznaczony, 2 z 13" /
+                "Undo Ctrl+Z, pozycja menu, niedostepny, 1 z 9"
+  icon          "My Computer, 3 z 10"   (SpeakAll: the caption only)
+  tab           "Background, karta, 1 z 6"
+  English: button, edit, check box, radio button, list, combo box, progress
+  bar, grouping, menu, menu item, submenu, tab, checked, not checked,
+  unavailable, blank, selected, N of M.
+  The default button is not announced.  A trailing ':' or single '.' of a
+  caption and rulers made of four or more dashes are not spoken.
+
+SpeakChange(before, now):
+  * a menu is open in "now" (any kRoleMenu): only the menu speaks.  No menu
+    in "before": "menu", then the item under the bar if there is one
+    ("menu. Shut Down..., pozycja menu, 9 z 9").  A menu before as well:
+    the item under the bar when it is another one (the bar moved, a submenu
+    opened or closed), else nothing.
+  * the menu closed (menu in "before", none in "now"): the focused control;
+    the texts the menu had covered do not make a new page (a changed title
+    still does).
+  * new dialog or page (the title or the hash of the dialog's static texts
+    changed): "<title>, okno" (a dialog holding only text and at most four
+    buttons and clearly smaller than the screen: "<title>, okno dialogowe";
+    English "window" / "dialog"), then the statics and progress bars of the
+    dialog, then the focused control.  kSpeakTerse leaves out a title that
+    did not change.
+  * only the focus moved: the newly focused control.
+  * same focus: a list/combo whose row changed: "<row>, N z M"; a check
+    box / radio button whose state changed: the state word; an edit field
+    whose text changed: nothing (the caller echoes keys).
+  * a progress bar whose value changed: "NN%" (rate limiting and tones are
+    the caller's business).
+  * outside the dialog: a highlighted text that was not highlighted
+    before, preceded by the text before it when that ends with ':'
+    ("Estimated time remaining: 13 minutes").
+  0 = nothing to say.  Compare against the Screen that was last SPOKEN,
+  not merely the previous frame.
+SpeakAll: title and every element of the dialog ("read window"); with
+kSpeakOutside, or when there is no dialog, also what is outside.
+ReviewStep / ReviewStepControl: a review cursor independent of the guest's
+focus; SpeakElement speaks what it stands on.
+
+
+2. How it works
+---------------
+Everything is "runs of one exact colour"; the roles of colours are taken
+from the picture (lighter/darker), never from a table.
+
+ 0. Copy the frame.  Checkerboards first: a run of a row (17 pixels or
+    more) in which every other pixel has one colour K, while a neighbouring
+    row has K on the other columns (90 %) and something else on these.  The
+    other half may be one colour (scroll bar track, patterned desktop) or a
+    picture (the desktop that Windows dims behind "Log Off" / "Shut Down":
+    black on every other pixel of whatever was there).  Sixteen plain
+    pixels of K end a run (the face of a dialog in the same grey); the ends
+    are trimmed to columns that really alternate downwards.  Such runs are
+    painted in a colour of their own (0x01000000 | colour): no text, no
+    box, no control comes out of them, and it costs about 0.3 ms.
+    Then rows that alternate between two colours are looked for again: two
+    such rows of the same extent with alternating columns between them are
+    a dotted focus rectangle: remembered and painted over with the
+    background.
+ 1. Boxes.  A box is a rectangle of one colour with straight left and
+    right borders: it starts on a row that is one run from edge to edge and
+    lasts while both edge pixels stay (letters inside do not matter; up to
+    20 rows may have only one good edge).  Dialog faces, button faces,
+    fields, title bars, selection bars and the two halves of a progress bar
+    are all boxes.  The colours next to each side (four rings) tell the
+    relief: top/left darker than bottom/right = sunken (field), lighter =
+    raised (button); a one-colour first ring is skipped (Windows 3.x fields
+    and buttons); rings in the box's own colour belong to it.
+ 2. Caret: in a sunken box, a vertical bar one or two pixels wide and 12-28
+    rows high whose ends are bare and stand on the paper of the box (a menu
+    lying on a field has its own colours round its letters); painted over.
+ 2a. Raised frames ("panels": pop-up menus, windows).  The right border of
+    a Windows 9x frame is a column darker than the face left of it and
+    lighter than the column right of it.  Such columns of 12 rows or more
+    are collected; pieces in one column belong together when something (a
+    submenu, a tool tip) covers the gaps.  The bottom border (the same two
+    colours, lying) or the light top line gives the left edge, the light
+    left line the missing end.
+ 3. Glyph candidates: connected components (8-neighbours) of runs not
+    longer than 20 pixels.  A component is ink only if it does not touch a
+    long run of its own colour, if everything around it is one colour (a
+    straight border of another colour is allowed, as is the white shadow of
+    disabled Windows 95 text), and if that colour reaches a long run
+    (otherwise it is the hole of a letter).  Radio buttons are found here: a
+    small filled octagon inside a two-tone ring.
+ 4. Lines: components of one ink and background colour that overlap
+    vertically and are near each other; dots, commas and underlines are
+    attached afterwards.
+ 5. Reading: the columns of a line are bit masks.  A font cell matches when
+    its columns equal the screen columns exactly; a dynamic programme
+    covers the line with cells and spaces (minimum number of glyphs, then
+    a preference for letters over rare signs).  Fonts are tried in the
+    order "read last first"; every vertical position of the line in the
+    cell is tried.  Bold is synthesized as GDI does it (glyph OR glyph
+    shifted right, advance + 1).  The underline row (ascent + 1) may be set
+    under exactly one whole cell: that letter is the accelerator.  Where
+    capital I and small l have the same picture (MS Sans Serif 10) the
+    neighbours decide.  If no exact cover exists, the six most recent fonts
+    get a second pass that may skip columns (text under the mouse pointer);
+    the result is marked kFlagDamaged.
+    Text inside a selection bar and the "NN%" on a progress bar are read
+    as "whatever differs from the bar colour at that column".
+ 6. Assembly: progress bars (filled box | empty box with the same frame,
+    and no button face inside: the black outline of a default button next
+    to the dialog's face is no bar;
+    one box holding only "NN%"; a thin sunken box with blocks), fields
+    (sunken boxes, stacked with a selection bar: single line = edit, or
+    combo when a small raised box stands at its right end; several rows
+    with a selection bar = list, without = multi-line edit), buttons
+    (raised box with text), the title (bold text alone in a flat bar; the
+    most saturated bar wins) and the dialog below it, paragraphs (same
+    font, colours and left edge or centre, line pitch of the font), group
+    boxes (etched frame with a caption on its top line), captions of radio
+    buttons and check boxes (text right of them), labels of fields, statics.
+    Menus are assembled before everything else (their rows must not be
+    taken for the content of a field they lie on): a panel whose light top
+    line is there (a picture of a menu inside a dialog is cut), that holds
+    no control-sized raised or sunken box, no check box and no title-bar
+    button, and whose texts start in one column at least two rows further
+    apart than the font is high.  A row whose text has another background
+    than the panel is under the highlight bar.  A one-colour mark of 4-10
+    pixels left of the caption is a check mark or bullet (icons have more
+    colours); a 3-5 by 5-9 mark at the right end is the submenu arrow.  A
+    mark so close to its caption that the two were read as one damaged or
+    unreadable text is cut off at the caption column.  Unreadable things in
+    a menu (the banner of the Start menu) are dropped.
+    Tabs: a flat box 13-24 rows high with a light top edge and exactly one
+    text, standing on a wide box of the same colour (the page); the open
+    tab starts higher than the others.
+ 7. Focus.  A menu is open: the item under the bar of the newest menu (the
+    menu no other menu with a bar lies on: a submenu covers the border of
+    the menu it was opened from), or nothing when no menu has a bar; the
+    remembered caret field is kept for the time after the menu.
+    Otherwise: the control that holds a dotted rectangle; else a plain text
+    inside a dotted rectangle - the caption of an icon: it and every other
+    text with a picture right above it become kRoleIcon (two captions the
+    rectangle stands between are not joined into one text); else the edit
+    field with the caret; else an edit field with a selection; else the
+    field that had the caret in an earlier frame (the caret blinks: once
+    seen, the field keeps the focus until something else shows it); else
+    the only default button - but a disabled default button never has the
+    focus: then the topmost enabled single-line field has it ("Run").
+
+Measured (clang -O2, one core of the development PC, best of five):
+640x480 frames of Windows Me Setup 3-8 ms, the same in a 1024x768 frame
+7 ms, a random-noise frame 5 ms.  Windows Me desktop: message box on the
+dimmed desktop 2 ms (20 ms before the checkerboard pass), Start menu with
+two submenus 5.5 ms, a folder window with an open menu 7-8 ms.
+
+
+3. What was verified, and how
+-----------------------------
+tests/CharonWinReadTests FONT_DIR FRAME_DIR [--dump] [--time]
+  * 17 screen shots of Windows Millennium Setup and of Windows Me after it:
+    both looks (the Windows 3.1 mini kernel with CTL3D, and Windows 9x),
+    VGA 16 colours.  Exact titles, paragraphs, controls, states, focus and
+    the SpeakChange text between consecutive shots.
+  * a synthetic Windows 95 dialog drawn by the test with the user's font in
+    true-colour default colours: group box, check box, combo box, list with
+    focus, block progress bar, disabled (embossed) button, caret blink,
+    message box.  These kinds have no screen shot yet.
+  * Windows-1250 mapping, refusal of junk fonts, empty/noise/dither frames.
+  * 25 screen shots of Windows Me after Setup (frames t-*, u-*): "Log Off
+    Windows" on the dimmed desktop with the focus on Yes and on No, the
+    error box of Start > Run, the Run dialog with the caret lit and dark,
+    the password dialog (a caret is drawn into the frame by the test: the
+    dialog itself could not be reached again), the Start menu without a
+    bar, with the bar, with one and two submenus and a tool tip on a row,
+    a context menu, the File / Edit / View menus of a folder window (check
+    mark, bullet, disabled items, shortcuts), desktop icons with the focus
+    rectangle on a selected and on an unselected icon, a property sheet
+    with two tabs and a picture of a menu in it.
+The test prints SKIP for anything it has no data for.
+
+
+4. Limits (known, not hidden)
+-----------------------------
+ * TrueType text is not read.  In the first part of Windows Me Setup the
+   side panel (steps, "Estimated time remaining"), the banner, the page
+   heading of the welcome/finish pages and the whole "billboard" during
+   file copy are Arial: they come back as empty statics with kFlagUnread
+   and their rectangle (kFlagHighlighted still marks the yellow rows), so
+   that another recogniser (CharonTtfOcr) can fill them in through
+   SetElementText().  In the second part the side panel is MS Sans Serif
+   and is read.
+ * The mouse pointer is part of the picture.  Letters under it are lost
+   (kFlagDamaged) and a changed remainder can make a page look new.  Park
+   the pointer in a corner when the guest starts.
+ * Focus on a button without a dotted rectangle (Windows 3.x look, some
+   pages) is inferred from the default button; a caret seen only in its
+   dark phase on the very first frame is not found until it lights up.
+ * Position in a list is among the visible rows only.
+ * A list without a selected row is taken for a multi-line edit field.
+ * Not recognised at all yet: tree and list views (the content of a folder
+   window comes out as a "list" of its texts; only the dotted rectangle on
+   the desktop makes icons), the menu bar itself (File, Edit ... are plain
+   texts; the open one looks like a small field), sliders, scroll bar
+   positions, tool bars, the task bar (only "Start", and not while it is
+   pressed), tool tips (their dithered yellow gives no text), bitmap
+   buttons, pressed buttons, three-state check boxes.  A filled password
+   field was not tested (its asterisks would be read as text).
+ * Menus: Windows 9x look only (a frame with a light and a dark edge; a
+   flat or one-colour frame is not found).  A menu needs two items, or one
+   item under the bar.  Multi-column menus, owner-drawn items without text
+   and scroll arrows of a long menu are not handled.  A row under a tool
+   tip keeps what is visible ("Classic S", kFlagDamaged).  A disabled item
+   under the bar is told by its low contrast (below 150 of 255).
+   Position and count are those of the visible rows with text.
+ * Icons: two captions closer than a word space are one text ("My
+   Documents Connect to the") unless the focus rectangle stands between
+   them, so the count can be one short.  A selected icon without the
+   dotted rectangle (the desktop is not the active window) is plain text.
+ * Tabs: one row of tabs; the open tab is known only by its height.
+ * The focus on a default button without a dotted rectangle is still a
+   guess when no caret was ever seen (password dialog right after it
+   opens: "OK" until the caret is caught in its lit half).
+ * A picture that contains a checkerboard 17 pixels wide loses that part.
+ * A text is read only when every pixel matches a loaded font: other
+   fonts, italic and scaled text stay kFlagUnread.
+ * Texts closer than about 9 pixels on one row are one text; texts more
+   than 14 pixels apart are separate (desktop icon captions rely on this).
+ * Text-mode screens are not this module's business.

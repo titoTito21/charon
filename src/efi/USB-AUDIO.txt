@@ -1,0 +1,416 @@
+CHARON: SPEECH THROUGH USB SOUND DEVICES BEFORE THE SYSTEM STARTS
+Written 2026-11-22 for r407. Replaces the r405 notes at the head of CharonUsbAudio.h.
+
+This file says what Charon's USB Audio Class output handles, by which rules,
+where each rule comes from, what the USB host controller question looks like,
+what stays impossible, and how each point was checked. It is a capability
+description, NOT a hardware certification: the only device the code ever ran
+against is QEMU's emulated usb-audio (one USB Audio Class 1.0 device, full
+speed, synchronous endpoint) under OVMF/edk2. No physical sound card, headset,
+USB-C adapter, dock or physical computer was used. Section 8 lists exactly
+which parts were run and which are written from the specifications only.
+
+Files
+  CharonUsbAudio.h          the device side: USB I/O requests, the xHCI endpoint
+                            rings, hot-plug, the set of devices (UsbAudioSet)
+  CharonUsbAudioModel.h     the pure logic: descriptor parser, pacing, feedback,
+                            sample conversion, the two transfer rings
+  CharonUsbAudioQuirks.h    GENERATED device quirk table (tools/build-usb-audio-quirks.py)
+  tests/CharonUsbAudioTests.cpp   host tests of the pure logic
+  CharonAudioDevice.h       chooses among HD Audio, AC'97, ES1371 and USB audio
+
+1. THE BUS QUESTION FIRST: WHO SENDS THE ISOCHRONOUS PACKETS
+
+A USB sound device takes its samples through an isochronous endpoint. UEFI
+defines isochronous transfers in two protocols:
+  EFI_USB_IO_PROTOCOL       UsbIsochronousTransfer(This, DeviceEndpoint, Data,
+                            DataLength, Status) and UsbAsyncIsochronousTransfer
+                            (the same plus a callback)
+  EFI_USB2_HC_PROTOCOL      IsochronousTransfer(This, DeviceAddress,
+                            EndPointAddress, DeviceSpeed, MaximumPacketLength,
+                            DataBuffersNumber, Data[], DataLength, Translator,
+                            TransferResult) and AsyncIsochronousTransfer
+Neither form lets the caller give the length of each packet: only a buffer, its
+length and (host controller form) a maximum packet length. A stream at 44.1 kHz
+(packets of 44 and 45 frames) or one that follows a feedback endpoint cannot be
+expressed, and a synchronous call cannot be chained without a gap.
+
+What the reference firmware does (edk2 master, files read on 2026-11-22, all
+"SPDX-License-Identifier: BSD-2-Clause-Patent"; nothing copied from them):
+  MdeModulePkg/Bus/Usb/UsbBusDxe/UsbBus.c
+      UsbIoIsochronousTransfer, UsbIoAsyncIsochronousTransfer: the whole body is
+      "return EFI_UNSUPPORTED;"
+  MdeModulePkg/Bus/Pci/XhciDxe/Xhci.c
+      XhcIsochronousTransfer, XhcAsyncIsochronousTransfer: "return EFI_UNSUPPORTED;"
+  MdeModulePkg/Bus/Pci/XhciDxe/XhciSched.c
+      XhcInitializeEndpointContext (both context sizes): isochronous endpoints
+      are skipped, "Do not support isochronous transfer now. ... Transfer ring is
+      not allocated."
+  MdeModulePkg/Bus/Pci/EhciDxe/Ehci.c
+      EhcIsochronousTransfer, EhcAsyncIsochronousTransfer: "return EFI_UNSUPPORTED;"
+  MdeModulePkg/Bus/Pci/UhciDxe/Uhci.c
+      Uhci2IsochronousTransfer, Uhci2AsyncIsochronousTransfer: "return EFI_UNSUPPORTED;"
+  OHCI: MdeModulePkg/Bus/Pci holds EhciDxe, UhciDxe and XhciDxe only (directory
+      listing of 2026-11-22); edk2 master has no OHCI driver at all.
+  https://github.com/tianocore/edk2/tree/master/MdeModulePkg/Bus
+So firmware that uses edk2's own USB drivers (OVMF as tested here; any build
+that takes these MdeModulePkg drivers unchanged) cannot play one sample through
+its USB stack, on any controller type. Whether the makers' own USB stacks (AMI,
+Insyde, Phoenix, Apple) differ is not established - no public documentation was
+found (section 9) - and Charon does not depend on it either way: it never calls
+the isochronous transfer functions.
+
+What Charon does (since r405, reviewed and widened in r407): it does NOT own the
+controller and does not ask the firmware for isochronous transfers. On an xHCI
+controller it drives the audio endpoints itself BESIDE the firmware's driver,
+which keeps the controller, its command ring, its event ring and every other
+device - the USB keyboard on the same controller included:
+  * descriptors, SET_INTERFACE and all class requests (rate, clock, mute,
+    volume, selector) go through EFI_USB_IO_PROTOCOL.UsbControlTransfer;
+  * one Configure Endpoint command is run in a borrowed slot of the firmware's
+    command ring with interrupts off, and the ring is put back byte for byte;
+  * the endpoints' transfer events go to a spare interrupter (an event ring the
+    firmware does not use) with its interrupt left disabled;
+  * the endpoints' doorbells are rung.
+The head of CharonUsbAudio.h describes the mechanism; every step is checked
+and anything unexpected ends in a refusal that leaves the controller as found.
+
+Controller types
+  xHCI   SUPPORTED as described. Every USB 3 port, every USB-C port, and the USB 2
+         ports of PCs built since about 2013-2015 hang on an xHCI controller
+         (the later date is an inference from chipset generations, not a
+         measurement here). Full-speed, high-speed and SuperSpeed devices,
+         directly or behind hubs and docks (the device is found by its root
+         port and route string).
+  EHCI   NOT SUPPORTED. The driver refuses and says so in the trace
+  UHCI   ("CHARON usb audio on a controller that is not xHCI, programming
+  OHCI   interface=.."). See section 6 for what a fallback would take.
+
+2. WHAT IS SUPPORTED
+
+Classes
+  USB Audio Class 1.0   AudioStreaming interfaces with a Type I format
+                        descriptor; rate by the endpoint's sampling frequency
+                        control.
+  USB Audio Class 2.0   Type I formats; rate by the clock source entity (range
+                        request, set, read back); clock selectors and
+                        multipliers on the way; clock validity.
+  USB Audio Class 3.0   both forms: the Basic Audio Device Definition profiles
+                        (no class descriptors: 48 kHz, format inferred from
+                        wMaxPacketSize, entities with fixed numbers) and full
+                        class descriptors (channel count from the cluster
+                        descriptor, a high capability descriptor request).
+  Configurations        The configuration the firmware selected is used and
+                        never changed. edk2 selects the first one
+                        (UsbBusDxe/UsbEnumer.c: Configs[0]); a UAC 3.0 device
+                        offers its backwards compatible UAC 1.0/2.0
+                        configuration there, so it normally plays as a UAC 1.0
+                        or 2.0 device. If firmware selected the UAC 3.0
+                        configuration instead, that one is played.
+                        SET_CONFIGURATION is deliberately not sent: edk2 then
+                        removes and re-creates every interface handle of the
+                        device (UsbBus.c, UsbIoControlTransfer), the HID keys
+                        of a headset among them.
+Formats
+  PCM 16, 24 and 32 bit (2, 3 or 4 bytes per sample, the 16 bits of the voice
+  in the most significant bytes), preferred in that order. Only when a device
+  has nothing else: 8-bit PCM (signed in a PCM format, unsigned as "PCM8") and
+  IEEE 754 single precision. 1 to 32 channels: mono gets the mean of Charon's
+  two channels, more channels get left and right in the first two and silence
+  in the rest. Not handled: Type II/III formats (compressed, IEC 61937), DSD,
+  big-endian samples of a few old devices, 64-bit float.
+Rates
+  Any rate from 8 kHz to 768 kHz that fits the endpoint. Order of choice:
+  48000 (Charon's own rate, no conversion), 44100, then the nearest to 48000.
+  Conversion from Charon's 48 kHz stereo mix (the same PCM the HD Audio, AC'97
+  and ES1371 outputs get) is linear interpolation; below 44.1 kHz two one-pole
+  low-pass stages at 0.42 of the device rate run in front of it, so 8 and 16 kHz
+  headsets do not get the upper speech band folded down.
+Speeds and packets
+  Full speed (1 ms frames), high speed and SuperSpeed (bInterval 1..7, 125 us to
+  8 ms). One packet per service interval, its length exact: rate * interval,
+  spread without drift (44.1 kHz at 1 ms: nine packets of 44 frames, one of
+  45). High-bandwidth high-speed endpoints (up to three transactions per
+  microframe) and SuperSpeed bursts (endpoint companion descriptor: burst,
+  mult, bytes per interval) are declared to the controller and each packet's
+  burst counts are filled in.
+Synchronisation
+  synchronous, adaptive   the nominal rate, exact.
+  asynchronous with a     the feedback endpoint is read through a second ring;
+  feedback endpoint       the value's fixed-point format (10.14 in 3 bytes,
+                          16.16 in 4 bytes, and devices that send the other one)
+                          is recognised by size; packets 5 ms and more ahead of
+                          the controller get the lengths the device asks for,
+                          silence too, so the device's buffer stays level. A
+                          value outside -1/8..+1/2 of the nominal rate is
+                          ignored; no value for a second: nominal rate again.
+                          If the controller refuses the second endpoint the
+                          stream starts without it.
+  asynchronous without    (implicit feedback: the device expects the host to
+  one                     copy the recording endpoint's packet sizes) the
+                          nominal rate is sent and the trace says so. Such a
+                          device plays, with a click whenever its buffer has
+                          drifted full or empty. Running the recording stream
+                          as a clock reference is not implemented.
+Controls
+  Every output terminal the stream reaches is opened: feature units on the way
+  are unmuted (master and each channel) and their volume set to 0 dB, or to the
+  maximum when the range ends below 0 dB (the range is read; a missing or
+  inverted range leaves the device's own setting). Selector units on the way
+  are switched to the input that carries the stream. Mixer, processing,
+  effect and extension units are passed through but not programmed (their
+  defaults stay). Charon's own volume setting acts on the mix as for every card.
+Composite devices
+  Only the playback AudioStreaming interface is touched (its alternate setting,
+  its endpoint, the AudioControl requests named above). The microphone
+  interface, HID buttons, a hub or other functions of the same device are not
+  opened and get no request.
+
+3. WHICH DEVICE SPEAKS
+
+A dock's empty headphone jack and a headset both describe themselves as
+"headphones", so no rule can tell which of several devices is at the user's
+ears. Therefore: EVERY playable USB sound interface plays, four at the most, in
+the order the firmware lists them, each named in the trace
+("CHARON usb audio plays on=<rank><vendor><product>"). One of them paces the
+speech - the lowest output terminal rank (headphones and headsets, then
+speakers and speakerphones, then undefined, then line connectors, then S/PDIF
+and other digital links), the first of equals; "CHARON usb audio pacing
+device" names it. The others get a copy.
+Beside a built-in card that plays (HD Audio, AC'97, ES1371) the USB devices get
+a copy of everything the built-in card accepted (r405 "mirror"), so a laptop
+whose own speakers stay silent still speaks through a USB device. Without a
+usable built-in card the USB devices are the only output.
+
+4. HOT-PLUG
+
+  Pulled out    The stream's timer notices within 160 ms (USB I/O instance gone,
+                slot gone, controller error) and stops touching the device.
+                The endpoint is removed from the controller, memory and the
+                spare interrupter are given back at the next call from the sound
+                path. Other outputs go on; when it was the only output the voice
+                provider looks for a card twelve times and then only now and
+                then (CharonVoiceProvider.h), so there is no flood.
+  Plugged in    While a card plays, the sound path counts the USB I/O handles
+                once per 32 calls (no allocation) and scans only when the count
+                changed. A new device is started and plays from then on. When
+                there was no output at all, the provider's next attempt finds
+                it; r407 adds the handle count as a cue, so the wait of the
+                throttled retries is skipped.
+  Limit         All of this runs from the sound path. While the reader is
+                silent nothing looks at the bus: a device plugged in then is
+                taken at the next utterance, whose first words may be late.
+
+5. DEVICE QUIRKS
+
+CharonUsbAudioQuirks.h is generated by tools/build-usb-audio-quirks.py from
+Linux v6.12:
+  sound/usb/quirks.c    quirk_flags_table[]            114 entries read
+  sound/usb/implicit.c  playback_implicit_fb_quirks[]   13 device entries read
+Both files carry "SPDX-License-Identifier: GPL-2.0-or-later" (the generator
+checks the line and stops otherwise); Charon's own parts are GPL-2.0-or-later.
+Only data is taken (USB IDs and flag names), no code. 81 entries are kept;
+entries whose flags concern only suspend, DSD or the media controller are
+dropped. Matching is the kernel's: the device's own entry, else its vendor's.
+  Acted on:  no rate read-back; 20 / 5 / 1 ms pause after each class request;
+             50 ms after SET_INTERFACE; SET_INTERFACE before the clock (UAC 2/3);
+             alternate setting 0 first; rate not set when there is one;
+             clock selector never written; hard-wired clock accepted.
+  Recorded:  implicit feedback devices (they play at the nominal rate, see 2).
+  Refused:   packets with a length header (QUIRK_FLAG_TX_LENGTH, two Zoom
+             recorders): not implemented.
+  NOT imported: the kernel's device-specific code - boot quirks (vendor
+             requests that switch a device into audio mode: Creative Extigy,
+             M-Audio Fast Track, Digidesign Mbox, Native Instruments, Axe-Fx
+             and others), format fix-ups, and the descriptor table of
+             quirks-table.h for devices that do not declare the audio class
+             (old Roland/Edirol/Yamaha interfaces with vendor-specific
+             interfaces). Those devices are not handled.
+Kernel files only read for facts, nothing taken (licence noted because they are
+NOT "or later"): include/linux/usb/audio-v2.h (GPL-2.0), sound/usb/card.h
+(GPL-2.0), drivers/usb/core/generic.c (GPL-2.0),
+include/uapi/linux/usb/audio.h (GPL-2.0 WITH Linux-syscall-note). Read and
+compatible: sound/usb/endpoint.c, clock.c, format.c, stream.c, mixer.c, pcm.c,
+card.c, helper.c, usbaudio.h, quirks-table.h (GPL-2.0-or-later),
+include/linux/usb/audio-v3.h (GPL-2.0+). One method follows the kernel
+(endpoint.c, snd_usb_handle_sync_urb): recognising a feedback value's format by
+shifting it until it matches the nominal rate; it is written anew in
+CharonUsbAudioModel.h and marked there.
+
+6. WHAT REMAINS IMPOSSIBLE OR OPEN, AND WHY
+
+EHCI, UHCI, OHCI controllers (computers from before USB 3, some USB 2-only
+ports of older boards). The firmware's drivers have no isochronous transfers
+(section 1) and Charon has no ring of its own to put beside them: these
+controllers have ONE periodic schedule (the frame list), owned by the firmware
+driver, and the keyboard's interrupt transfers live in it.
+  Owning the controller (halting it, installing Charon's own schedule) would
+  take the keyboard and the boot stick away from the firmware: not done, and
+  not planned.
+  A fallback beside the firmware driver is conceivable for two of the three and
+  is the next step if such machines matter:
+    UHCI  link one isochronous TD per frame in front of the firmware's queue
+          heads in each frame list entry; TDs complete in place.
+    EHCI  the same with iTDs for high-speed devices; full-speed devices sit
+          behind a transaction translator and need split-transaction siTDs
+          (start-splits of at most 188 bytes per microframe).
+    OHCI  no: finished isochronous TDs go to the controller's single done
+          queue, which the firmware driver empties; its code would meet TDs it
+          never made.
+  Open problems of that design: (1) the device's bus address is known only
+  inside the firmware's bus driver - it would have to be found by sending
+  GET_DESCRIPTOR/GET_INTERFACE to each address through EFI_USB2_HC_PROTOCOL and
+  matching the answers; (2) the firmware driver rewrites a frame list entry
+  when an interrupt endpoint is added (a keyboard plugged in), dropping
+  Charon's link until it is put back; (3) QEMU can exercise the UHCI case with
+  its usb-audio device, but not EHCI (the emulated device is full speed and the
+  emulated hub is USB 1.1), so half of it could not be checked here. It was not
+  started: outside the budget of this batch and not safe to ship unchecked.
+  Whoever has such a machine: its built-in sound is normally plain HD Audio or
+  AC'97, which Charon plays directly.
+xHCI controllers Charon refuses: no spare interrupter (controller with a
+  single one), the command ring's position not recognisable, device memory
+  addresses translated by an IOMMU, a firmware driver that is not running the
+  controller. The trace names the step ("identify", "attach" with the code).
+Before the firmware has connected its USB drivers (very early Driver####
+  start) there is no EFI_USB_IO instance yet; the device is taken when one
+  appears.
+After ExitBootServices nothing plays (section 7).
+Bluetooth headsets, wireless headsets whose dongle is not an audio class
+  device, and sound over HDMI/DisplayPort of a dock are not USB audio class
+  playback and are not covered.
+Jack detection: a dock's or adapter's empty jack cannot be told from a used
+  one (UAC 2.0/3.0 connector controls are not read); playing on every device
+  (section 3) is the answer instead.
+
+7. EXITBOOTSERVICES (changed in r407)
+
+Before r407 the exit notification removed the endpoint with a command on the
+firmware's command ring and waited with Stall for its completion - inside the
+notification, and with the endpoint left pointing into memory the system was
+about to reuse if the command did not complete. Now the notification runs no
+command, calls no Stall, takes no memory map and frees nothing:
+  1. both rings are cut short behind the two TDs the controller may already
+     hold (the cycle bit of every later TD is flipped: memory writes only);
+  2. the controller's frame counter (MFINDEX) is read until three service
+     intervals have passed - register reads, bounded by a count, 3 ms for a
+     full-speed device (this replaces the Stall: the last TDs must be over
+     before their event ring goes away);
+  3. the spare interrupter is switched off, so the controller writes nothing
+     into Charon's memory any more.
+The endpoint contexts still name ring memory, but the controller has found the
+end of both rings and reads no further; an operating system resets the
+controller when it takes it over. After the exit signal the object refuses to
+open again and Stop frees nothing. NOT exercised in a test: no run here handed
+over to an operating system with the USB stream open.
+
+8. HOW EACH POINT WAS CHECKED
+
+Host tests (tests/CharonUsbAudioTests.cpp, built with clang++ -Wall -Wextra,
+"PASS CharonUsbAudioTests" on 2026-11-22). They run the pure logic against
+hand-written descriptors and a small model of an xHCI endpoint - no device:
+  r405 tests kept     UAC 1.0 speaker and headset, UAC 2.0 DAC, pacing, ring
+                      laps, lead limit, Discard, lost events, 44.1 and 96 kHz
+                      conversion, mono and six channels, event ring position.
+  new in r407         UAC 2.0 high-speed asynchronous headset with feedback
+                      endpoint, selector unit, clock selector with two sources,
+                      two output terminals, high-bandwidth endpoint; UAC 1.0
+                      asynchronous endpoint with synch endpoint; 8-bit and
+                      float settings and their order of choice; BADD profile
+                      (stereo 16, mono 24, wrong size, microphone interface);
+                      full UAC 3.0 descriptors on SuperSpeed with companion
+                      descriptor; truncation and single-byte corruption of all
+                      of them (no read outside, no hang); feedback values
+                      (10.14, 16.16 per microframe, per frame, out of range);
+                      a ring following 48.25 frames per packet for two seconds
+                      with the speech intact, and back to nominal; 8 kHz at
+                      125 us with empty packets; unsigned and signed 8-bit,
+                      float; the 16 kHz low-pass; burst counts; the feedback
+                      ring; quirk lookup.
+Builds (tools/build-charon-windows.py, -Wall -Wextra -Werror, 2026-11-22):
+  work/charon-win-r407usb1, -usb1-drv   first state (run 1)
+  work/charon-win-r407usb2, -usb2-drv   with the plug-in cue (runs 2 and 3)
+  work/charon-win-r407usb3, -usb3-drv   final state (run 4): packet lengths
+                                        capped at the endpoint's capacity.
+  CHARON.EFI and CHARONVOICE.EFI link in all three.
+QEMU runs (q35 + OVMF, TCG, qemu-xhci, usb-audio and usb-kbd on the same
+controller, host sound through DirectSound and recorded with the monitor's
+wavcapture; trace on the serial port). CHARON.EFI only; the driver image was
+built, not run.
+  Run 1 (usb1 build; no built-in card, CHARON_SOUNDCARD=none)
+    Trace: identify (slot 2, full speed), device 46f4:0002, format 48000 Hz
+    2 channels 16 bit UAC 1.0 alternate 1, endpoint 0x01 attributes 0x0d
+    192 bytes, output terminal 0x0301 with one feature unit, volume 0 dB of
+    -128..+8 dB on channels 1 and 2, attach on interrupter 15, first events,
+    "plays on", "primary=0", "first PCM".
+    Recorded sound: 65 seconds with sound out of 208 recorded (rms above 50 of
+    32768), peak 18203 - the machine has no other sound device.
+    Keyboard: "help" and "ver" typed on the USB keyboard reached the firmware
+    shell while the stream ran and after the unplug (screen dump).
+    Unplug (device_del): "vanished", "stopped=0"; the provider tried 12 times
+    and then once in the next 8 s. Plug-in (device_add): found, "audio
+    reopened", sound recorded again (13 of the following seconds).
+    Finding: after the twelve tries were used up, the voice came back about 8 s
+    after the first key - the throttled retry. Fixed by the handle-count cue.
+  Run 2 (usb2 build, same machine)
+    Unplug: released 3.1 s later (at the first utterance), 12 tries, one
+    not-found line in the following 10 s. Plug-in: keys typed 4.0 s later, the
+    device played 1.6 s after the first key (5.6 s after plug-in) with no
+    failed attempt in between; sound recorded again.
+  Run 3 (usb2 build, built-in HD Audio through AudioDxe plus xHCI)
+    USB device plugged in while HD Audio played: started as the copy at the
+    first utterance ("plays on"). Pulled out: "vanished", "unplugged",
+    "stopped=0"; the built-in card went on without a fault or reopen.
+  Run 4 (usb3 build = the final sources, machine of runs 1 and 2)
+    Speech through the USB device: 40 seconds with sound of 47 recorded, peak
+    17424, stream errors 0. Unplug: released 3.1 s later, 12 tries, one
+    not-found line in the next 10 s. Plug-in: played again 1.6 s after the
+    first key, no failed attempt in between.
+  The four machines were stopped by their own process numbers and their
+  folders deleted; the traces above are quoted from the serial logs, kept in
+  tests/charon-r407-usb-audio-results.txt.
+
+NOT EXERCISED BY ANY DEVICE (host tests of the logic only, or nothing):
+  USB Audio Class 2.0 and 3.0 (parser, clock requests, cluster request);
+  high speed and SuperSpeed (endpoint contexts with burst and mult, 125 us
+  packets); devices behind a hub or dock; asynchronous endpoints: the feedback
+  endpoint context, its ring, its events, and the rewriting of the length of
+  queued TDs (xHCI controllers that read TRBs far ahead would send a packet
+  with its old length now and then - no worse than without feedback, but
+  unmeasured); 8-bit and float devices; rates other than 48 kHz on a device;
+  several USB sound devices at once; selector units; the quirk pauses and
+  orders; the ExitBootServices path; CHARONVOICE.EFI with USB audio; every
+  firmware other than OVMF; every physical controller. The xHCI mechanism
+  itself (borrowed command slot, spare interrupter) has only ever run on QEMU's
+  emulated controller with edk2's driver.
+
+9. SOURCES
+
+Read in this work (2026-11-22):
+  edk2 master, BSD-2-Clause-Patent: the files named in section 1 and
+    MdeModulePkg/Bus/Usb/UsbBusDxe/UsbEnumer.c, UsbDesc.c.
+    https://github.com/tianocore/edk2
+  Linux v6.12: sound/usb/*.c and headers named in section 5.
+    https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/sound/usb?h=v6.12
+  drivers/usb/core/generic.c (usb_choose_configuration): Linux prefers a UAC
+    3.0 configuration when a device has one - the reason such devices are
+    written for a host that may pick either.
+Specifications the descriptor layouts, request codes and constants come from
+(usb.org document library, https://www.usb.org/documents; USB-IF copyright.
+They were NOT opened again in this session and the licence text printed in them
+was not re-read: the layouts were written from knowledge of them and
+cross-checked against the kernel's parser, and nothing of their text is
+reproduced):
+  Universal Serial Bus Device Class Definition for Audio Devices, Release 1.0
+    (1998), with Audio Data Formats 1.0 and Terminal Types 1.0
+  ... Release 2.0 (2006), with Audio Data Formats 2.0 and Terminal Types 2.0
+  ... Release 3.0 (2016), with Audio Data Formats 3.0, Terminal Types 3.0 and
+    Basic Audio Device Definition 3.0
+  Unified Extensible Firmware Interface Specification 2.11, chapter 17
+    "Protocols - USB Support" (https://uefi.org/specs/UEFI/2.11/): the
+    prototypes in section 1 are quoted from edk2's implementations of them.
+  eXtensible Host Controller Interface for USB, Revision 1.2 (Intel): Isoch
+    TRB, endpoint context, Configure Endpoint, interrupters.
+Not established: whether the closed USB stacks of AMI Aptio, Insyde H2O,
+  Phoenix SecureCore or Apple firmware implement isochronous transfers. No
+  public documentation was found in this work; nothing here depends on it.

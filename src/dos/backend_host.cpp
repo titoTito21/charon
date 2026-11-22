@@ -17,6 +17,7 @@
 #include <fcntl.h>
 #include <io.h>
 #include "dos_platform.h"
+#include "charon_cmd.h"
 
 extern uint8_t* g_mem;
 extern const uint16_t g_cp437[256];
@@ -103,6 +104,13 @@ void plat_time(PlatTime* out)
     out->hsec = (uint8_t)(t.wMilliseconds / 10);
 }
 void* plat_alloc(size_t bytes) { return calloc(1, bytes); }
+
+// ---- sound (r407): --pcm FILE collects what would be played, as raw 48 kHz stereo 16 bit ----
+static FILE* g_pcm;
+bool plat_pcm_begin(void) { return g_pcm != nullptr; }
+size_t plat_pcm_write(const int16_t* stereo, size_t frames) { return g_pcm ? fwrite(stereo, 4, frames, g_pcm) : 0; }
+size_t plat_pcm_queued(void) { return 0; }
+void plat_pcm_end(void) { if (g_pcm) fflush(g_pcm); }
 
 // ---- files ----------------------------------------------------------------------------------
 static const wchar_t* full(int drive, const dchar16* path)
@@ -236,6 +244,102 @@ bool plat_disk_space(int drive, uint64_t* total, uint64_t* free_bytes)
     return true;
 }
 
+// ---- CHARON command shim (host tests) ----------------------------------------
+// A directory given by --hak DIR stands in for \EFI\HAK (the CharSettings slots,
+// continue.bin, synths\). The firmware-only facts (live voice, boot entries,
+// variables, reset) are faked deterministically so the command can be driven and
+// its output checked; nothing is actually rebooted.
+static wchar_t g_hak_dir[MAX_PATH];
+static void hak_full(const char* name, wchar_t* out)
+{
+    wchar_t wname[MAX_PATH];
+    MultiByteToWideChar(CP_ACP, 0, name, -1, wname, MAX_PATH);
+    wcscpy(out, g_hak_dir);
+    wcsncat(out, L"\\", MAX_PATH - wcslen(out) - 1);
+    wcsncat(out, wname, MAX_PATH - wcslen(out) - 1);
+}
+void charon_plat_info(CharonInfo* out)
+{
+    out->release = 401; out->have_voice = 1; out->have_reader = 1; out->secure_boot = -1;
+}
+int charon_plat_speak(const char* lang, const char* text)
+{
+    fprintf(stderr, "[speak %s] %s\n", lang, text);
+    return 1;
+}
+long charon_plat_hak_read(const char* name, void* buf, unsigned long cap)
+{
+    if (!g_hak_dir[0]) return -1;
+    wchar_t path[MAX_PATH]; hak_full(name, path);
+    const HANDLE h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return -1;
+    DWORD n = 0;
+    const BOOL ok = ReadFile(h, buf, cap, &n, nullptr);
+    CloseHandle(h);
+    return ok ? (long)n : -2;
+}
+int charon_plat_hak_write(const char* name, const void* buf, unsigned long len)
+{
+    if (!g_hak_dir[0]) return 0;
+    wchar_t path[MAX_PATH]; hak_full(name, path);
+    const HANDLE h = CreateFileW(path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return 0;
+    DWORD n = 0;
+    const BOOL ok = WriteFile(h, buf, len, &n, nullptr);
+    FlushFileBuffers(h);
+    CloseHandle(h);
+    return ok && n == len ? 1 : 0;
+}
+int charon_plat_boot_list(CharonBootEntry* out, int cap)
+{
+    static const struct { uint16_t id; const char* desc; } fake[] = {{1, "CharonDOS"}, {2, "Charon"}, {3, "Windows Boot Manager"}};
+    int count = 0;
+    for (int i = 0; i < 3 && count < cap; i++) { out[count].id = fake[i].id; strcpy(out[count].desc, fake[i].desc); count++; }
+    return count;
+}
+int charon_plat_set_continue(uint16_t id)
+{
+    if (id < 1 || id > 3) return 1;
+    uint8_t rec[18] = {'H', 'A', 'K', 'C', 'O', 'N', 'T', '1'};
+    rec[8] = (uint8_t)id; rec[9] = (uint8_t)(id >> 8);
+    rec[14] = 'H'; rec[15] = 'E'; rec[16] = 'N'; rec[17] = 'D';
+    const uint8_t marker = 1;
+    if (!charon_plat_hak_write("continue-set", &marker, 1)) return 2;
+    return charon_plat_hak_write("continue.bin", rec, sizeof rec) ? 0 : 2;
+}
+int charon_plat_boot_next_charon(void)
+{
+    fprintf(stderr, "[bootnext Charon]\n");
+    return 0;
+}
+int charon_plat_firmware_setup(void)
+{
+    fprintf(stderr, "[firmware-setup armed]\n");
+    return 0;
+}
+void charon_plat_reset(int mode)
+{
+    fprintf(stderr, "[reset %s]\n", mode ? "off" : "restart");
+}
+int charon_plat_synth_list(char out[][64], int cap)
+{
+    if (!g_hak_dir[0]) return 0;
+    wchar_t pattern[MAX_PATH];
+    wcscpy(pattern, g_hak_dir);
+    wcsncat(pattern, L"\\synths\\*.manifest", MAX_PATH - wcslen(pattern) - 1);
+    WIN32_FIND_DATAW d;
+    const HANDLE h = FindFirstFileW(pattern, &d);
+    if (h == INVALID_HANDLE_VALUE) return 0;
+    int count = 0;
+    do {
+        if (d.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+        WideCharToMultiByte(CP_ACP, 0, d.cFileName, -1, out[count], 64, nullptr, nullptr);
+        count++;
+    } while (count < cap && FindNextFileW(h, &d));
+    FindClose(h);
+    return count;
+}
+
 // ---- main -------------------------------------------------------------------------------------
 static void add_key(uint16_t ch, uint8_t code, uint8_t mods)
 {
@@ -288,6 +392,8 @@ int main(int argc, char** argv)
         else if (!strcmp(argv[i], "--keys") && i + 1 < argc) { g_scripted = true; parse_keys(argv[++i]); }
         else if (!strcmp(argv[i], "--rowlog") && i + 1 < argc) g_rowlog = fopen(argv[++i], "wb");
         else if (!strcmp(argv[i], "--dump-screen")) dump = true;
+        else if (!strcmp(argv[i], "--hak") && i + 1 < argc) { wchar_t w[MAX_PATH]; MultiByteToWideChar(CP_ACP, 0, argv[++i], -1, w, MAX_PATH); GetFullPathNameW(w, MAX_PATH, g_hak_dir, nullptr); }
+        else if (!strcmp(argv[i], "--pcm") && i + 1 < argc) g_pcm = fopen(argv[++i], "wb");
         else if (!strcmp(argv[i], "--inttrace") && i + 1 < argc) g_inttrace = fopen(argv[++i], "wb");
         else { fprintf(stderr, "unknown option %s\n", argv[i]); return 2; }
     }
@@ -305,6 +411,7 @@ int main(int argc, char** argv)
         }
     }
     if (g_rowlog) fclose(g_rowlog);
+    if (g_pcm) fclose(g_pcm);
     fflush(stdout);
     return result;
 }

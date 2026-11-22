@@ -122,6 +122,15 @@ extern bool g_no_iret;                                  // handler replaced the 
 extern u16 g_stub_seg;
 u16 stub_off(u8 number);
 
+// ---- sound.cpp (r407) --------------------------------------------------------
+bool snd_owns_port(u16 port);                           // PIT channel 2, Sound Blaster at 220h, DMA channel 1
+u8 snd_port_in(u16 port);
+void snd_port_out(u16 port, u8 value);
+void snd_gate(u8 port61);                               // bits 0-1 of port 61h were written
+void snd_bell(void);                                    // BEL on the screen
+void snd_poll(u32 now_ms);                              // renders the time that passed
+u8 snd_take_irq(void);                                  // interrupt vector to deliver now, or 0
+
 // ---- dosfs.cpp --------------------------------------------------------------
 struct DosPath {
     int drive;

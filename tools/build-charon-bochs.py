@@ -116,6 +116,81 @@ edit(bochs / 'plugin.h', 'PLUGIN_ENTRY_FOR_GUI_MODULE(x);', 'PLUGIN_ENTRY_FOR_GU
 edit(bochs / 'plugin.cc', '#if BX_WITH_NOGUI\n  BUILTIN_GUI_PLUGIN_ENTRY(nogui),',
      '#if BX_WITH_CHARON\n  BUILTIN_GUI_PLUGIN_ENTRY(charon),\n#endif\n#if BX_WITH_NOGUI\n  BUILTIN_GUI_PLUGIN_ENTRY(nogui),')
 
+# r407: the "charon" sound driver (src/pc/pc_sound.cc), registered the same way.
+edit(bochs / 'plugin.h', 'PLUGIN_ENTRY_FOR_SND_MODULE(dummy);', 'PLUGIN_ENTRY_FOR_SND_MODULE(dummy);\nPLUGIN_ENTRY_FOR_SND_MODULE(charon);')
+edit(bochs / 'plugin.cc', '  BUILTIN_SND_PLUGIN_ENTRY(dummy),', '  BUILTIN_SND_PLUGIN_ENTRY(dummy),\n  BUILTIN_SND_PLUGIN_ENTRY(charon),')
+# r407: the PC speaker's half period is the nearest whole number of samples, not the next lower one
+# (1000 Hz at 48 kHz came out as 1043.5 Hz: 23 samples instead of 24).
+_spk = (bochs / 'iodev/speaker.cc').read_text(encoding='latin-1')
+_old = 'beep_samples = (Bit32u)((float)rate / beep_frequency / 2);'
+assert _spk.count(_old) == 2, 'speaker.cc'
+(bochs / 'iodev/speaker.cc').write_text(_spk.replace(_old, 'beep_samples = (Bit32u)((float)rate / beep_frequency / 2 + 0.5f);'), encoding='latin-1', newline='')
+
+# r407: the SB16's own log (sb16: loglevel=1..5, profile key sounddebug=) goes into the Bochs log instead of a file.
+_sb = (bochs / 'iodev/sound/sb16.cc').read_text(encoding='latin-1')
+_old = """  if ((LOGFILE == NULL) && (BX_SB16_THIS loglevel != 0)) {
+    create_logfile();
+  }
+  // append a line to the log file, if desired
+  if (BX_SB16_THIS loglevel >= loglev) {
+    fprintf(LOGFILE, FMT_TICK, bx_pc_system.time_ticks());
+    fprintf(LOGFILE, " (%d) ", loglev);
+    va_list ap;
+    va_start(ap, str);
+    vfprintf(LOGFILE, str, ap);
+    va_end(ap);
+    fprintf(LOGFILE, "\\n");
+    fflush(LOGFILE);
+  }
+"""
+_new = """  if (BX_SB16_THIS loglevel >= loglev) {
+    char line[240];
+    va_list ap;
+    va_start(ap, str);
+    vsnprintf(line, sizeof line, str, ap);
+    va_end(ap);
+    BX_INFO(("(%d) %s", loglev, line));
+  }
+"""
+assert _sb.count(_old) == 1, 'sb16.cc writelog'
+_file = '    LOGFILE = fopen(logfile->getptr(),"w"); // logfile for errors etc.\n    if (LOGFILE == NULL) {'
+assert _sb.count(_file) == 1, 'sb16.cc create_logfile'
+_sb = _sb.replace(_file, '    return;   // CharonPC: no file (writelog)\n    if (LOGFILE == NULL) {')
+(bochs / 'iodev/sound/sb16.cc').write_text(_sb.replace(_old, _new), encoding='latin-1', newline='')
+
+# r407: Bochs's slowdown timer lets the machine run a whole second ahead of real time (REALTIME_Q).
+# After every moment in which the emulator had fallen behind, the guest then ran up to 1.3 times too
+# fast for seconds, and its sound card with it: the sound piled up and was cut. 20 ms is enough slack.
+_sd = (bochs / 'iodev/slowdown_timer.cc').read_text(encoding='latin-1')
+_q = '#define REALTIME_Q SECINUSEC'
+assert _sd.count(_q) == 1, 'slowdown_timer.cc REALTIME_Q'
+(bochs / 'iodev/slowdown_timer.cc').write_text(_sd.replace(_q, '#define REALTIME_Q 20000   /* CharonPC */'), encoding='latin-1', newline='')
+
+# r407: a power button for the guest. Switching the emulator off under a running Windows is a hard
+# power cut (ScanDisk, a damaged registry, safe mode - all seen in the trials). The emulated ACPI
+# controller has the power button status bit but nothing presses it; CharonPC's Ctrl+Shift+F12 does.
+_ah = (bochs / 'iodev/acpi.h').read_text(encoding='latin-1')
+_am = '  BX_ACPI_SMF void timer(void);\n'
+assert _ah.count(_am) == 1, 'acpi.h timer'
+(bochs / 'iodev/acpi.h').write_text(_ah.replace(_am, _am + '  void charon_power_button(void);   /* CharonPC */\n'), encoding='latin-1', newline='')
+_ac = (bochs / 'iodev/acpi.cc').read_text(encoding='latin-1')
+assert 'charon_power_button' not in _ac
+_ac += '''
+// CharonPC: the power button was pressed (the operating system shuts down by itself when it listens).
+void bx_acpi_ctrl_c::charon_power_button(void)
+{
+  BX_ACPI_THIS s.pmsts |= PWRBTN_STS;
+  BX_ACPI_THIS pm_update_sci();
+}
+bool charon_acpi_power_button(void)
+{
+  if (theACPIController == NULL) return false;
+  theACPIController->charon_power_button();
+  return true;
+}
+'''
+(bochs / 'iodev/acpi.cc').write_text(_ac, encoding='latin-1', newline='')
+
 # ---------------------------------------------------------------- flags
 target = ['--target=x86_64-unknown-linux-musl']
 codegen = ['-O2', '-fno-stack-protector', '-fno-pic', '-fno-pie', '-mcmodel=large', '-mno-red-zone',
@@ -265,6 +340,7 @@ BOCHS_DIRS = {
               'keyboard', 'biosdev', 'cmos', 'harddrv', 'dma', 'unmapped', 'extfpuirq', 'speaker', 'ioapic',
               'pci', 'pci2isa', 'pci_ide', 'acpi', 'hpet', 'acpi_tables', 'pit82c54', 'scancodes', 'serial_raw'],
     'iodev/display': ['vga', 'vgacore', 'ddc'],
+    'iodev/sound': ['soundlow', 'soundmod', 'sounddummy', 'soundfile', 'sb16', 'opl'],   # r407: SB16 through src/pc/pc_sound.cc
     'iodev/hdimage': ['hdimage', 'crc32c', 'vbox', 'vmware3', 'vmware4', 'vpc', 'vhdx', 'vvfat', 'cdrom', 'cdrom_misc'],
 }
 def bochs_sources():
@@ -297,7 +373,7 @@ def build_bochs(cxx_inc, llvm_src):
     sys_includes = sum((['-isystem', i[2:]] for i in includes), [])
     glue = target + codegen + ['-std=gnu++20', '-fno-exceptions', '-fno-rtti', '-D_GNU_SOURCE'] + glue_warn + headers + sys_includes + [
         '-I' + str(pcsrc), '-I' + str(root / 'src/efi'), '-I' + str(build / 'include'), '-I' + str(synth_common)]
-    for name in ('pc_gui.cc', 'pc_main.cc'):
+    for name in ('pc_gui.cc', 'pc_main.cc', 'pc_sound.cc'):
         objects.append(compile_one(pcsrc / name, out / ('glue-' + Path(name).stem + '.o'), glue))
     return objects, sources
 
@@ -306,7 +382,7 @@ def build_glue(cxx_inc, llvm_src):
     headers = ['-nostdinc++', '-isystem', str(cxx_inc)] + libc_public
     flags = target + codegen + ['-std=gnu++20', '-fno-exceptions', '-fno-rtti'] + glue_warn + headers + [
         '-I' + str(pcsrc), '-I' + str(root / 'src/efi'), '-I' + str(build / 'include'), '-I' + str(synth_common)]
-    objects = [compile_one(pcsrc / n, out / (Path(n).stem + '.o'), flags) for n in ('pc_efi.cpp', 'pc_config.cpp', 'pc_bns.cpp')]
+    objects = [compile_one(pcsrc / n, out / (Path(n).stem + '.o'), flags) for n in ('pc_efi.cpp', 'pc_audio.cpp', 'pc_config.cpp', 'pc_bns.cpp', 'pc_unattend.cpp', 'pc_winfonts.cpp', 'pc_reader.cpp', 'pc_winread.cpp')]
     # The BIOS and VGA BIOS of Bochs 3.1 (LGPL), built into the image.
     roms = out / 'pc_roms.S'
     bios = (B / 'bios/BIOS-bochs-latest').as_posix(); vga = (B / 'bios/VGABIOS-lgpl/VGABIOS-lgpl-latest.bin').as_posix()

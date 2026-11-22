@@ -100,7 +100,7 @@ inline efi_status LoadFolder(efi_boot_services* boot,bool pl,systools::InfoList&
     auto status=boot->HandleProtocol(browser.volumes[browser.volume],&media::fsGuid,(void**)&fs);
     if(status!=EFI_SUCCESS || !fs)return status==EFI_SUCCESS?EFI_NOT_FOUND:status;
     status=fs->OpenVolume(fs,&root);if(status!=EFI_SUCCESS || !root)return status==EFI_SUCCESS?EFI_DEVICE_ERROR:status;
-    if(browser.path[0]==u'\\' && !browser.path[1]) {folder=root;root=nullptr;}
+    if(browser.path[0]==u'\\' && !browser.path[1]) {folder=root;root=nullptr;folder->SetPosition(folder,0);}   // r408: a shared root file (efifs) is read from its start
     else {status=root->Open(root,&folder,browser.path,EFI_FILE_MODE_READ,0);root->Close(root);root=nullptr;
         if(status!=EFI_SUCCESS || !folder)return status==EFI_SUCCESS?EFI_NOT_FOUND:status;}
     alignas(8) static uint8_t buffer[4096];
