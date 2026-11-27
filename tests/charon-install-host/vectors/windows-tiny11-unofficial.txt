@@ -1,0 +1,13 @@
+# r409: the unofficial image Tiny11 25H2 (wversion=tiny11, image 1, English), express mode, defaults: the same answer file as official Windows with image 1 (readers, BitLocker prevention, Charon installer, automatic first sign-in).
+lang=en
+flow=windows
+mode=quick
+arg wversion=tiny11
+arg windex=1
+arg language_asked=1
+arg wlocale=en-US
+keys=ENTER "test" ENTER "test" ENTER
+keys=ENTER ENTER
+put diskmode=whole
+arg partition=3
+arg esp=0

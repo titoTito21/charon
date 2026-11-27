@@ -1,0 +1,47 @@
+# Written by Charon from spoken answers.
+d-i debian-installer/locale string pl_PL.UTF-8
+d-i keyboard-configuration/xkb-keymap select pl
+keyboard-configuration keyboard-configuration/xkb-keymap select pl
+keyboard-configuration keyboard-configuration/layoutcode string pl
+keyboard-configuration keyboard-configuration/variantcode string
+keyboard-configuration keyboard-configuration/modelcode string pc105
+keyboard-configuration keyboard-configuration/layout select
+keyboard-configuration keyboard-configuration/variant select
+d-i netcfg/choose_interface select auto
+d-i netcfg/get_hostname string charon-pc
+d-i netcfg/get_domain string
+d-i netcfg/hostname string charon-pc
+d-i mirror/country string manual
+d-i mirror/http/hostname string ftp.pl.debian.org
+d-i mirror/http/directory string /debian
+d-i mirror/http/proxy string
+d-i passwd/root-login boolean true
+d-i passwd/root-password-crypted password $5$charonhosttests1$WzxqaZSgROh.v47PCFj0GhdYegM7YfeXZEQqFudoOx5
+d-i passwd/user-fullname string Jan Kowalski
+d-i passwd/username string jan
+d-i passwd/user-password-crypted password $5$charonhosttests1$WzxqaZSgROh.v47PCFj0GhdYegM7YfeXZEQqFudoOx5
+d-i clock-setup/utc boolean true
+d-i time/zone string Europe/Warsaw
+d-i clock-setup/ntp boolean true
+d-i partman/early_command string D=; for d in $(list-devices disk); do n=${d#/dev/}; if [ "$(cat /sys/block/$n/size)" = "250069680" ]; then D=$d; fi; done; if [ -n "$D" ]; then debconf-set partman-auto/disk "$D"; debconf-set grub-installer/bootdev "$D"; fi
+d-i partman-auto/init_automatically_partition select biggest_free
+d-i partman-auto/choose_recipe select atomic
+d-i partman-partitioning/choose_label select gpt
+d-i partman-partitioning/default_label string gpt
+d-i partman-lvm/device_remove_lvm boolean true
+d-i partman-md/device_remove_md boolean true
+d-i partman-partitioning/confirm_write_new_label boolean true
+d-i partman/choose_partition select finish
+d-i partman/confirm boolean true
+d-i partman/confirm_nooverwrite boolean true
+d-i partman-efi/non_efi_system boolean true
+d-i apt-setup/non-free-firmware boolean true
+d-i apt-setup/cdrom/set-first boolean false
+tasksel tasksel/first multiselect standard, gnome-desktop, mate-desktop
+d-i pkgsel/include string efibootmgr espeak-ng alsa-utils espeakup orca
+popularity-contest popularity-contest/participate boolean false
+d-i grub-installer/only_debian boolean false
+d-i grub-installer/with_other_os boolean true
+d-i finish-install/reboot_in_progress note
+d-i preseed/early_command string (sh /charon/progress.sh watch /target </dev/null >/dev/null 2>&1 3>&- 4>&- 5>&- 6>&- &)
+d-i preseed/late_command string : > /tmp/charon-watch-stop; mkdir -p /target/boot/efi/EFI/HAK /target/var/lib/charon; cp -r /charon/EFI/HAK/. /target/boot/efi/EFI/HAK/; cp /charon/install-charon.sh /charon/goodbye.wav /charon/progress.sh /charon/charon-tone /target/var/lib/charon/; chmod 755 /target/var/lib/charon/charon-tone; cp /charon/voice.conf /target/var/lib/charon/ 2>/dev/null; in-target sh /var/lib/charon/install-charon.sh || true; cp /charon/speech.sh /target/var/lib/charon/; in-target sh -c "CHARON_CHROOT=1 sh /var/lib/charon/speech.sh speakup orca orca,speakup console > /var/lib/charon/speech.log 2>&1" || true; if [ -f /charon/network.conf ]; then cp /charon/network.sh /charon/network.conf /target/var/lib/charon/; chmod 600 /target/var/lib/charon/network.conf; in-target sh /var/lib/charon/network.sh apply || true; fi; if [ -f /charon/answers.env ]; then cp /charon/personal.sh /charon/answers.env /target/var/lib/charon/; chmod 600 /target/var/lib/charon/answers.env; in-target sh /var/lib/charon/personal.sh install || true; fi; /charon/charon-tone -p 100 784 110 0 30 1175 170 || true

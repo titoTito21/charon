@@ -95,7 +95,16 @@ param(
     [uint64]$SizeLba,
     [string]$PartitionGuid,
     [string]$FirstEntry = '',
-    [switch]$DisableSecureBoot
+    [switch]$DisableSecureBoot,
+    # r409, a multi-system plan: this Windows reports the end of its step to Charon and does nothing else.
+    #   -PlanResult done|failed   writes \EFI\HAK\plan\step<N>.done or .failed on the EFI system partition
+    #   -PlanStep N               the step; without it the number Charon left in \EFI\HAK\plan\current
+    #   -PlanText "..."           one line of result (default "ok"); -PlanLog FILE: its last 12 lines follow on failure
+    # Outside a plan (no \EFI\HAK\plan\plan.txt) nothing is written and the exit code is 0.
+    [ValidateSet('', 'done', 'failed')][string]$PlanResult = '',
+    [int]$PlanStep = -1,
+    [string]$PlanText = '',
+    [string]$PlanLog = ''
 )
 $ErrorActionPreference = 'Stop'
 if (-not $Source) { $Source = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'EFI\HAK' }
@@ -123,6 +132,71 @@ function Write-InstallLog([string]$Text) {
 trap { Write-InstallLog ('ERROR: ' + $_.Exception.Message); break }
 function Say([string]$textPl, [string]$textEn) { if ($Pl) { Write-Host $textPl } else { Write-Host $textEn }; Write-InstallLog $textEn }   # r402: a parameter named $pl hid the $Pl flag (names are case-insensitive): everything was said in Polish
 function Fail([string]$textPl, [string]$textEn) { if ($Pl) { throw $textPl } else { throw $textEn } }
+
+# ---- r409: the marker of a plan step --------------------------------------------
+# Self-contained on purpose: it needs neither the installer's files nor the firmware privilege, only the
+# EFI system partition this Windows was started from ("mountvol X: /S"). Exit code 0 = written (or no plan
+# is running), 1 = not written; the reason goes to the log.
+if ($PlanResult) {
+    $planCode = 1; $planRoot = ''; $planMounted = $false
+    $mountvol = Join-Path $env:SystemRoot 'System32\mountvol.exe'
+    try {
+        $used = @([Environment]::GetLogicalDrives() | ForEach-Object { $_.Substring(0, 1).ToUpperInvariant() })
+        # The EFI system partition may have a drive letter already (mountvol /S gives it no second one): a
+        # mounted volume that holds a plan is used as it is and left mounted.
+        foreach ($letter in $used) {
+            if (Test-Path -LiteralPath "$($letter):\EFI\HAK\plan\plan.txt") { $planRoot = "$($letter):"; break }
+        }
+        # r410: a lettered EFI system partition WITHOUT a plan is used too ("no plan is running", exit code 0); before,
+        # every "mountvol X: /S" below failed on it and the script ended with "could not be mounted", exit code 1.
+        # The letter is found through its device name (HKLM\SYSTEM\Setup, SystemPartition): a letter given by
+        # "mountvol /S" is not a letter for Get-Partition or Get-Volume.
+        if (-not $planRoot) {
+            try {
+                $systemDevice = "$((Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\Setup' -ErrorAction Stop).SystemPartition)"
+                Add-Type -Namespace CharonPlan -Name Native -MemberDefinition '[DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)] public static extern uint QueryDosDeviceW(string name, System.Text.StringBuilder target, uint max);'
+                foreach ($letter in $used) {
+                    $target = New-Object Text.StringBuilder 600
+                    if ($systemDevice -and [CharonPlan.Native]::QueryDosDeviceW("$($letter):", $target, 600) -and "$target" -eq $systemDevice -and (Test-Path -LiteralPath "$($letter):\EFI")) { $planRoot = "$($letter):"; break }
+                }
+            } catch { }
+        }
+        if (-not $planRoot) {
+            foreach ($code in 90..68) {
+                $letter = [string][char]$code
+                if ($used -contains $letter) { continue }
+                & $mountvol "$($letter):" /S | Out-Null
+                if ($LASTEXITCODE -eq 0 -and (Test-Path "$($letter):\EFI")) { $planRoot = "$($letter):"; $planMounted = $true; break }
+            }
+        }
+        if (-not $planRoot) { throw 'the EFI system partition could not be mounted' }
+        $planDir = Join-Path $planRoot 'EFI\HAK\plan'
+        if (-not (Test-Path -LiteralPath (Join-Path $planDir 'plan.txt'))) {
+            Write-InstallLog 'plan: no plan is running; no marker written'
+            $planCode = 0
+        } else {
+            $step = $PlanStep
+            if ($step -lt 0) {
+                $digits = ([IO.File]::ReadAllText((Join-Path $planDir 'current')) -replace '\D', '')
+                if (-not $digits) { throw 'the number of the step is not known' }
+                $step = [int]$digits
+            }
+            $text = if ($PlanText) { $PlanText } else { 'ok' }
+            if ($PlanResult -eq 'failed' -and $PlanLog -and (Test-Path -LiteralPath $PlanLog)) { $text += "`r`n" + ((Get-Content -LiteralPath $PlanLog -Tail 12) -join "`r`n") }
+            $marker = Join-Path $planDir ("step{0}.{1}" -f $step, $PlanResult)
+            if ($DryRun) { Write-Host ("would write {0}: {1}" -f $marker, $text) }
+            else {
+                foreach ($old in 'done', 'failed') { Remove-Item -LiteralPath (Join-Path $planDir ("step{0}.{1}" -f $step, $old)) -Force -ErrorAction SilentlyContinue }
+                [IO.File]::WriteAllText($marker, $text + "`r`n", (New-Object Text.UTF8Encoding($false)))
+                if (-not (Test-Path -LiteralPath $marker)) { throw "the marker $marker was not written" }
+                Write-InstallLog ("plan: step {0} reported as {1}" -f $step, $PlanResult)
+            }
+            $planCode = 0
+        }
+    } catch { Write-InstallLog ('plan: marker not written: ' + $_.Exception.Message); $planCode = 1 }
+    finally { if ($planRoot -and $planMounted) { & $mountvol $planRoot /D | Out-Null } }
+    exit $planCode
+}
 
 # ---- load option bytes (UEFI 2.10, 3.1.3 and 10.3) --------------------------
 function New-DriverOption([uint32]$Number, [uint64]$Start, [uint64]$Size, [guid]$Guid) {
@@ -180,7 +254,14 @@ function Enable-FirmwarePrivilege {
     [void][CharonAddon.Native]::AdjustTokenPrivileges($token, $false, [ref]$state, 0, [IntPtr]::Zero, [IntPtr]::Zero)
     if ([Runtime.InteropServices.Marshal]::GetLastWin32Error() -ne 0) { Fail 'Windows nie przyznał uprawnienia do zmiennych firmware (uruchom jako administrator).' 'Windows did not grant the firmware variable privilege (run as administrator).' }
 }
+# r409: the privilege is enabled again before EVERY firmware call. Enabling it once at the start was not enough:
+# "Reading variable BootOrder failed (error 1314)" (ERROR_PRIVILEGE_NOT_HELD) on three installations, although
+# DriverOrder had been read before. Between the two reads the script calls Confirm-SecureBootUEFI, and that cmdlet
+# enables SeSystemEnvironmentPrivilege for itself and switches it off again when it returns - also when it had been
+# on before. (Microsoft: GetFirmwareEnvironmentVariableEx/SetFirmwareEnvironmentVariableEx need the privilege
+# ENABLED in the calling process's token; an administrator's token holds it disabled.)
 function Get-Var([string]$Name) {
+    Enable-FirmwarePrivilege
     $e = 0
     foreach ($capacity in 4096, 1048576) {                 # r408: a load option with much optional data is larger than 4 KiB
         $buffer = New-Object byte[] $capacity; $attr = 0
@@ -193,6 +274,7 @@ function Get-Var([string]$Name) {
     Fail "Odczyt zmiennej $Name nie powiódł się (błąd $e)." "Reading variable $Name failed (error $e)."
 }
 function Set-Var([string]$Name, [byte[]]$Data) {
+    Enable-FirmwarePrivilege   # r409: see Get-Var
     $size = if ($Data) { $Data.Length } else { 0 }
     if (-not [CharonAddon.Native]::SetFirmwareEnvironmentVariableExW($Name, $GlobalGuid, $Data, [uint32]$size, 7)) {
         $e = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
@@ -224,6 +306,21 @@ $existing = Find-Charon
 if ($Status) {
     if ($null -eq $existing) { Say 'Dodatek Charon nie jest zainstalowany.' 'The Charon add-on is not installed.' }
     else { Say ("Dodatek Charon jest zainstalowany: {0}, pozycja {1} w DriverOrder." -f (VarName $existing), ([array]::IndexOf((Get-Order), [uint16]$existing) + 1)) ("The Charon add-on is installed: {0}, position {1} in DriverOrder." -f (VarName $existing), ([array]::IndexOf((Get-Order), [uint16]$existing) + 1)) }
+    # r410: the boot entry of the manager ("Charon") or of the reader started through shim ("Charon czytnik") is
+    # reported too; before, -Status after "-Mode Manager" named only the reader's Driver#### entry. Read only.
+    $bo = Get-Var 'BootOrder'; $position = 0; $found = $false
+    if ($bo) {
+        for ($i = 0; $i + 1 -lt $bo.Length; $i += 2) {
+            $id = [BitConverter]::ToUInt16($bo, $i); $position++
+            $o = Get-Var ('Boot{0:X4}' -f $id); $d = ''
+            if ($o -and $o.Length -gt 6) { $end = 6; while ($end + 1 -lt $o.Length -and ($o[$end] -ne 0 -or $o[$end + 1] -ne 0)) { $end += 2 }; if ($end -gt 6) { $d = [Text.Encoding]::Unicode.GetString($o, 6, $end - 6) } }
+            if ($d -in @('Charon', 'Charon czytnik')) {
+                $found = $true
+                Say ("Wpis rozruchu {0}: {1}, pozycja {2} w BootOrder." -f $d, ('Boot{0:X4}' -f $id), $position) ("Boot entry {0}: {1}, position {2} in BootOrder." -f $d, ('Boot{0:X4}' -f $id), $position)
+            }
+        }
+    }
+    if (-not $found) { Say 'Nie ma wpisu rozruchu Charona (menedżer Charon nie jest zainstalowany jako wpis rozruchu).' 'There is no Charon boot entry (the Charon manager is not installed as a boot entry).' }
     return
 }
 
@@ -568,9 +665,9 @@ try {
     # Language of the reader until settings are changed in Charon itself: English unless -Language pl (r399).
     if (-not (Test-Path (Join-Path $hak 'audio-language'))) { [IO.File]::WriteAllText((Join-Path $hak 'audio-language'), $(if ($Language -eq 'pl') { 'pl' } else { 'en' })) }
     if ($Sign) { [IO.File]::WriteAllBytes((Join-Path $hak 'charon-db.cer'), $certificate.RawData) }
-    [IO.File]::WriteAllText((Join-Path $hak 'addon.txt'), "Charon UEFI screen reader add-on r385; installed by Install-CharonAddon.ps1`r`n")
+    [IO.File]::WriteAllText((Join-Path $hak 'addon.txt'), "Charon UEFI screen reader add-on r410; installed by Install-CharonAddon.ps1`r`n")
     if ($Mode -ne 'Reader') {
-        [IO.File]::WriteAllText((Join-Path $hak 'installed-by.txt'), "Charon r391; installed by Install-Charon.ps1, mode $Mode`r`n")
+        [IO.File]::WriteAllText((Join-Path $hak 'installed-by.txt'), "Charon r410; installed by Install-Charon.ps1, mode $Mode`r`n")
         if ($Mode -eq 'Shim') { [IO.File]::WriteAllText((Join-Path $hak 'reader-only'), "reader-only`r`n") } elseif (Test-Path (Join-Path $hak 'reader-only')) { Remove-Item (Join-Path $hak 'reader-only') -Force }
         if ($useShim) {
             Copy-Item (Join-Path $ShimDir 'shimx64.efi') (Join-Path $hak 'shimx64.efi') -Force

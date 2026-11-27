@@ -1,0 +1,14 @@
+CHARON grid 31 100 11 7 1 Program
+G00 27*87|27*0000|UEFI Interactive Shell v2.2
+G01 6*87|6*0000|EDK II
+G02 31*87|31*0000|UEFI v2.70 (EDK II, 0x00010000)
+G03 13*8e|13*0000|Mapping table
+G04 10*8e,1*87,9*8f,16*87|36*0000|      FS1: Alias(s):F1a65535a:;BLK1:
+G05 57*87|57*0000|          PciRoot(0x0)/Pci(0x1F,0x2)/Sata(0x0,0xFFFF,0x0)
+G06 10*8e,1*87,9*8f,16*87|36*0000|      FS2: Alias(s):F1b65535a:;BLK2:
+G07 57*87|57*0000|          PciRoot(0x0)/Pci(0x1F,0x2)/Sata(0x1,0xFFFF,0x0)
+G08 10*8e,1*87,9*8f,9*87|29*0000|      FS0: Alias(s):F0:;BLK0:
+G09 49*87|49*0000|          MemoryMapped(0x2,0x12633000,0x16E32FFF)
+G0a 6*87,3*8f,22*87,11*8e,30*87|72*0000|Press ESC in 1 seconds to skip startup.nsh or any other key to continue.
+G0b 6*8e|6*0000|Shell>
+CHARON grid end

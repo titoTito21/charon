@@ -1,5 +1,5 @@
 """gen-charon-linux-scripts.py: writes src/efi/CharonLinuxScripts.h from the shell scripts in src/linux
-(install-charon.sh, speech.sh, live-speech.sh, progress.sh, firstboot.sh), each as `inline const char NAME[]`, after checking
+(install-charon.sh, speech.sh, live-speech.sh, progress.sh, firstboot.sh, network.sh), each as `inline const char NAME[]`, after checking
 their syntax with `sh -n` when a shell is at hand. Run from the source root after editing a script.
 GPL-2.0-or-later."""
 import subprocess,shutil,sys
@@ -9,7 +9,9 @@ scripts=[('charonScript','install-charon.sh','registers the reader add-on and th
          ('speechScript','speech.sh','the screen readers and desktops in the installed system: speech.sh CONSOLE GUI LIST'),
          ('liveSpeechScript','live-speech.sh','speech and progress tones inside the Ubuntu installer'),
          ('progressScript','progress.sh','the sounds of progress, sourced by the other scripts'),
-         ('firstbootScript','firstboot.sh','the first start of a ready system image')]
+         ('firstbootScript','firstboot.sh','the first start of a ready system image'),
+         ('personalScript','personal.sh','r410: applies the answers of the detailed mode (answers.env) in the installed system'),
+         ('networkScript','network.sh','the network connection chosen in Charon, for the installed system (r409)')]
 def literal(line):
     out=[]
     for b in line.encode('utf-8'):
@@ -35,5 +37,16 @@ for name,file,what in scripts:
     body[-1]+=';'
     lines+=body
 lines+=['}  // namespace install','}  // namespace ws','}  // namespace hakefi','']
-(root/'src'/'efi'/'CharonLinuxScripts.h').write_text('\n'.join(lines),encoding='ascii',newline='\n')
+# r410: the header is shared with builds that may be running: written only when it changed, and put in place whole
+import os,time
+target=root/'src'/'efi'/'CharonLinuxScripts.h';text='\n'.join(lines)
+if not target.exists() or target.read_bytes().decode('ascii')!=text:
+    fresh=target.with_name('CharonLinuxScripts.h.new');fresh.write_text(text,encoding='ascii',newline='\n')
+    for attempt in range(60):
+        try:
+            os.replace(fresh,target);break
+        except OSError:
+            time.sleep(0.5)
+    else:
+        raise SystemExit('FAIL src/efi/CharonLinuxScripts.h is in use and could not be replaced')
 print('PASS',', '.join(f for _,f,_ in scripts))

@@ -1,0 +1,13 @@
+CHARON grid 48 104 0 0 0 rEFInd
+G0d 77*00,5*f0|77*0000,5*030e|                                                                             About
+G0f 56*00,21*f0|56*0000,21*030e|                                                        rEFInd Version 0.14.2
+G12 56*00,41*f0|56*0000,41*030e|                                                        Copyright (c) 2012-2024 Roderick W. Smith
+G17 56*00,11*f0|56*0000,11*030e|                                                        Running on:
+G18 57*00,21*f0|57*0000,21*030e|                                                         Firmware: EDK II 1.00
+G19 57*00,17*f0|57*0000,17*030e|                                                         EFI Revision 2.70
+G1b 57*00,47*f0|57*0000,47*030e|                                                         Screen Output: Graphics Output (UEFI), 1280x800
+G1e 56*00,25*f0|56*0000,25*030e|                                                        Built with TianoCore EDK2
+G21 56*00,32*f0|56*0000,32*030e|                                                        http://www.rodsbooks.com/refind/
+G23 56*00,19*f0|56*0000,19*030e|                                                        Return to Main Menu
+G2f 63*00,34*f0|63*0000,34*030e|                                                               Press Enter to return to main menu
+CHARON grid end

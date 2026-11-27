@@ -39,7 +39,7 @@ for f in CHARONVOICE.EFI AudioDxe.efi; do
 done
 for f in "$src"/audio/*.pcm; do [ -f "$f" ] || continue; case "$(basename "$f")" in background-*|start-*) ;; *) cp "$f" "$esp/EFI/HAK/audio/";; esac; done
 [ -f "$esp/EFI/HAK/audio-language" ] || { case "${CHARON_LANGUAGE:-en}" in pl) printf pl;; *) printf en;; esac > "$esp/EFI/HAK/audio-language"; }
-printf 'Charon UEFI screen reader add-on r385; installed by zainstaluj-dodatek-uefi.sh\r\n' > "$esp/EFI/HAK/addon.txt"
+printf 'Charon UEFI screen reader add-on r410; installed by zainstaluj-dodatek-uefi.sh\r\n' > "$esp/EFI/HAK/addon.txt"
 sync
 src_dev=$(findmnt -n -t vfat -o SOURCE "$esp" | tail -n1)
 # Whole disk and partition number as the kernel names them: right for sda1, nvme0n1p1 and mmcblk0p1.

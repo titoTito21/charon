@@ -1,0 +1,4 @@
+# Debian, "I will install this system myself": the answer file only brings Charon along.
+lang=en
+flow=debian
+mode=guided

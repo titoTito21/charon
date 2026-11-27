@@ -110,14 +110,20 @@ struct Response {
 struct Client {
     Transport transport;
     const char* userAgent;       // null: "Charon"
+    // r410 (agent 2): opt-in HTTP/1.1 keep-alive. false (the zero default): every request opens and closes its own
+    // connection, exactly as before. true: the connection (and its TLS session) stays open after a complete answer
+    // and the next request to the same host, port and scheme reuses it; the caller ends with Close(c).
+    bool keepAlive;
     // ---- results of the last request ----
     int transportError;          // transport's code when connect/send/recv failed
     int tlsError;                // BearSSL error code (BR_ERR_*) of the last TLS failure
     char url[urlUnits];          // the address finally used (after redirects)
     // ---- internal ----
     bool open,tls,anchorsReady;
+    bool reusable;char openHost[hostUnits];uint16_t openPort;   // keep-alive: the open connection may take another request
     char host[hostUnits];uint16_t port;const char* path;
     char next[urlUnits];
+    char keptUrl[urlUnits];char kept[160];   // r410 (agent 3): Download's address and validator, per client (several clients run at once: CharonDownloads.h)
     char head[headUnits];size_t headSize,rawAt,rawEnd;   // response header text, then already received body bytes
     uint8_t body[bodyUnits];
     br_ssl_client_context ssl;br_x509_minimal_context x509;br_sslio_context io;
@@ -172,7 +178,7 @@ inline void Close(Client& c) {
     // No close_notify exchange: the answer is already complete or abandoned,
     // and waiting for the peer's alert only costs a timeout.
     if(c.transport.close)c.transport.close(c.transport.context);
-    c.open=false;
+    c.open=false;c.reusable=false;
 }
 inline void PrepareAnchors(Client& c) {
     if(c.anchorsReady)return;
@@ -435,14 +441,23 @@ inline Result Get(Client& c,const Request& rq,Response& rs,Sink sink,void* sinkC
         wasTls=tls;
         if(!hop)Copy(first,hostUnits,c.host);
         else {firstHost=true;for(size_t i=0;;++i) {if(first[i]!=c.host[i]) {firstHost=false;break;}if(!first[i])break;}}
-        Result r=Open(c,c.host,c.port,tls);
-        if(r!=Result::ok)return r;
+        // r410 keep-alive: reuse the open connection only for the same host, port and scheme; anything else closes it.
+        bool reused=false;
+        if(c.open) {
+            bool same=c.keepAlive && c.reusable && c.tls==tls && c.openPort==c.port;
+            for(size_t i=0;same;++i) {if(c.openHost[i]!=c.host[i]) {same=false;break;}if(!c.host[i])break;}
+            if(same)reused=true;else Close(c);
+        }
+        c.reusable=false;
+        Result r=Result::ok;
+        if(!reused) {r=Open(c,c.host,c.port,tls);if(r!=Result::ok)return r;}
+        for(int fresh=0;;++fresh) {   // a reused connection the server has closed meanwhile: once more on a new one
         {   // The request is built in the header buffer, which is free until the answer arrives.
             Appender a(c.head,headUnits);
             a.Add(rq.head?"HEAD ":"GET ");a.Add(c.path[0]=='/'?"":"/");a.Add(c.path);a.Add(" HTTP/1.1\r\nHost: ");a.Add(c.host);
             if(c.port!=(tls?443:80)) {a.Add(":");a.Number(c.port);}
             a.Add("\r\nUser-Agent: ");a.Add(c.userAgent?c.userAgent:"Charon");
-            a.Add("\r\nAccept: */*\r\nAccept-Encoding: identity\r\nConnection: close\r\n");
+            a.Add(c.keepAlive?"\r\nAccept: */*\r\nAccept-Encoding: identity\r\nConnection: keep-alive\r\n":"\r\nAccept: */*\r\nAccept-Encoding: identity\r\nConnection: close\r\n");
             if(rq.range) {
                 a.Add("Range: bytes=");a.Number(rq.rangeStart);a.Add("-");if(rq.rangeEnd!=unknownLength)a.Number(rq.rangeEnd);
                 a.Add("\r\n");
@@ -452,10 +467,14 @@ inline Result Get(Client& c,const Request& rq,Response& rs,Sink sink,void* sinkC
             a.Add("\r\n");
             if(a.overflow) {Close(c);return Result::badUrl;}
             r=WriteAll(c,c.head,a.n);
+            if(r!=Result::ok && reused && !fresh) {Close(c);r=Open(c,c.host,c.port,tls);if(r!=Result::ok)return r;continue;}
             if(r!=Result::ok) {Close(c);return r;}
         }
         r=ReadHead(c);
+        if(r!=Result::ok && reused && !fresh) {Close(c);r=Open(c,c.host,c.port,tls);if(r!=Result::ok)return r;continue;}
         if(r!=Result::ok) {Close(c);return r;}
+        break;
+        }
         // "HTTP/1.x NNN"
         if(c.headSize<12 || !StartsNoCase(c.head,"HTTP/1.") || c.head[8]!=' ') {Close(c);return Result::badAnswer;}
         int status=0;for(size_t i=9;i<12;++i) {if(c.head[i]<'0' || c.head[i]>'9') {Close(c);return Result::badAnswer;}status=status*10+(c.head[i]-'0');}
@@ -496,9 +515,22 @@ inline Result Get(Client& c,const Request& rq,Response& rs,Sink sink,void* sinkC
         if(rq.range && rq.rangeStart>0 && status==200) {Close(c);return Result::rangeIgnored;}
         const bool error=status>=400 || (status>=300 && status!=304);
         if(error && !rq.deliverErrorBody) {Close(c);return Result::httpStatus;}
-        if(rq.head || status==204 || status==304 || (status>=100 && status<200)) {Close(c);return Result::ok;}
+        if(rq.head || status==204 || status==304 || (status>=100 && status<200)) {
+            // r410 (agent 3): with keep-alive a HEAD answer (no body) leaves the connection usable, so a size probe
+            // does not cost a second connection and handshake.
+            char connection[32];
+            if(c.keepAlive && status>=200 && !(Header(c,"Connection",connection,sizeof(connection)) && StartsNoCase(connection,"close")) && c.rawAt>=c.rawEnd) {
+                c.reusable=true;c.openPort=c.port;Copy(c.openHost,hostUnits,c.host);
+            } else Close(c);
+            return Result::ok;}
         r=ReadBody(c,rs,sink,sinkContext);
-        Close(c);
+        {   // keep-alive: keep the connection when the answer ended by its own length and the server did not close it
+            char connection[32];
+            const bool closing=Header(c,"Connection",connection,sizeof(connection)) && StartsNoCase(connection,"close");
+            if(c.keepAlive && r==Result::ok && !closing && (rs.chunked || rs.contentLength!=unknownLength) && c.rawAt>=c.rawEnd) {
+                c.reusable=true;c.openPort=c.port;Copy(c.openHost,hostUnits,c.host);
+            } else Close(c);
+        }
         return r;
     }
 }
@@ -518,9 +550,18 @@ inline Result GetText(Client& c,const Request& rq,Response& rs,char* out,size_t 
 }
 // Size and resume validator of a resource without downloading it: HEAD, and
 // when the server refuses HEAD, a one byte Range request.
+// r410 (known issue 9, seen in VMware: one connect time-out on github.com left NVDA off the Windows media): a
+// failure of the network itself is tried again, three attempts in all, as Download retries its transfers.
+inline unsigned& ProbeRetries() {static unsigned count=0;return count;}
+inline bool NetworkFailure(Result r) {
+    return r==Result::receiveFailed || r==Result::truncated || r==Result::connectFailed || r==Result::sendFailed || r==Result::tlsFailed;
+}
 inline Result Probe(Client& c,const char* url,Response& rs) {
     Request rq;rq.url=url;rq.head=true;
     Result r=Get(c,rq,rs,nullptr,nullptr);
+    for(unsigned again=0;again<2 && NetworkFailure(r);++again) {
+        ++ProbeRetries();   // r410 (helper pw): counted, so that a trace can show a retry (CharonWsPlanDialogue.h)
+        rs=Response{};r=Get(c,rq,rs,nullptr,nullptr);}
     if(r==Result::ok && rs.totalLength!=unknownLength)return r;
     Request one;one.url=url;one.range=true;one.rangeStart=0;one.rangeEnd=0;
     Response second;const Result r2=Get(c,one,second,nullptr,nullptr);
@@ -539,16 +580,16 @@ inline bool CountingSink(void* context,const uint8_t* data,size_t size) {
     auto& d=*static_cast<DownloadCount*>(context);d.bytes+=size;return !d.sink || d.sink(d.context,data,size);
 }
 inline Result Download(Client& c,const char* url,uint64_t& offset,const char* validator,Sink sink,void* sinkContext,Response& rs,unsigned maxRetries=6) {
-    static char keptUrl[urlUnits];static char kept[160];
-    if(!Copy(keptUrl,urlUnits,url))return Result::badUrl;
-    Copy(kept,sizeof(kept),validator?validator:"");
+    char* keptUrl=c.keptUrl;char* kept=c.kept;
+    if(url!=keptUrl && !Copy(keptUrl,urlUnits,url))return Result::badUrl;
+    if(validator!=kept)Copy(kept,sizeof(c.kept),validator?validator:"");
     unsigned failures=0;
     for(;;) {
         Request rq;rq.url=keptUrl;rq.range=offset>0;rq.rangeStart=offset;rq.ifRange=kept[0]?kept:nullptr;
         DownloadCount count{sink,sinkContext,0};
         const Result r=Get(c,rq,rs,CountingSink,&count);
         offset+=count.bytes;
-        if(rs.validator[0] && (rs.status==200 || rs.status==206))Copy(kept,sizeof(kept),rs.validator);
+        if(rs.validator[0] && (rs.status==200 || rs.status==206))Copy(kept,sizeof(c.kept),rs.validator);
         if(r==Result::httpStatus && rs.status==416 && rs.totalLength==offset)return Result::ok;   // already complete
         const bool network=r==Result::receiveFailed || r==Result::truncated || r==Result::connectFailed || r==Result::sendFailed || r==Result::tlsFailed;
         if(!network)return r;

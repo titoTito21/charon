@@ -1,0 +1,25 @@
+# Charon Hypervisor: the Alpine packages installed into RAM at every start (Alpine's /etc/apk/world).
+# The install step resolves their dependencies from the official signed indexes and stores all of them on P1.
+alpine-base
+openssl
+blkid
+e2fsprogs
+e2fsprogs-extra
+dosfstools
+python3
+espeak-ng
+alsa-utils
+alsa-lib
+qemu-system-x86_64
+qemu-img
+qemu-audio-alsa
+qemu-hw-usb-host
+qemu-hw-display-virtio-vga
+qemu-block-curl
+ovmf
+tesseract-ocr
+tesseract-ocr-data-eng
+tesseract-ocr-data-pol
+usbutils
+ca-certificates
+kbd

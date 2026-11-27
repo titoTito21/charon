@@ -1,0 +1,8 @@
+# Debian, express mode, no desktop and no screen reader: no speech at all.
+lang=en
+flow=debian
+mode=quick
+keys=ENTER ENTER "test" ENTER "test" ENTER
+keys=SPACE ENTER
+keys=SPACE "s" SPACE ENTER
+put diskmode=whole

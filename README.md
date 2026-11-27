@@ -42,7 +42,7 @@ Its interface and messages are in Polish and English.
   that language is spoken. Without them Charon speaks with its built-in TVox.
 - A new boot message interrupts the one still being read (r396).
 
-**Since r397 (current: r408)**
+**Since r397 (current: r410)**
 - Formatting is never monotone: every colour, brightness, font size, style,
   inverse/highlight and screen position moves rate, pitch, volume, modulation and
   timbre, also with eSpeak NG (persona ABI 3); Charon's own menu carries a
@@ -53,7 +53,39 @@ Its interface and messages are in Polish and English.
   its HII forms in-session (full settings editor for any UEFI that publishes forms),
   rebooting only as a last resort.
 
-**r408 (current; r405-r407 were not released, their changes are part of it)**
+**r410 (current)**
+- Multi-system plans (`CharonPlanText.h`, `CharonPlanModel.h`, `CharonPlanLayout.h`,
+  `CharonPlanState.h`, `CharonWsPlan.h`, `CharonWsPlanDialogue.h`, `CharonWsPlanWindows.h`,
+  `CharonSeedDisk.h`, `CharonClockZone.h`, `CharonDiskIdentity.h`): several systems on one
+  disk after one typed word, resumed by Charon after every restart; five proven sets are
+  offered, the rest is behind the test switch `\EFI\HAK\plan-test`. CharonDOS: `LINUX`,
+  `WINNT` (`src/dos/launch_select.h`), local time. Host tests
+  `tests/charon-r410-plan-host.py`. Design: `docs/charon-multiboot-spec-2026-11-23.md`,
+  `docs/charon-detailed-questions-spec-2026-11-23.md` (design documents, not shipped
+  features).
+- Windows: installation without a stick through a temporary partition
+  (`CharonWsWinPart.h`; a firmware RAM disk is invisible to Windows Setup, measured);
+  profiles and the unofficial Tiny11 group (`CharonWsInstall2.h`, `CharonWsInstall3.h`,
+  `tools/charon-addon/Charon-WindowsProfile.ps1`, `CHARON-WINDOWS-PROFILES.txt`); network
+  and voice hand-over (`Charon-Network.ps1`, `Charon-Readers.ps1`, `CharonWpaPsk.h`);
+  research notes in `docs/`.
+- Linux scripts run on real installations and repaired (`src/linux/*.sh`, new
+  `network.sh`; `tools/gen-charon-linux-scripts.py` writes `CharonLinuxScripts.h`);
+  Stormux, Linda, RHVoice and Charon's voice settings in the installed system.
+- Dialogue defects: private files are never copied (`CharonPrivate.h`), larger answer
+  store, host test of the generators (`tests/charon-install-answers-host.py`,
+  `tests/CharonInstallAnswersHost.cpp`, golden files in `tests/golden`).
+- RHVoice add-on with 13 voices (`src/synth/rhvoice/VOICES.tsv` is the one list:
+  repositories, commits, licences; `tools/build-charon-synths.py`); three voices are
+  CC BY-NC-ND 4.0 (non-commercial).
+- Sound stalls: `CharonAudioStall.h` (StallPolicy), `CharonVoiceRest.h`,
+  `CharonVoiceProvider.h`; AudioDxe r410 takes its poll clock after the stream start
+  (`src/efi/audio_stream/driver/HakAudioStream.c`). Host tests
+  `tests/CharonAudioStallTests.cpp`, `tests/CharonVoiceStallProviderTests.cpp`.
+- Not rerun for r410: the regression of the boot managers. Known issues:
+  `docs/results/charon-r410-results.txt`.
+
+**r408 (r405-r407 were not released, their changes are part of it)**
 - Charon runs from a RAM volume (`CharonSelfCopy.h`, `CharonSelfRam.h`): its files are
   copied into memory after the start, the menu loop then switches the live volume; the
   start medium can be removed or wiped. Settings are mirrored to the start medium.
@@ -201,13 +233,13 @@ clang++ -std=c++17 -I inc -I src/efi tests/BootPreOSMenuTests.cpp -o menu-tests 
 
 ## Boot CD
 
-`harness/make-charon-iso-r408.py` builds `Charon-r408.iso`: a UEFI El Torito CD
+`harness/make-charon-iso-r410.py` builds `Charon-r410.iso`: a UEFI El Torito CD
 (platform EFI, no emulation) with only Charon on it (boot FAT image:
 `EFI/BOOT/BOOTX64.EFI`, `EFI/HAK` voice driver, audio driver, Shell, Memtest86+,
 sounds, synthesizer add-ons) and an isohybrid MBR so the same file can be written
 raw to a USB stick. The FAT image is larger than 32 MB, so the catalogue's sector
 count is 1 (edk2 then uses the rest of the disc as the partition).
-`harness/test-charon-iso-r408.py cd|usb` boots it on OVMF with no hard disk.
+`harness/test-charon-iso-r410.py cd|usb` boots it on OVMF with no hard disk.
 
 ## Testing in QEMU
 

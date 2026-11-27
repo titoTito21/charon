@@ -2,6 +2,11 @@
 #include "BootMenuVoice.h"
 #include "CharonAudioAssets.h"
 #include "CharonAudioDevice.h"
+#include "CharonAudioStall.h"   // r409
+#include "CharonVoiceRest.h"   // r409: the resting flag a wait for speech reads
+#if defined(_MSC_VER) && !defined(__clang__)
+#include <intrin.h>
+#endif
 #include "CharonPcmSink.h"   // r407: another program's sound (CharonPC's Sound Blaster) under the speech
 #include "CharonPoolEFI.h"
 #include "CharonTrace.h"
@@ -43,6 +48,7 @@ public:
         // once Open has established the actual device stream.
         assetsStatus_=assets_.Load(root,&pool_);
         // r405: a USB sound card is the last choice: not before AudioDxe had its chance.
+        CalibrateClock();   // r409
         status=device_.Open(boot,false);
         charontrace::Value("CHARON audio open",uint64_t(status));
         if(status==EFI_NOT_FOUND && !device_.NeedsStop()) {
@@ -74,7 +80,7 @@ public:
         messagesReady_=false;voice_.Shutdown();assets_.Clear();
         if(preparationDeadline_)boot_->CloseEvent(preparationDeadline_);
         preparationDeadline_=nullptr;ready_=false;initialized_=false;boot_=nullptr;
-        melodiesSet_=false;sounds_=true;start_=background_=0;return EFI_SUCCESS;
+        melodiesSet_=false;sounds_=true;start_=background_=0;stall_.Clear();return EFI_SUCCESS;
     }
     efi_status Stop() {
         if(!ready_)return device_.Stop();
@@ -111,20 +117,84 @@ private:
     // A timing-ambiguity fault (EFI_TIMEOUT: a delayed firmware poll could hide
     // ring progress) is recovered only by the driver's real Stop and a fresh
     // Begin. Timing limits stay strict; a failed Stop keeps the fault and the
-    // device ownership. Bounded, so a persistently stalling host still reports.
+    // device ownership. Bounded: r409, by the rule in CharonAudioStall.h (before
+    // r409 by 64 restarts per utterance, after which the voice stayed failed).
     efi_status Recover() {
         const auto fault=device_.LastError();
-        if(fault!=EFI_TIMEOUT || recoveries_>=maximumRecoveries || !device_.NeedsStop())return fault;
+        if(fault!=EFI_TIMEOUT || !device_.NeedsStop())return fault;
         // r400 (user: the greeting came out as "ha, ha, haron"): only the
         // device is restarted. The speech already synthesized stays queued in
         // the engine and goes on from where the sound card stopped; saying
         // the utterance again from its start made every stall of the firmware
         // (a disk read while a boot option loads) a stutter.
+        // r409 (CharonAudioStall.h): a card that stalls again without having
+        // played is not restarted a third time in a row; it rests. Every
+        // restart is a stop, a codec setup and a start of the stream, and on a
+        // host that cannot play each of them may hold the whole machine.
+#ifdef HAK_CHARON_STALLTEST_OLD
+        if(recoveries_>=maximumRecoveries)return fault;   // test builds only: the rule before r409, to compare
+        const bool restart=true;
+#else
+        const bool restart=stall_.Stalled(device_.Submitted()) && recoveries_<maximumRecoveries;
+#endif
         if(device_.Stop()!=EFI_SUCCESS)return fault;
         ++recoveries_;charontrace::Value("CHARON audio recovered",recoveries_);
-        return EnsureRunning();
+        if(!restart)return Rest();
+        const uint64_t before=Ticks();
+        const auto status=EnsureRunning();
+        const uint64_t took=Ticks()-before;
+        if(stall_.Restarted(took))charontrace::Value("CHARON audio restart slow, ms",took/stall_.TicksPerMs());
+        if(status!=EFI_SUCCESS) {
+            // The stream would not start again: tried once more after a rest instead of failing the voice for good.
+            charontrace::Value("CHARON audio restart status",uint64_t(status));
+            if(device_.NeedsStop())device_.Stop();
+            if(!device_.NeedsStop())return Rest();
+        }
+        return status;
+    }
+    // r409: the processor's time-stamp counter, measured once against the firmware's Stall,
+    // in Initialize (12 ms). Never later: the screen reader hooks Stall and changes the
+    // synthesizer inside it, which must not happen while the voice is being pumped (tried:
+    // measured at the first stall, speech came out in scraps afterwards). The firmware's timer
+    // events are no measure here: their time advances by one period per delivered interrupt,
+    // so it stands still while the machine itself is held.
+    static uint64_t Ticks() {
+        if(TestClock())return TestClock();   // r410 host tests
+#if defined(__x86_64__) || defined(__i386__)
+        return __builtin_ia32_rdtsc();
+#elif defined(_M_X64) || defined(_M_IX86)
+        return __rdtsc();
+#else
+        return 0;
+#endif
+    }
+    void CalibrateClock() {
+        if(clockKnown_ || !boot_ || !boot_->Stall)return;
+        clockKnown_=true;uint64_t best=0;
+        // Stall(5 ms) less Stall(1 ms) is 4 ms without the call's own fixed cost (VMware: a 1 ms
+        // Stall alone measured 1.4 ms). The smaller of two: a measurement the host interrupted
+        // is too long, never too short.
+        for(int i=0;i<2;++i) {
+            const uint64_t a=Ticks();boot_->Stall(1000);const uint64_t b=Ticks();boot_->Stall(5000);const uint64_t c=Ticks();
+            const uint64_t shortOne=b-a,longOne=c-b;
+            if(longOne>shortOne) {const uint64_t ticks=(longOne-shortOne)/4;if(ticks && (!best || ticks<best))best=ticks;}
+        }
+        stall_.SetClock(best>=1000?best:0);   // under 1 MHz: no usable counter, a rest is then counted in calls
+        charontrace::Value("CHARON audio clock, ticks per ms",stall_.TicksPerMs());
+    }
+    // The stream is stopped and stays so; EnsureRunning opens it again when the rest is over.
+    // Success for the caller: speech stays queued, the dialogue goes on.
+    efi_status Rest() {
+        charontrace::Value("CHARON audio stalled, stream rests, s",stall_.Rest(Ticks()));hakefi::VoiceResting()=true;
+        return EFI_SUCCESS;
     }
     efi_status EnsureRunning() {
+        // r409: a stalled stream rests (CharonAudioStall.h): nothing touches the card meanwhile.
+        bool afterRest=false;
+        if(stall_.Resting()) {
+            if(!stall_.RestOver(Ticks()))return EFI_SUCCESS;
+            afterRest=true;hakefi::VoiceResting()=false;charontrace::Value("CHARON audio rest over, level",stall_.Level());
+        }
         // r402: firmware took the audio driver away (it reconnects controllers at
         // start-up). Speech stays queued and sound returns when the card is bound again.
         if(device_.Vanished()) {
@@ -158,7 +228,14 @@ private:
             device_.Stop();
             if(device_.NeedsStop()) {device_.MarkVanished();return EFI_SUCCESS;}   // the stream would not stop: found again as a vanished one
         }
+        const uint64_t before=afterRest?Ticks():0;
         const auto status=device_.Open(boot_);
+        if(afterRest && stall_.Restarted(Ticks()-before))charontrace::Value("CHARON audio open after rest slow, ms",(Ticks()-before)/stall_.TicksPerMs());
+        if(status!=EFI_SUCCESS && afterRest) {   // r409: still no stream: the next try comes after a longer rest
+            charontrace::Value("CHARON audio open after rest",uint64_t(status));
+            if(device_.NeedsStop())device_.Stop();
+            if(!device_.NeedsStop())return Rest();
+        }
         if(status==EFI_SUCCESS && assets_.Ready()) {
             const auto sound=assets_.Background(background_);
             voice_.SetMelody(sound.samples,sound.frames);
@@ -190,6 +267,9 @@ private:
         const auto status=self->EnsureRunning();if(status!=EFI_SUCCESS)return status;
         self->faultRestarts_=0;self->recoveries_=0;   // r400: the bound is per utterance, or a long session went mute after 64 stalls
         charontrace::Text("CHARON speak");charontrace::Text(language);charontrace::Text(text);
+#ifdef HAK_CHARON_STALLTEST
+        self->stallTestStart_=bytes>150?Ticks():0;
+#endif
         // r389: an interruption drops the old speech the driver still holds
         // (up to 150 ms before), so the new text is heard at once.
         // Not while a boot message speaks: its sound is mixed into the same frames.
@@ -216,10 +296,18 @@ private:
         if(status!=EFI_SUCCESS)self->deadlineError_=status;
         return 1;
     }
+    uint64_t lastPumpTicks_=0,catchUpFrames_=0;unsigned latePumps_=0;   // r410
+public:
+    unsigned LatePumps() const {return latePumps_;}
+    uint64_t CatchUpFrames() const {return catchUpFrames_;}
+    static uint64_t& TestClock() {static uint64_t ticks=0;return ticks;}   // host tests: a clock they move (0: the processor's counter)
+    void TestSetClock(uint64_t ticksPerMs) {stall_.SetClock(ticksPerMs);}
+private:
     static efi_status EFIAPI PumpThunk(hakefi::MenuVoice* api,uint32_t maximumFrames) {
         auto* self=Owner(api);
         if(!maximumFrames || maximumFrames>4096)return EFI_INVALID_PARAMETER;
         const auto status=self->EnsureRunning();if(status!=EFI_SUCCESS)return status;
+        if(self->stall_.Resting())return EFI_SUCCESS;   // r409: speech stays queued; no synthesis, no device call
         self->deadlineError_=EFI_SUCCESS;
         self->deadlineCheckpoint_=0;
         // Independent timer: never consume the keyboard's WaitForKey signal.
@@ -259,9 +347,33 @@ private:
             charon::LiveVoice::Progress other;
             if(self->intro_.Pump({32768,1024,0,PreparationDeadline,self},mixed,&other))self->intro_.CancelSpeech();
         }
-        self->device_.LimitLead(self->messagesReady_ && !self->intro_.SpeechIdle()?4096:0);   // r389: 85 ms while a message speaks
+        // r410: a pump that comes late (the main thread was held: Charon copying itself to memory while the host's
+        // disk is busy, a slow firmware read) used to add its usual 43 ms of sound and leave: speech came out in
+        // 40 ms scraps with silence between them for as long as the pumps stayed slow. The time since the last
+        // pump is now the measure: for every 30 ms of it one more round of synthesis and one more top-up of the
+        // device queue (12 at most, about half a second of sound, each round ended by the device's own
+        // backpressure). No wait, no Stall: only more of the work a pump does anyway.
+        unsigned catchUp=0;
+        {const uint64_t now=Ticks(),perMs=self->stall_.TicksPerMs();
+         if(perMs && self->lastPumpTicks_ && now>self->lastPumpTicks_) {const uint64_t gapMs=(now-self->lastPumpTicks_)/perMs;
+            if(gapMs>30) {catchUp=gapMs/30>12?12:unsigned(gapMs/30);++self->latePumps_;
+                if(self->latePumps_<=4 || !(self->latePumps_%64))charontrace::Value("CHARON pump late, ms",gapMs);}}
+         self->lastPumpTicks_=now;}
+        self->device_.LimitLead(!catchUp && self->messagesReady_ && !self->intro_.SpeechIdle()?4096:0);   // r389: 85 ms while a message speaks
         if(!result) {charon::LiveVoice::Progress out;self->voice_.Pump({0,0,sinkFrames},mixed,&out);progress.sinkFrames=out.sinkFrames;}
+        for(unsigned round=0;round<catchUp && !result;++round) {
+            charon::LiveVoice::Progress more;
+            if(self->voice_.Pump({32768,1024,0,PreparationDeadline,self},mixed,&more))break;
+            if(self->messagesReady_) {charon::LiveVoice::Progress other;if(self->intro_.Pump({32768,1024,0,PreparationDeadline,self},mixed,&other))self->intro_.CancelSpeech();}
+            charon::LiveVoice::Progress out;self->voice_.Pump({0,0,sinkFrames},mixed,&out);
+            if(!out.sinkFrames || self->device_.LastError()!=EFI_SUCCESS || self->deadlineError_!=EFI_SUCCESS)break;   // the device queue is full, or a fault: as a single pump
+            progress.sinkFrames+=out.sinkFrames;self->catchUpFrames_+=out.sinkFrames;
+        }
         self->pcm_.Service(self->device_.Sink());   // r407: no speech was written: the client's sound goes out alone
+        self->stall_.Played(self->device_.Submitted());   // r409
+#ifdef HAK_CHARON_STALLTEST
+        self->StallTest();
+#endif
         ++self->tracePump_;self->traceCheckpoints_+=progress.frontend;
         if(!self->traceGenerated_ && (self->tracePump_<=3 || !(self->tracePump_%128))) {
             charontrace::Value("CHARON prep pump",self->tracePump_);
@@ -291,6 +403,7 @@ private:
         auto* self=static_cast<VoiceProvider*>(context);
         if(!self->sounds_)return;
         if(self->EnsureRunning()!=EFI_SUCCESS) {self->pendingCue_=cue;charontrace::Value("CHARON cue deferred",unsigned(cue));return;}
+        if(self->stall_.Resting())return;   // r409: a cue heard seconds late says nothing
         // r393 (user): the welcome sound is the add-on's PC-speaker beep (900 Hz, 200 ms).
         if(cue==hakefi::MenuCue::welcome) {charontrace::Value("CHARON welcome beep",900);self->Square(900,200);return;}
         const auto sound=self->assets_.Cue(cue);
@@ -312,7 +425,7 @@ private:
     // does), and the buffer being cancelled is never the one being written.
     static void ToneThunk(void* context,unsigned hertz,unsigned milliseconds) {
         auto* self=static_cast<VoiceProvider*>(context);
-        if(!self->sounds_ || hertz<40 || hertz>8000 || !milliseconds || self->EnsureRunning()!=EFI_SUCCESS)return;
+        if(!self->sounds_ || hertz<40 || hertz>8000 || !milliseconds || self->EnsureRunning()!=EFI_SUCCESS || self->stall_.Resting())return;
         if(milliseconds>toneMaxMs)milliseconds=toneMaxMs;
         const size_t frames=size_t(48)*milliseconds;
         int16_t* buffer=self->tone_[self->toneSlot_^=1];
@@ -372,10 +485,17 @@ private:
         auto* self=static_cast<VoiceProvider*>(context);
         if(!self->sounds_ || hertz<40 || hertz>8000 || !milliseconds)return;
         if(self->EnsureRunning()!=EFI_SUCCESS) {self->pendingBeepHz_=hertz;self->pendingBeepMs_=milliseconds;charontrace::Value("CHARON beep deferred",hertz);return;}
+        if(self->stall_.Resting())return;   // r409
         charontrace::Value("CHARON beep",(uint64_t(hertz)<<16)|milliseconds);
         self->Square(hertz,milliseconds);
     }
-    static bool SpeechIdleThunk(void* context) {return static_cast<VoiceProvider*>(context)->voice_.SpeechIdle();}
+    // r410 (helper vr, ag5): with no sound stream at all (no card found, or the card gone and stopped) the queue never
+    // drains, so every bounded wait for the end of speech ran to its cap (the plan's restart sentence came 180 s after
+    // the report). Nothing can be heard then: idle. A resting stream (CharonAudioStall.h) still counts as speaking.
+    static bool SpeechIdleThunk(void* context) {
+        auto* self=static_cast<VoiceProvider*>(context);
+        return self->voice_.SpeechIdle() || (!self->device_.NeedsStop() && !self->stall_.Resting());
+    }
     static bool MessageThunk(void* context,const char* language,const char* text) {
         auto* self=static_cast<VoiceProvider*>(context);
         if(!self->messagesReady_ || !language || !text || self->EnsureRunning()!=EFI_SUCCESS)return false;
@@ -472,7 +592,7 @@ private:
             if(text[i]!=0x1b) {++i;continue;}
             const char c=text[i+1];
             if((c=='e' && otherEnglish) || (c=='p' && !otherEnglish))return true;
-            i+=c=='f'?8:c=='v'?6:c=='i'?4:2;
+            i+=c=='f'?16:c=='v'?6:c=='i'?4:2;   // r410: ESC f + 14 payload characters
         }
         return false;
     }
@@ -697,6 +817,19 @@ private:
     static constexpr unsigned toneMaxMs=500;  // r384: 500 ms countdown end tone
     int16_t tone_[2][48*toneMaxMs*2]={};unsigned toneSlot_=0;
     static constexpr unsigned maximumRecoveries=64;unsigned recoveries_=0;static constexpr unsigned maximumFaultRestarts=8;unsigned faultRestarts_=0;   // r406
+    StallPolicy stall_;bool clockKnown_=false;   // r409
+#ifdef HAK_CHARON_STALLTEST
+    // Test builds only (-DHAK_CHARON_STALLTEST): for every utterance longer than 150 bytes the
+    // stream is treated as stalled from 1.5 s to 9.5 s after it was asked for, on every pump,
+    // so the real stream is stopped and restarted as after the driver's EFI_TIMEOUT.
+    uint64_t stallTestStart_=0;
+    void StallTest() {
+        if(!stallTestStart_ || !device_.NeedsStop() || device_.Vanished() || device_.LastError()!=EFI_SUCCESS)return;
+        if(!stall_.TicksPerMs())return;
+        const uint64_t ms=(Ticks()-stallTestStart_)/stall_.TicksPerMs();
+        if(ms>=1500 && ms<9500)device_.InjectTimeout();
+    }
+#endif
     char lastText_[charon::LiveVoice::maximumTextBytes+1]={};size_t lastTextBytes_=0;
     charon::LiveVoice::Language lastLanguage_=charon::LiveVoice::Language::Polish;
     unsigned start_=0,background_=0;

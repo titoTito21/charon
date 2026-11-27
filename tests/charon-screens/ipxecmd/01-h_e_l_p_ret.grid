@@ -1,0 +1,25 @@
+CHARON grid 31 100 30 6 1 iPXE
+G00 59*87|59*0000|file:autoexec.ipxe... Not found (https://ipxe.org/7f4de18e)
+G01 60*87|60*0000|file:/autoexec.ipxe... Not found (https://ipxe.org/7f4de18e)
+G05 17*8f,41*87,16*83|74*0000|iPXE 2.0.0+dfsg-5 -- Open Source Network Boot Firmware -- https://ipxe.org
+G06 61*87|61*0000|Features: VLAN DNS HTTP HTTPS iSCSI NFS SRP TFTP AoE EFI Menu
+G08 10*87|10*0000|iPXE> help
+G0a 19*87|19*0000|Available commands:
+G0c 75*87|75*0000|  autoboot        boot            certfree        certstat        certstore
+G0d 72*87|72*0000|  chain           choose          clear           colour          config
+G0e 70*87|70*0000|  console         cpair           cpuid           dhcp            echo
+G0f 72*87|72*0000|  exit            form            goto            help            ibstat
+G10 72*87|72*0000|  ifclose         ifconf          iflinkwait      ifopen          ifstat
+G11 73*87|73*0000|  imgargs         imgexec         imgfetch        imgfree         imgload
+G12 70*87|70*0000|  imgselect       imgstat         inc             initrd          iseq
+G13 72*87|72*0000|  isset           item            iwlist          iwstat          kernel
+G14 69*87|69*0000|  login           md5sum          menu            module          ntp
+G15 74*87|74*0000|  param           params          pciscan         ping            poweroff
+G16 72*87|72*0000|  present         prompt          pxebs           read            reboot
+G17 69*87|69*0000|  route           sanboot         sanhook         sanunhook       set
+G18 75*87|75*0000|  sha1sum         sha224sum       sha256sum       sha384sum       sha512sum
+G19 70*87|70*0000|  shell           shim            show            sleep           sync
+G1a 42*87|42*0000|  usbscan         vcreate         vdestroy
+G1c 47*87|47*0000|Type "<command> --help" for further information
+G1e 5*87|5*0000|iPXE>
+CHARON grid end

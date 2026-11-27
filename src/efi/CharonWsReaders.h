@@ -18,8 +18,13 @@ namespace install {
 using ask::Choice;
 inline const Choice linuxReaders[]={
     {u"Orca, czytnik ekranu dla pulpitu",u"Orca, the screen reader for the desktop","orca"},
-    {u"Cthulhu, czytnik ekranu dla pulpitu wywodzący się z Orki; budowany ze źródeł przy pierwszym uruchomieniu z dostępem do sieci",
-     u"Cthulhu, a screen reader for the desktop derived from Orca; built from source at the first start with network access","cthulhu"},
+    // r409: on Arch from the Stormux package repository; elsewhere built from its source, while Orca speaks
+    {u"Cthulhu, czytnik ekranu dla pulpitu wywodzący się z Orki; w Archu z repozytorium Stormux, w pozostałych systemach budowany ze źródeł przy pierwszym uruchomieniu z dostępem do sieci, a do tego czasu mówi Orca",
+     u"Cthulhu, a screen reader for the desktop derived from Orca; on Arch from the Stormux repository, elsewhere built from source at the first start with network access, with Orca speaking until then","cthulhu"},
+    // r409: Linda (https://github.com/Mudb0y/linda, GPL 2 or later): NVDA for the Linux desktop. Only through Nix, built on
+    // the computer (about eleven minutes and 7.5 gigabytes in the tests on Arch and Fedora); X11 sessions; Orca until then.
+    {u"Linda, czytnik ekranu NVDA dla pulpitu Linuksa; instalowany przez Nix przy pierwszym uruchomieniu z siecią, co trwa kilkanaście minut i zajmuje 8 gigabajtów; działa w sesjach X11, a do tego czasu i w sesjach Wayland mówi Orca",
+     u"Linda, the NVDA screen reader for the Linux desktop; installed through Nix at the first start with network access, which takes ten minutes or more and 8 gigabytes; works in X11 sessions, and until then and in Wayland sessions Orca speaks","linda"},
     {u"Speakup z espeakup, mowa w konsoli od uruchomienia systemu",u"Speakup with espeakup, console speech from system start-up","speakup"},
     {u"Fenrir, czytnik ekranu dla konsoli",u"Fenrir, a screen reader for the console","fenrir"},
     {u"Emacspeak, pulpit dźwiękowy w Emacsie; gdy to on ma mówić, konsola 1 loguje się sama i uruchamia Emacspeak",
@@ -52,7 +57,7 @@ inline const Choice imageDesktops[]={
 // and whether there is any speech at all. False: the user left (Escape).
 inline bool ResolveReaders(bool desktops) {
     const bool orca=ask::Has("readers","orca"),cthulhu=ask::Has("readers","cthulhu"),speakup=ask::Has("readers","speakup"),fenrir=ask::Has("readers","fenrir");
-    const bool emacspeak=ask::Has("readers","emacspeak");
+    const bool emacspeak=ask::Has("readers","emacspeak"),linda=ask::Has("readers","linda");
     // The console has room for one speaker: asked only when two or three were checked.
     static const Choice consoleAll[]={{u"Speakup z espeakup",u"Speakup with espeakup","speakup"},{u"Fenrir",u"Fenrir","fenrir"},{u"Emacspeak",u"Emacspeak","emacspeak"}};
     static Choice console[3];size_t consoles=0;
@@ -63,14 +68,19 @@ inline bool ResolveReaders(bool desktops) {
         if(!ask::Choose(T(u"Który czytnik ekranu ma mówić w konsoli? Pozostałe zostaną zainstalowane, ale wyłączone.",u"Which screen reader should speak in the console? The others are installed but switched off."),console,consoles,i))return false;
         ask::Put("console",console[i].value);
     } else ask::Put("console",consoles?console[0].value:"none");
-    if(desktops && orca && cthulhu) {
-        static const Choice both[]={{u"Orca",u"Orca","orca"},{u"Cthulhu",u"Cthulhu","cthulhu"}};size_t i=0;
-        if(!ask::Choose(T(u"Który czytnik ekranu ma się uruchamiać na pulpicie? Drugi zostanie zainstalowany, ale wyłączony.",u"Which screen reader should start on the desktop? The other is installed but switched off."),both,2,i))return false;
-        ask::Put("gui",both[i].value);
-    } else ask::Put("gui",!desktops?"none":orca?"orca":cthulhu?"cthulhu":"none");
-    if(!desktops && (orca || cthulhu))
-        Say(T(u"Bez pulpitu czytniki Orca i Cthulhu nie mają gdzie działać, więc ich nie instaluję.",u"Without a desktop Orca and Cthulhu have nowhere to run, so I am not installing them."));
-    ask::Put("speech",(speakup || fenrir || emacspeak || (desktops && (orca || cthulhu)))?"yes":"no");
+    // r409: the desktop has room for one speaker too: asked only when two or three were checked (Orca, Cthulhu, Linda).
+    static const Choice desktopAll[]={{u"Orca",u"Orca","orca"},{u"Cthulhu",u"Cthulhu","cthulhu"},{u"Linda",u"Linda","linda"}};
+    static Choice desktopReaders[3];size_t desktopCount=0;
+    if(orca)desktopReaders[desktopCount++]=desktopAll[0];
+    if(cthulhu)desktopReaders[desktopCount++]=desktopAll[1];
+    if(linda)desktopReaders[desktopCount++]=desktopAll[2];
+    if(desktops && desktopCount>1) {size_t i=0;
+        if(!ask::Choose(T(u"Który czytnik ekranu ma się uruchamiać na pulpicie? Pozostałe zostaną zainstalowane, ale wyłączone.",u"Which screen reader should start on the desktop? The others are installed but switched off."),desktopReaders,desktopCount,i))return false;
+        ask::Put("gui",desktopReaders[i].value);
+    } else ask::Put("gui",(!desktops || !desktopCount)?"none":desktopReaders[0].value);
+    if(!desktops && desktopCount)
+        Say(T(u"Bez pulpitu czytniki Orca, Cthulhu i Linda nie mają gdzie działać, więc ich nie instaluję.",u"Without a desktop Orca, Cthulhu and Linda have nowhere to run, so I am not installing them."));
+    ask::Put("speech",(speakup || fenrir || emacspeak || (desktops && desktopCount))?"yes":"no");
     // r406 (user): with a desktop, how to sign in - on a graphical login screen, or in the
     // console with the desktop started by the command startx. Asked for every Linux.
     if(desktops) {
@@ -90,7 +100,7 @@ inline void ReaderPackages(char* out,size_t capacity,bool desktops) {
     if(any)add(", espeak-ng, alsa-utils");
     if(ask::Has("readers","speakup"))add(", espeakup");
     if(ask::Has("readers","fenrir"))add(", fenrir, speech-dispatcher");
-    if(desktops && (ask::Has("readers","orca") || ask::Has("readers","cthulhu")))add(", orca");   // Orca also speaks until Cthulhu is built
+    if(desktops && (ask::Has("readers","orca") || ask::Has("readers","cthulhu") || ask::Has("readers","linda")))add(", orca");   // Orca also speaks until Cthulhu or Linda is built
 }
 // The arguments of speechScript: CONSOLE GUI LIST.
 inline void ReaderArguments(char* out,size_t capacity) {

@@ -71,6 +71,12 @@ struct Settings {
     u8 messageRate, messagePitch;
     u8 punctuation, capitals, screenLanguage, readerFlags;
     u8 formatFlags, readerExtra, synthKey, synthVoice;
+    // The record these values were read from. A record of format C, D or E is rewritten in its
+    // own format from these bytes, so the fields this command does not know (V13: formatting
+    // groups and verbosity profile in bytes 36 and 38; V14: the custom profile's items, the
+    // reader bar and the colour ladder in bytes 32, 33 and 37) come back unchanged.
+    char version;
+    u8 raw[48];
 };
 
 const u8 kAutoDelays[] = {0, 3, 5, 10, 15, 20, 30, 60, 255};
@@ -85,13 +91,13 @@ u32 setcrc(const u8* b, size_t n)
 size_t bytes_for(char version) { return version >= '9' ? 48 : version >= '7' ? 40 : 32; }
 
 // True when the buffer is a settings record whose version char is newer than
-// this code understands ('C' = r397 V12). Then the store must not be rewritten.
+// this code understands ('E' = r410 V14). Then the store must not be rewritten.
 bool record_too_new(const u8* b, size_t len)
 {
     if (len < 8) return false;
     for (int i = 0; i < 7; i++) if (b[i] != (u8)"CHARS00"[i]) return false;
     const char v = (char)b[7];
-    return v > 'C';
+    return v > 'E';
 }
 
 // Mirror of hakefi::DecodeSettings (CharSettings.h). Fills out with version-aware
@@ -101,7 +107,7 @@ bool decode(const u8* b, size_t len, Settings& out)
     if (len != 48 && len != 40 && len != 32) return false;
     for (int i = 0; i < 7; i++) if (b[i] != (u8)"CHARS00"[i]) return false;
     const char version = (char)b[7];
-    if (version < '1' || (version > '9' && version != 'A' && version != 'B' && version != 'C')) return false;
+    if (version < '1' || (version > '9' && version != 'A' && version != 'B' && version != 'C' && version != 'D' && version != 'E')) return false;
     if (len != bytes_for(version)) return false;
     const size_t crcAt = version >= '9' ? 44 : version >= '7' ? 36 : 28;
     u32 crc = 0; for (int i = 0; i < 4; i++) crc |= (u32)b[crcAt + i] << (i * 8);
@@ -115,16 +121,20 @@ bool decode(const u8* b, size_t len, Settings& out)
     } else for (int i = 23; i < 28; i++) if (b[i]) return false;
     if (version >= '7') {
         for (int i = 28; i < 31; i++) if (b[i] < 5 || b[i] > 20) return false;
-        if (b[31] < 1 || b[31] > 10 || b[32] > 7 || b[33] > 3) return false;
+        if (b[31] < 1 || b[31] > 10 || (version < 'E' && (b[32] > 7 || b[33] > 3))) return false;
         if (version == '7' ? (b[34] || b[35]) : (b[34] < 5 || b[34] > 20 || b[35] < 5 || b[35] > 20)) return false;
     }
     if (version >= '9') {
-        if (b[36] > 3 || b[37] > 7 || b[38] > 3 || b[39] > 63) return false;
+        if (version >= 'D' ? (b[36] > 31 || b[38] > 15 || (b[38] >> 2) > (version >= 'E' ? 3 : 2)) : (b[36] > 3 || b[38] > 3)) return false;
+        if (b[37] > (version >= 'E' ? 63 : 7) || b[39] > 63) return false;
         if (version >= 'A') {
-            if ((version < 'C' && (b[40] > 63 || b[41] > 31)) || b[41] > 127 || ((b[41] >> 5) & 3) > 2 || (b[41] & 3) > 2 || (version == 'A' && (b[42] || b[43])) || b[43] > 15) return false;
+            // byte 41 bit 7 (loading sound, r408) is accepted in formats C and later
+            if ((version < 'C' && (b[40] > 63 || b[41] > 31)) || ((b[41] >> 5) & 3) > 2 || (b[41] & 3) > 2 || (version == 'A' && (b[42] || b[43])) || b[43] > 15) return false;
         } else for (int i = 40; i < 44; i++) if (b[i]) return false;
     }
     Settings c;
+    c.version = version;
+    for (size_t i = 0; i < 48; i++) c.raw[i] = i < len ? b[i] : 0;
     c.sequence = 0; for (int i = 0; i < 8; i++) c.sequence |= (u64)b[8 + i] << (i * 8);
     if (!c.sequence) return false;
     // defaults (the header's decode-to-default behaviour for older versions)
@@ -133,7 +143,8 @@ bool decode(const u8* b, size_t len, Settings& out)
     c.welcome = 7; c.pitch = 10; c.readerRate = 10; c.readerPitch = 10; c.readerVolume = 10; c.detail = 7; c.timers = 2;
     c.messageRate = 14; c.messagePitch = 10; c.punctuation = 1; c.capitals = 1; c.screenLanguage = 0; c.readerFlags = 47;
     // formatFlags/readerExtra defaults used only when upgrading a record older
-    // than V10; kept inside the ranges DecodeSettings accepts (readerExtra <= 127).
+    // than V10 to format C; kept inside what every reader of format C accepts
+    // (r397 to r407 reject byte 41 above 127).
     c.formatFlags = 60; c.readerExtra = 25; c.synthKey = 0; c.synthVoice = 0;
     c.language = b[16]; c.wrap = b[17] != 0;
     c.sounds = (version == '1' || b[18] != 0) ? 1 : 0;
@@ -147,18 +158,21 @@ bool decode(const u8* b, size_t len, Settings& out)
     }
     c.readerRate = c.rate; c.readerVolume = c.speechVolume;
     if (version >= '7') {
-        c.pitch = b[28]; c.readerRate = b[29]; c.readerPitch = b[30]; c.readerVolume = b[31]; c.detail = b[32]; c.timers = b[33];
+        c.pitch = b[28]; c.readerRate = b[29]; c.readerPitch = b[30]; c.readerVolume = b[31]; c.detail = b[32] & 7; c.timers = b[33] & 3;   // V14: the upper bits are the custom profile
         if (version == '7' && !c.timers) c.timers = 2;
         if (version >= '8') { c.messageRate = b[34]; c.messagePitch = b[35]; }
     }
-    if (version >= '9') { c.punctuation = b[36]; c.capitals = b[37]; c.screenLanguage = b[38]; c.readerFlags = b[39]; }
+    // V13 / V14: byte 36 bits 2-4, byte 37 bits 3-5 and byte 38 bits 2-3 hold other settings
+    if (version >= '9') { c.punctuation = b[36] & 3; c.capitals = b[37] & 7; c.screenLanguage = b[38] & 3; c.readerFlags = b[39]; }
     if (version >= 'A') { c.formatFlags = b[40]; c.readerExtra = b[41]; }
     if (version >= 'B') { c.synthKey = b[42]; c.synthVoice = b[43]; }
     out = c;
     return true;
 }
 
-// Mirror of hakefi::EncodeSettings: always writes a 48-byte CHARS00C record.
+// Mirror of hakefi::EncodeSettings for the settings this command knows. A record read
+// as format C, D or E keeps its format and every bit this command does not interpret
+// (read-modify-write of Settings::raw); an older record is written as CHARS00C, as before.
 bool encode(const Settings& v, u8* b)
 {
     if (!v.sequence || v.language > 2 || v.startMelody > 4 || v.backgroundMelody > 4 || v.rate < 5 || v.rate > 20
@@ -168,14 +182,16 @@ bool encode(const Settings& v, u8* b)
         || v.messageRate < 5 || v.messageRate > 20 || v.messagePitch < 5 || v.messagePitch > 20
         || v.punctuation > 3 || v.capitals > 7 || v.screenLanguage > 3 || v.readerFlags > 63
         || (v.readerExtra & 3) > 2 || ((v.readerExtra >> 5) & 3) > 2 || v.synthVoice > 15) return false;
-    for (int i = 0; i < 48; i++) b[i] = 0;
+    const bool keep = v.version == 'C' || v.version == 'D' || v.version == 'E';
+    for (int i = 0; i < 48; i++) b[i] = keep ? v.raw[i] : 0;
     for (int i = 0; i < 8; i++) b[i] = (u8)"CHARS00C"[i];
+    if (keep) b[7] = (u8)v.version;
     for (int i = 0; i < 8; i++) b[8 + i] = (u8)(v.sequence >> (i * 8));
     b[16] = v.language; b[17] = v.wrap ? 1 : 0; b[18] = v.sounds ? 1 : 0; b[19] = v.explicitMessages ? 1 : 0;
     b[20] = v.startMelody; b[21] = v.backgroundMelody; b[22] = v.rate;
     b[23] = v.speechVolume; b[24] = v.effectsVolume; b[25] = (u8)(v.verbosity | (v.progress << 2)); b[26] = (u8)((v.rememberLast ? 1 : 0) | (v.welcome << 1)); b[27] = v.autoSeconds;
-    b[28] = v.pitch; b[29] = v.readerRate; b[30] = v.readerPitch; b[31] = v.readerVolume; b[32] = v.detail; b[33] = v.timers; b[34] = v.messageRate; b[35] = v.messagePitch;
-    b[36] = v.punctuation; b[37] = v.capitals; b[38] = v.screenLanguage; b[39] = v.readerFlags;
+    b[28] = v.pitch; b[29] = v.readerRate; b[30] = v.readerPitch; b[31] = v.readerVolume; b[32] = (u8)((b[32] & 0xf8) | v.detail); b[33] = (u8)((b[33] & 0xfc) | v.timers); b[34] = v.messageRate; b[35] = v.messagePitch;
+    b[36] = (u8)((b[36] & 0xfc) | v.punctuation); b[37] = (u8)((b[37] & 0xf8) | v.capitals); b[38] = (u8)((b[38] & 0xfc) | v.screenLanguage); b[39] = v.readerFlags;
     b[40] = v.formatFlags; b[41] = v.readerExtra; b[42] = v.synthKey; b[43] = v.synthVoice;
     const u32 crc = setcrc(b, 44); for (int i = 0; i < 4; i++) b[44 + i] = (u8)(crc >> (i * 8));
     return true;
@@ -545,4 +561,25 @@ int charon_command(char* args, int polish)
     if (!d_stricmp(sub, "OFF")) return cmd_reset(1);
     cbil("Unknown CHARON sub-command. Type CHARON for the list.", "Nieznane podpolecenie CHARON. Wpisz CHARON, aby zobaczyć listę."); cnl();
     return 1;
+}
+
+// ---- r409: the hardware clock in universal time, CharonDOS in local time -------
+#include "../efi/CharonClockZone.h"
+void charon_clock_local(PlatTime* time)
+{
+    static bool loaded;
+    static hakefi::clockzone::Setting setting;
+    if (!loaded) {
+        static char text[256];
+        const long n = charon_plat_hak_read("clock.txt", text, sizeof text);
+        setting = hakefi::clockzone::Parse(text, n > 0 ? (size_t)n : 0);
+        loaded = true;
+    }
+    if (!setting.universal || time->month < 1 || time->month > 12 || time->day < 1) return;
+    hakefi::clockzone::Stamp clock;
+    clock.year = time->year; clock.month = time->month; clock.day = time->day;
+    clock.hour = time->hour; clock.minute = time->minute; clock.second = time->second;
+    const hakefi::clockzone::Stamp local = hakefi::clockzone::Shown(setting, clock);
+    time->year = (uint16_t)local.year; time->month = local.month; time->day = local.day;
+    time->hour = local.hour; time->minute = local.minute;
 }

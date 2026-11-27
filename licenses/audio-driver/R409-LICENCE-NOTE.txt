@@ -1,0 +1,29 @@
+AudioDxe.efi of Charon r409
+===========================
+Licence. Since r408 the sound driver contains codec and machine tables written
+from files of the Linux kernel's sound/hda tree that are licensed
+GPL-2.0-or-later (list: AUDIO-CODECS.txt, section 1). The driver binary as a
+whole is therefore distributed under the GNU General Public License,
+version 2 or (at your option) any later version (GPL-2.0.txt). The parts
+taken from OpenCorePkg / AUDK keep their BSD and MIT notices (the other
+files of this folder). Up to r407 the binary was BSD/MIT only.
+
+Changed in r409. After the stream is started the driver reads the hardware
+cursor once and, when it has not moved yet, takes its poll clock there
+instead of before the start (HakAudioStream.c). The time a virtual machine
+needs to create its host stream no longer counts against the driver's 70 ms
+limit. Nothing else differs from the r408 driver. It has not been run on a
+physical sound card.
+
+The r408 driver is not part of this package. It is the state of
+src/efi/audio_stream/driver before that change (the source of r408:
+charon-source-r408.zip of the r408 release, or the history of the source
+repository); BUILD-NOTES.md says how the driver is built.
+
+Corresponding source: corresponding-source\charon-source-r409.zip -
+src/efi/audio_stream/driver (the added files and apply-driver-extension.py,
+which lists every change to the upstream driver), tools/gen-charon-hda-quirks.py
+(generates the tables), and the pinned upstream archives named in
+source-downloads.json and BUILD-NOTES.md.
+Switch for trouble on real hardware: an empty file \EFI\HAK\audio-noquirks
+turns the machine table off.

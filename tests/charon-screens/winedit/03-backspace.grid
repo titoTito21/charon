@@ -1,0 +1,13 @@
+CHARON grid 49 132 0 0 1 Menedżer rozruchu Windows
+G03 62*00,20*f0|62*0000,20*0420|                                                              Windows Boot Manager
+G06 20*00,74*87|20*0000,74*0415|                    Windows failed to start. A recent hardware or software change might be the
+G08 20*00,26*87|20*0000,26*0415|                    cause. To fix the problem:
+G0c 23*00,67*87|23*0000,67*0415|                       1. Insert your Windows installation disc and restart your computer.
+G0e 23*00,56*87|23*0000,56*0415|                       2. Choose your language settings, and then click "Next."
+G10 23*00,32*87|23*0000,32*0415|                       3. Click "Repair your computer."
+G13 20*00,75*87|20*0000,75*0415|                    If you do not have this disc, contact your system administrator or computer
+G15 20*00,28*87|20*0000,28*0411|                    manufacturer for assistance.
+G1d 26*00,18*8f|26*0000,18*0411|                          Status: 0xc000000f
+G21 26*00,61*8f|26*0000,61*0415|                          Info: A required device isn't connected or can't be accessed.
+G30 21*00,18*f0,59*00,26*f0|21*0000,18*0420,59*0000,26*0420|                     ENTER=OS Selection                                                           ESC=UEFI Firmware Settings
+CHARON grid end

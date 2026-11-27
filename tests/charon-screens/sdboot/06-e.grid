@@ -1,0 +1,7 @@
+CHARON grid 31 100 17 77 1 systemd-boot
+G0e 32*00,36*f0|68*0000|                                        Charon probe loader         
+G0f 32*00,24*87|56*0000|                                           Windows Setup
+G10 32*00,33*87|65*0000|                                   Reboot Into Firmware Interface
+G11 77*87|77*0000|                       ──────────────────────────────────────────────────────
+G12 74*87|74*0000|                          Entry does not support editing the command line.
+CHARON grid end

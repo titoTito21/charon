@@ -1,0 +1,16 @@
+AudioDxe.efi of Charon r410
+===========================
+The sound driver shipped in r410 is byte-identical to the r409 driver
+(the same AudioDxe-r409.efi; it was not rebuilt for r410). Its licence and
+history are unchanged: GPL-2.0-or-later as since r408, because it contains
+codec and machine tables written from GPL-2.0-or-later files of the Linux
+kernel's sound/hda tree (AUDIO-CODECS.txt, section 1). The parts taken from
+OpenCorePkg / AUDK keep their BSD and MIT notices (the other files of this
+folder). What the driver does and how it is built: R409-LICENCE-NOTE.txt and
+BUILD-NOTES.md. It has not been run on a physical sound card.
+
+Corresponding source: corresponding-source\charon-source-r410.zip -
+src/efi/audio_stream/driver and tools/gen-charon-hda-quirks.py (the sound
+driver sources are the same as r409; the archive is the full r410 source tree).
+Switch for trouble on real hardware: an empty file \EFI\HAK\audio-noquirks
+turns the machine table off.

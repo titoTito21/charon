@@ -1,0 +1,6 @@
+# network.conf for a WPA2 network joined in Charon.
+lang=en
+flow=networkconf
+arg mac=3c:52:82:aa:bb:cc
+arg ssid=Dom Kowalskich
+arg key=bardzo tajne haslo

@@ -26,8 +26,12 @@ public:
         // ink when some pixel differs from it clearly in luminance.
         for(size_t y=0;y<height;++y) {
             const uint32_t* row=pixels+y*stride;
-            uint32_t samples[32];size_t n=0;
-            for(size_t i=0;i<32;++i)samples[n++]=row[(i*width)/32]&0xffffff;
+            // r410: 64 samples, and a row is a picture only when no colour holds a quarter of them. Until r410
+            // (32 samples, half of them) a long line of text in an area cropped to that very text - rEFInd's
+            // second hint line, the long lines of its About screen - left fewer than half of the samples on the
+            // background: the row counted as wallpaper and the line was not read.
+            uint32_t samples[64];size_t n=0;
+            for(size_t i=0;i<64;++i)samples[n++]=row[(i*width)/64]&0xffffff;
             uint32_t best=samples[0];size_t bestCount=0;
             for(size_t i=0;i<n;++i) {size_t c=0;for(size_t j=0;j<n;++j)if(samples[j]==samples[i])++c;if(c>bestCount) {bestCount=c;best=samples[i];}}
             rowBg_[y]=best;rowInk_[y]=false;rowWall_[y]=bestCount<16;
@@ -50,13 +54,49 @@ public:
             size_t end=y;while(end<height && rowInk_[end] && rowWall_[end]==rowWall_[y] && (rowWall_[y] || rowBg_[end]==rowBg_[y]))++end;
             // Taller than three lines of the largest font without a clear
             // row: icons and pictures, not text.
-            if(end-y<=96)recognized+=Block(pixels,width,height,stride,left,top,y,end,emit,idle);
+            recognized+=Segments(pixels,width,height,stride,left,top,y,end,emit,idle);
             y=end;
         }
         return recognized;
     }
 private:
     static constexpr size_t maxScan=2400,maxCells=320;
+    // r410: a block of ink rows on a plain background is cut into the parts that at least 24 blank columns
+    // separate, and each part is read with its own rows. Until r410 the whole block was one unit: text beside a
+    // picture (rEFInd's submenu entries next to the large icon, its About text next to the "i", Clover's
+    // lines next to a badge) started at the picture's first column and height, so it was either not found or,
+    // when the picture made the block taller than three lines, never looked at.
+    template<class Emit,class Idle> size_t Segments(const uint32_t* pixels,size_t width,size_t height,size_t stride,size_t left,size_t top,size_t y,size_t end,Emit& emit,Idle& idle) {
+        auto whole=[&]() {return end-y<=96?Block(pixels,width,height,stride,left,top,y,end,emit,idle):size_t(0);};
+        if(rowWall_[y])return whole();
+        const int bg=Lum(rowBg_[y]);
+        size_t from[8],to[8],count=0,blank=24;bool overflow=false;
+        for(size_t x=0;x<width && !overflow;++x) {
+            bool ink=false;
+            for(size_t r=y;r<end && !ink;++r) {const int d=Lum(pixels[r*stride+x])-bg;ink=d>48 || d<-48;}
+            if(!ink) {++blank;continue;}
+            if(blank>=24) {if(count==8)overflow=true;else {from[count]=x;to[count]=x+1;++count;}}
+            else to[count-1]=x+1;
+            blank=0;
+        }
+        if(overflow || !count)return whole();
+        size_t recognized=0;const size_t keepWidth=scanWidth_;
+        for(size_t i=0;i<count;++i) {
+            const size_t x0=from[i]>=8?from[i]-8:0,x1=to[i]+8<width?to[i]+8:width;
+            if(x1-x0<16)continue;
+            scanWidth_=x1-x0;
+            for(size_t r=y;r<end;) {
+                auto inked=[&](size_t row) {for(size_t x=from[i];x<to[i];++x) {const int d=Lum(pixels[row*stride+x])-bg;if(d>48 || d<-48)return true;}return false;};
+                if(!inked(r)) {++r;continue;}
+                size_t e=r;while(e<end && inked(e))++e;
+                if(e-r<=96)recognized+=Block(pixels+x0,x1-x0,height,stride,left+x0,top,r,e,emit,idle);
+                r=e;
+            }
+            idle();
+        }
+        scanWidth_=keepWidth;
+        return recognized;
+    }
     static int Lum(uint32_t p) {return int(((p>>16)&0xff)*299+((p>>8)&0xff)*587+(p&0xff)*114)/1000;}
     void Prepare() {
         if(prepared_)return;
@@ -159,12 +199,27 @@ private:
         size_t recognized=0;
         localBg_=rowWall_[start];
         int bg=Lum(rowBg_[start]);
+        uint32_t bgColour=rowBg_[start];
+        if(!localBg_) {
+            // r410: the background of THIS part: its most frequent brightness. A short selection bar (rEFInd's
+            // submenu: black text on a white bar 224 pixels wide in a grey screen) is not the row's main colour;
+            // read against the grey its blended edges were all too dark and the selected entry was not read.
+            // The bar's colour also goes out as the line's background, so the reader sees it as the selection.
+            uint32_t histogram[64]={};
+            for(size_t y=start;y<end;++y)for(size_t x=0;x<width;++x)++histogram[Lum(pixels[y*stride+x])>>2];
+            unsigned mode=0;for(unsigned i=1;i<64;++i)if(histogram[i]>histogram[mode])mode=i;
+            if(int(mode)!=(bg>>2) && (int(mode*4)-bg>=24 || bg-int(mode*4+3)>=24)) {
+                bool taken=false;
+                for(size_t y=start;y<end && !taken;++y)for(size_t x=0;x<width;++x)if(unsigned(Lum(pixels[y*stride+x])>>2)==mode) {bgColour=pixels[y*stride+x]&0xffffff;bg=Lum(bgColour);taken=true;break;}
+            }
+        }
         if(localBg_) {
             // Mean luminance of the block as the side the text is not on.
             uint64_t sum=0,count=0;
             for(size_t y=start;y<end;++y)for(size_t x=0;x<width;x+=3) {sum+=uint64_t(Lum(pixels[y*stride+x]));++count;}
             bg=int(sum/(count?count:1));
         }
+        unsigned misses=0;
         while(start<end) {
             Line best{0,0,0,0,0,0,0};bool found=false;
             const size_t blockRows=end-start;
@@ -220,7 +275,16 @@ private:
             if(!shortcut)break;  // every font was tried
             }
             idle();
-            if(!found)break;
+            if(!found) {
+                // r410: no line starts at the block's first ink row. Until r410 the rest of the block was given up:
+                // text beside a picture that begins higher (rEFInd's submenu entries next to the big icon, the
+                // second line of its About text next to the "i") was never read. Now the start moves down, three
+                // rows at a time (the search above tolerates that), at most 16 times per block.
+                if(++misses>16)break;
+                size_t next=start+3;while(next<end && !rowInk_[next])++next;
+                if(next>=end)break;
+                start=next;continue;
+            }
             lastFont_=best.font;
             const AaFont& font=aaFonts[best.font];
             {
@@ -235,7 +299,7 @@ private:
                 text[length]=0;
                 if(first!=SIZE_MAX) {
                     const uint32_t fgColor=uint32_t(best.fg)*0x010101u;
-                    emit(text+first,left+best.ox+first*font.width,top+best.top,fgColor,rowBg_[start],size_t(font.height));
+                    emit(text+first,left+best.ox+first*font.width,top+best.top,fgColor,bgColour,size_t(font.height));
                 }
             }
             // Continue below this line (the next line of a merged block).

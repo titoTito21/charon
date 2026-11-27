@@ -74,10 +74,18 @@ Exactly as Charon's SaveCharSettings:
   - read BOTH slots; a slot is valid only if it decodes AND its sequence parity
     matches the slot (slot a = odd sequence, slot b = even), choose the newest.
   - if either slot holds a record whose format is NEWER than this code
-    understands (magic "CHARS00" with a version byte past 'C'), REFUSE: the
+    understands (magic "CHARS00" with a version byte past 'E'), REFUSE: the
     store is not rewritten and the command says so.
-  - change only the requested field on the decoded record (every other byte is
-    kept), re-encode as the current CHARS00C 48-byte record with a fresh CRC.
+  - change only the requested field on the record. A record of format C, D or
+    E (r397 V12, r410 V13 and V14) is rewritten in ITS OWN format from its own
+    bytes: read-modify-write, so the settings this command does not know (V13:
+    formatting groups in byte 36 bits 2-4, verbosity profile in byte 38 bits
+    2-3; V14: the custom profile's items in byte 32 bits 3-7, byte 33 bits 2-7
+    and byte 37 bit 3, the reader bar and the colour ladder in byte 37 bits
+    4-5; byte 41 bit 7, the loading sound) come back bit for bit. The old
+    settings in those bytes are read through the masks of DecodeSettings
+    (byte 32 & 7, 33 & 3, 36 & 3, 37 & 7, 38 & 3). A record older than format
+    C is re-encoded as a CHARS00C 48-byte record, as before. Fresh CRC.
   - write the inactive slot (by the new sequence's parity), flush, close, read
     it back and compare - and do this TWICE (sequence+1 then sequence+2), so
     BOTH slots are refreshed and left in Charon's normal ping-pong state

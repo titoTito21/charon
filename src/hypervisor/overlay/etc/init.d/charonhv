@@ -1,0 +1,25 @@
+#!/sbin/openrc-run
+# Charon Hypervisor: the data partition, the sound set-up and the speaking machine manager.
+name="Charon Hypervisor"
+description="Speaking machine manager of Charon Hypervisor"
+command="/usr/bin/python3"
+command_args="/usr/lib/charonhv/charonhv.py"
+command_background=no
+supervisor=supervise-daemon
+respawn_delay=2
+respawn_max=5
+# session 9: after a crash the menu comes back by itself (said at its start) and takes the running machines back
+respawn_period=60
+output_log="/run/charonhv/manager.out"
+error_log="/run/charonhv/manager.out"
+
+depend() {
+	need localmount
+	after modules hwdrivers modloop
+}
+
+start_pre() {
+	mkdir -p /run/charonhv
+	/usr/lib/charonhv/prepare.sh >> /run/charonhv/prepare.log 2>&1
+	return 0
+}

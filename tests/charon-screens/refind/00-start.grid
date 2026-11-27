@@ -1,0 +1,5 @@
+CHARON grid 48 102 0 0 0 rEFInd
+G23 60*00,39*f0|60*0000,39*030e|                                                            Boot EFI\probe\GPROBE.EFI from GRUBTEST
+G24 66*00,28*f0|66*0000,28*030e|                                                                  Automatic boot in 19 seconds
+G2f 57*00,45*f0|57*0000,45*030e|                                                         Use arrow keys to move cursor; Enter to boot;
+CHARON grid end

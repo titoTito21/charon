@@ -1,0 +1,15 @@
+# r409: Windows as a step of a multi-system plan (CharonWsPlanDialogue.h InstallWindows sets these answers): installed into the partition the plan made (position 3, behind the EFI and the reserved partition), the clock in universal time, the time zone, the temporary media partition removed, and as the last first-logon commands: hibernation off, Charon first, the step reported, the restart.
+lang=en
+flow=windows
+mode=quick
+keys=ENTER ENTER "test" ENTER "test" ENTER
+keys=ENTER ENTER
+put diskmode=partition
+put plan=yes
+put planstep=1
+put clockutc=yes
+put timezone=Europe/Warsaw
+put bypass=yes
+put wmediaguid=0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0
+arg partition=3
+arg esp=1

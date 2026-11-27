@@ -1,0 +1,7 @@
+CHARON grid 34 100 0 0 1 GRUB
+G01 33*00,32*87|33*0000,32*0110|                                 GNU GRUB  version 2.12-9+deb13u4
+G03 4*00,83*87|4*0000,83*0110|    Minimal BASH-like line editing is supported. For the first word, TAB lists possible
+G04 4*00,84*87|4*0000,84*0110|    command completions. Anywhere else TAB lists possible device or file completions. To
+G05 4*00,65*87|4*0000,65*0110|    enable less(1)-like paging, "set pager=1". ESC at any time exits.
+G08 1*00,7*87|1*0000,7*0110| grub> ▁
+CHARON grid end

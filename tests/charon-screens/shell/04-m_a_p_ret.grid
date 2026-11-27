@@ -1,0 +1,33 @@
+CHARON grid 31 100 30 7 1 Program
+G00 14*8f,25*87|39*0000|loadpcirom    - Loads a PCI Option ROM.
+G01 14*8f,56*87|70*0000|ls            - Lists the contents of a directory or file information.
+G02 14*8f,43*87|57*0000|map           - Displays or defines file system mappings.
+G03 14*8f,61*87|75*0000|memmap        - Displays the memory map maintained by the UEFI environment.
+G04 14*8f,38*87|52*0000|mkdir         - Creates one or more new directories.
+G05 14*8f,58*87|72*0000|mm            - Displays or modifies MEM/MMIO/IO/PCI/PCIE address space.
+G06 14*8f,53*87|67*0000|mode          - Displays or changes the console output device mode.
+G07 14*8f,74*87|88*0000|mv            - Moves one or more files to a destination within or between file systems.
+G08 14*8f,61*87|75*0000|openinfo      - Displays the protocols and agents associated with a handle.
+G09 14*8f,55*87|69*0000|parse         - Retrieves a value from a standard format output file.
+G0a 14*8f,59*87|73*0000|pause         - Pauses a script and waits for an operator to press a key.
+G0b 14*8f,80*87|94*0000|pci           - Displays PCI device list or PCI function configuration space and PCIe extended
+G0c 20*87|20*0000|configuration space.
+G0d 14*8f,42*87|56*0000|ping          - Ping the target host with an IPv4 stack.
+G0e 14*8f,53*87|67*0000|ping6         - Ping a target machine with UEFI IPv6 network stack.
+G0f 14*8f,44*87|58*0000|reconnect     - Reconnects drivers to the specific device.
+G10 14*8f,20*87|34*0000|reset         - Resets the system.
+G11 14*8f,43*87|57*0000|rm            - Deletes one or more files or directories.
+G12 14*8f,30*87|44*0000|sermode       - Sets serial port attributes.
+G13 14*8f,56*87|70*0000|set           - Displays or modifies UEFI Shell environment variables.
+G14 14*8f,29*87|43*0000|setsize       - Adjusts the size of a file.
+G15 38*87|38*0000|Press ENTER to continue or 'Q' break:q
+G16 7*8e,3*87|10*0000|Shell> map
+G17 13*8e|13*0000|Mapping table
+G18 10*8e,1*87,9*8f,16*87|36*0000|      FS1: Alias(s):F1a65535a:;BLK1:
+G19 57*87|57*0000|          PciRoot(0x0)/Pci(0x1F,0x2)/Sata(0x0,0xFFFF,0x0)
+G1a 10*8e,1*87,9*8f,16*87|36*0000|      FS2: Alias(s):F1b65535a:;BLK2:
+G1b 57*87|57*0000|          PciRoot(0x0)/Pci(0x1F,0x2)/Sata(0x1,0xFFFF,0x0)
+G1c 10*8e,1*87,9*8f,9*87|29*0000|      FS0: Alias(s):F0:;BLK0:
+G1d 49*87|49*0000|          MemoryMapped(0x2,0x12633000,0x16E32FFF)
+G1e 6*8e|6*0000|Shell>
+CHARON grid end

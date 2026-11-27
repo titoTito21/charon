@@ -29,6 +29,7 @@ struct Entry {
     size_t classic;                       // Way::classic: 0 Debian, 1 Ubuntu, 2 Windows
     const char16_t* notePl;const char16_t* noteEn;   // said after the entry is chosen (may be null)
     bool wholeOnly=false;                 // an image whose boot loader names its partition by number: it cannot live beside other systems
+    bool unofficial=false;                // r409: a Windows image not made by Microsoft: its own group, a warning and a typed word (ConfirmUnofficial)
 };
 inline const char16_t* SpeechText(Speech s) {
     return s==Speech::installer?T(u"mówi w instalatorze",u"speaks in the installer")
@@ -49,6 +50,14 @@ inline const Entry blindGroup[]={
      u"The official Arch installation system with console speech. You carry out the installation yourself, for example with the command archinstall."},
     {u"Slint, Slackware z mówiącym instalatorem",u"Slint, Slackware with a speaking installer",Speech::installer,Way::iso,"https://slackware.uk/slint/x86_64/slint-15.0/iso/slint64-15.0-10.iso",4700*megabyte,0,
      u"Obraz ma 4,6 gigabajta. Projekt jest dziś rzadko aktualizowany.",u"The image is 4.6 gigabytes. The project is rarely updated these days."},
+    // r409: Stormux (https://stormux.org), an Arch-based system for blind people: Fenrir in the console, Cthulhu and I38 on
+    // the desktop. Its x86_64 image is an ISO since 2026 (https://stormux.org/downloads/, 2 043 084 800 bytes, SHA-1
+    // 3b79025b1c2fab1deb74a3e67b89771cf27bc7b1 in stormux-x86_64-2026-11-01.iso.sha1sum). Looked into (r409): an archiso image,
+    // \EFI\BOOT\BOOTx64.EFI is systemd-boot whose default entry is "with speech" (accessibility=on); its root image
+    // enables stormux-speech.service, which starts Fenrir, and holds /usr/local/bin/install-stormux. The address names a
+    // dated file: a new image needs a new address here.
+    {u"Stormux, Arch Linux dla niewidomych: Fenrir, Cthulhu i I38",u"Stormux, Arch Linux for blind people: Fenrir, Cthulhu and I38",Speech::installer,Way::iso,"https://stormux.org/downloads/stormux-x86_64-2026-11-01.iso",1950*megabyte,0,
+     u"Obraz ma 1,9 gigabajta. Po uruchomieniu w konsoli odzywa się czytnik ekranu Fenrir; system instalujesz na dysku poleceniem install-stormux.",u"The image is 1.9 gigabytes. After starting, the Fenrir screen reader speaks in the console; you install the system to a disk with the command install-stormux."},
     {u"Accessible-Coconut, Ubuntu z czytnikiem Orca",u"Accessible-Coconut, Ubuntu with the Orca screen reader",Speech::installer,Way::iso,"https://sourceforge.net/projects/accessible-coconut/files/latest/download",3800*megabyte,0,
      u"Obraz ma 3,7 gigabajta i opiera się na Ubuntu 22.04; projekt od dawna nie był aktualizowany.",u"The image is 3.7 gigabytes and is based on Ubuntu 22.04; the project has not been updated for a long time."},
     {u"inny obraz ISO z adresu, który wpiszesz, na przykład Vojtux",u"another ISO image from an address you type, for example Vojtux",Speech::installer,Way::customIso,nullptr,0,0,
@@ -59,7 +68,8 @@ inline const Entry imageGroup[]={
     {u"Ubuntu 26.04, gotowy obraz",u"Ubuntu 26.04, ready-made image",Speech::afterInstall,Way::qcow,"https://cloud-images.ubuntu.com/releases/26.04/release/ubuntu-26.04-server-cloudimg-amd64.img",3584*megabyte,0,nullptr,nullptr},
     {u"Arch Linux, gotowy obraz",u"Arch Linux, ready-made image",Speech::afterInstall,Way::qcow,"https://geo.mirror.pkgbuild.com/images/latest/Arch-Linux-x86_64-cloudimg.qcow2",2048*megabyte,0,nullptr,nullptr,true},
     {u"Fedora 45, gotowy obraz",u"Fedora 45, ready-made image",Speech::none,Way::qcow,"https://download.fedoraproject.org/pub/fedora/linux/releases/45/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-45-1.4.x86_64.qcow2",5120*megabyte,0,
-     u"Fedora nie ma pakietu z mową w konsoli, więc po instalacji ten system nie mówi.",u"Fedora has no package for console speech, so this system does not speak after installation."},
+     // r409: checked against Fedora 45's package index: neither espeakup nor Fenrir is packaged (Emacspeak, Orca, eSpeak NG and Speech Dispatcher are)
+     u"Fedora nie ma pakietu espeakup ani Fenrir, więc Charon nie konfiguruje tam czytnika ekranu w konsoli i po instalacji ten system nie mówi.",u"Fedora has no package of espeakup or Fenrir, so Charon sets up no console screen reader there and this system does not speak after installation."},
     {u"Haiku R1 beta 6",u"Haiku R1 beta 6",Speech::none,Way::rawNoSeed,"https://haiku-release.cdn.haiku-os.org/r1beta6/haiku-r1beta6-x86_64-anyboot.iso",1500*megabyte,0,
      u"Oficjalne Haiku nie ma czytnika ekranu. Obraz to nośnik rozruchowy z instalatorem Haiku, bez mowy.",u"Official Haiku has no screen reader. The image is bootable media with the Haiku installer, without speech."},
 };
@@ -83,6 +93,14 @@ inline const Entry dosGroup[]={
     {u"uruchom CharonDOS teraz, bez instalacji",u"start CharonDOS now, without installing",Speech::charon,Way::dos,nullptr,0,0,
      u"CharonDOS uruchamia programy DOS działające w trybie tekstowym. Jego ekran czyta czytnik ekranu Charona.",u"CharonDOS runs text-mode DOS programs. Charon's screen reader reads its screen."},
 };
+// r409 (user): Windows images made by someone other than Microsoft, in a group of their own, each behind a spoken
+// warning and a typed word. One image qualifies: Tiny11 25H2 by NTDEV (address and SHA-256: CharonWsInstall2.h,
+// windowsUnofficial and tiny11Sha256). It is installed like Windows (Way::classic, system 2): Charon's own answer
+// file, screen readers, BitLocker prevention, Charon's reader and boot entry. Not here, on purpose: Tiny11 Core,
+// Nano11, X-Lite, Ghost Spectre and any image that is pre-activated or cannot be checked against its author's hash.
+inline const Entry unofficialGroup[]={
+    {u"Tiny11 25H2 od NTDEV, nieoficjalny obraz Windows 11, po angielsku",u"Tiny11 25H2 by NTDEV, an unofficial Windows 11 image, in English",Speech::installer,Way::classic,nullptr,0,2,nullptr,nullptr,false,true},
+};
 struct Group {const char16_t* pl;const char16_t* en;const Entry* entries;size_t count;};
 #define CHARON_GROUP(list) list,sizeof(list)/sizeof(list[0])
 inline const Group groups[]={
@@ -92,6 +110,7 @@ inline const Group groups[]={
     {u"gotowe obrazy systemów, najszybsza instalacja",u"ready-made system images, the fastest installation",CHARON_GROUP(imageGroup)},
     {u"narzędzia i netboot.xyz",u"tools and netboot.xyz",CHARON_GROUP(toolsGroup)},
     {u"CharonDOS",u"CharonDOS",CHARON_GROUP(dosGroup)},
+    {u"Windows, obrazy nieoficjalne",u"Windows, unofficial images",CHARON_GROUP(unofficialGroup)},   // r409: last, after everything official
 };
 // A system without speech: the user must say they know.
 inline bool ConfirmSilent(const Entry& e) {
@@ -101,13 +120,31 @@ inline bool ConfirmSilent(const Entry& e) {
         u": this system does not speak. A blind person cannot use it without someone's help or their own screen reader. Continue anyway?"));
     return Confirm(text);
 }
+// r409: an unofficial Windows image: the warning, then a typed word (as in ConfirmPlan), so that Enter alone
+// cannot pass it. The word is UNOFFICIAL, in Polish NIEOFICJALNY.
+inline bool ConfirmUnofficial(const Entry& e) {
+    if(!e.unofficial)return true;
+    Say(T(u"Uwaga: to jest nieoficjalny obraz Windows. Nie zrobił go Microsoft i Microsoft nie może go zweryfikować; Microsoft nie zezwala na rozpowszechnianie zmienionych nośników Windows. Charon sprawdzi tylko, czy plik jest tym, który opublikował autor, a nie co jest w środku. Może brakować części systemu, także tych potrzebnych osobie niewidomej. To nie jest licencja: potrzebujesz własnej licencji albo klucza Windows. Obraz pochodzi z października 2025 i po instalacji trzeba go zaktualizować. Oficjalny Windows z profilem odchudzonym daje podobny wynik. Aby iść dalej, wpisz słowo NIEOFICJALNY i naciśnij Enter. Escape anuluje.",
+          u"Warning: this is an unofficial Windows image. It was not made by Microsoft and Microsoft cannot verify it; Microsoft does not permit redistribution of modified Windows media. Charon can only check that the file is the one its author published, not what is inside. Parts may be missing, including parts a blind user needs. It is not a licence: you need your own Windows licence or key. This image is from October 2025 and must be updated after installation. Official Windows with the slim profile gives a similar result. To go on, type the word UNOFFICIAL and press Enter. Escape cancels."));
+    static char16_t word[24];word[0]=0;
+    if(!Prompt(T(u"Wpisz NIEOFICJALNY, aby iść dalej:",u"Type UNOFFICIAL to go on:"),word,23,nullptr,nullptr,false))return false;
+    if(!SameFold(word,T(u"nieoficjalny",u"unofficial"))) {Say(T(u"Nie wpisano potwierdzenia. Nic nie zostało zmienione.",u"No confirmation was typed. Nothing was changed."));return false;}
+    return true;
+}
 #ifdef HAK_CHARON_HTTPS
 inline void Widen(const char* in,char16_t* out,size_t cap) {size_t n=0;for(;in[n] && n+1<cap;++n)out[n]=char16_t(uint8_t(in[n]));out[n]=0;}
 inline bool Narrow(const char16_t* in,char* out,size_t cap) {size_t n=0;for(;in[n] && n+1<cap;++n) {if(in[n]<33 || in[n]>126)return false;out[n]=char(in[n]);}out[n]=0;return n>0;}
 // What Charon cannot do for a system it only starts: say it plainly.
 inline void SayCharonStays() {
-    Say(T(u"Uwaga: tego systemu Charon nie instaluje sam, więc nie doda do niego swojego czytnika ekranu ani menedżera rozruchu. Po instalacji uruchom komputer z pendrive'a z Charonem; instalator Charona jest w folderze EFI, HAK, addon.",
-          u"Note: Charon does not install this system itself, so it cannot add its screen reader or its boot manager to it. After the installation start the computer from the Charon USB stick; Charon's installer is in the folder EFI, HAK, addon."));
+    // r409: the advice names the place Charon really runs from: a stick or disc that is still there, or this computer's
+    // own disk (Charon then keeps starting from it, unless the new system erases that disk).
+    const bool removable=!hakefi::selfram::Active() || hakefi::selfram::OriginalDevice();
+    bool internal=false;
+    if(removable) {disks::Load();auto& s=disks::D();for(size_t i=0;i<s.count;++i)if(s.list[i].hasCharon && !s.list[i].usb && !s.list[i].removable)internal=true;}
+    if(internal)Say(T(u"Uwaga: tego systemu Charon nie instaluje sam, więc nie doda do niego swojego czytnika ekranu ani menedżera rozruchu. Charon zostaje na dysku tego komputera, o ile nowy system nie wymaże tego dysku; po instalacji wybierz w firmware wpis rozruchowy Charon. Instalator Charona dla nowego systemu jest w folderze EFI, HAK, addon.",
+          u"Note: Charon does not install this system itself, so it cannot add its screen reader or its boot manager to it. Charon stays on this computer's disk, unless the new system erases that disk; after the installation choose the boot entry Charon in the firmware. Charon's installer for the new system is in the folder EFI, HAK, addon."));
+    else Say(T(u"Uwaga: tego systemu Charon nie instaluje sam, więc nie doda do niego swojego czytnika ekranu ani menedżera rozruchu. Po instalacji uruchom komputer z nośnika, z którego uruchomiono Charona; instalator Charona jest w folderze EFI, HAK, addon.",
+          u"Note: Charon does not install this system itself, so it cannot add its screen reader or its boot manager to it. After the installation start the computer from the medium Charon was started from; Charon's installer is in the folder EFI, HAK, addon."));
     HearOut(250);
 }
 // ---- Arch Linux from the official mirror, with speech ---------------------------
@@ -116,10 +153,10 @@ inline bool RunArchNet(const Entry& e) {
     if(ramdisk::FreeMemory()<(uint64_t(3)<<30)) {
         Fail(T(u"System instalacyjny Archa działa w całości w pamięci i potrzebuje co najmniej 3 gigabajtów wolnej pamięci RAM.",u"The Arch installation system runs entirely in memory and needs at least 3 gigabytes of free RAM."));return false;}
     static char16_t url[400];static Memory kernel,initrd;
+    static char16_t url2[400];   // r410 (agent 3): kernel and initrd at once
     Widen(e.url,url,300);Cat(url,400,u"arch/boot/x86_64/vmlinuz-linux");
-    if(!FetchToMemory(url,kernel,0,T(u"jądro Arch Linux",u"the Arch Linux kernel")))return false;
-    Widen(e.url,url,300);Cat(url,400,u"arch/boot/x86_64/initramfs-linux.img");
-    if(!FetchToMemory(url,initrd,0,T(u"obraz rozruchowy Arch Linux",u"the Arch Linux boot image"))) {Free(kernel);return false;}
+    Widen(e.url,url2,300);Cat(url2,400,u"arch/boot/x86_64/initramfs-linux.img");
+    if(!FetchPairToMemory(url,kernel,0,T(u"jądro Arch Linux",u"the Arch Linux kernel"),url2,initrd,0,T(u"obraz rozruchowy Arch Linux",u"the Arch Linux boot image")))return false;
     static char16_t arguments[500];Set(arguments,500,u"archiso_http_srv=");{static char16_t base[300];Widen(e.url,base,300);Cat(arguments,500,base);}
     Cat(arguments,500,u" archisobasedir=arch cms_verify=y ip=:::::eth0:dhcp net.ifnames=0 accessibility=on");
     SayCharonStays();
@@ -195,6 +232,11 @@ inline const Question imageQuestions[]={
     {"readers",true,Kind::multi,u"Czytniki ekranu:",u"Screen readers:","orca,speakup",CHARON_CHOICES(linuxReaders),CHARON_READER_HELP_PL,CHARON_READER_HELP_EN},
     {"ssh",false,Kind::yesNo,u"Pozwolić na logowanie hasłem przez SSH?",u"Allow signing in with a password over SSH?","no",nullptr,0,nullptr,nullptr},
 };
+// r410 (ls): the Fedora image gets no desktop and no screen reader (its entry says so: Speech::none, no espeakup or
+// Fenrir package), so neither question is asked for it - the reader question offered Speakup after saying there is none.
+inline const Question imageQuestionsFedora[]={
+    {"ssh",false,Kind::yesNo,u"Pozwolić na logowanie hasłem przez SSH?",u"Allow signing in with a password over SSH?","no",nullptr,0,nullptr,nullptr},
+};
 // r403: which system an image is, by its official address: d Debian, u Ubuntu, a Arch, f Fedora.
 inline char DistroOf(const Entry& e) {
     const char* u=e.url?e.url:"";
@@ -221,7 +263,7 @@ inline const char* DesktopPackages(const char* id,char distro) {
 inline void ImageUserData(Text& y,bool speech,char distro) {
     y.Line("#cloud-config");
     y.Line("# Written by Charon from spoken answers.");
-    y.Line("hostname: ",ask::Get("hostname"));
+    y.Line("hostname: \"",ask::Get("hostname"),"\"");   // r409: quoted, as the user name below: no, on, null would be read as YAML truth values
     y.Line("locale: ",ask::Get("locale"),".UTF-8");
     y.Line("timezone: ",ask::Get("timezone"));
     // r405: Debian's image has no console-setup, so cloud-init's keyboard module fails there
@@ -243,7 +285,7 @@ inline void ImageUserData(Text& y,bool speech,char distro) {
     y.Line("bootcmd:");
     y.Line("  - [sh, -c, 'L=",ask::Get("locale"),".UTF-8; if [ -f /etc/locale.gen ] && ! grep -q \"^$L\" /etc/locale.gen; then echo \"$L UTF-8\" >> /etc/locale.gen; locale-gen >/dev/null 2>&1; fi; true']");
     y.Line("users:");
-    y.Line("  - name: ",ask::Get("user"));
+    y.Line("  - name: \"",ask::Get("user"),"\"");
     y.Line("    gecos: \"",ask::Get("fullname"),"\"");
     y.Line("    passwd: \"",ask::Get("hash"),"\"");
     y.Line("    lock_passwd: false");
@@ -268,16 +310,18 @@ inline void ImageUserData(Text& y,bool speech,char distro) {
     y.Line("runcmd:");
     // The EFI partition holds Charon and its scripts (CharonOnto); it may be mounted at /boot/efi or /efi, or not yet.
     y.Add("  - [sh, -c, 'e=/boot/efi; [ -d /efi/EFI/HAK ] && e=/efi; if [ ! -d $e/EFI/HAK ]; then mkdir -p /run/charon-esp; for d in $(blkid -t TYPE=vfat -o device); do mount $d /run/charon-esp 2>/dev/null || continue; [ -d /run/charon-esp/EFI/HAK ] && { e=/run/charon-esp; break; }; umount /run/charon-esp; done; fi; mkdir -p /var/lib/charon; "
-          "for f in install-charon.sh speech.sh progress.sh firstboot.sh charon-tone; do cp $e/EFI/HAK/$f /var/lib/charon/ 2>/dev/null; done; sed -i \"s|^esp=.*|esp=$e|\" /var/lib/charon/install-charon.sh; "
+          "for f in install-charon.sh speech.sh progress.sh firstboot.sh network.sh charon-tone voice.conf network.conf; do cp $e/EFI/HAK/$f /var/lib/charon/ 2>/dev/null; done; chmod 600 /var/lib/charon/network.conf 2>/dev/null; sed -i \"s|^esp=.*|esp=$e|\" /var/lib/charon/install-charon.sh; "
           "sh /var/lib/charon/firstboot.sh setup ");
     y.Add(args);y.Add(" ");y.Add(list[0]?list:"none");y.Add(ask::Is("dual","yes")?" yes":" no");y.Line("; true']");
     // r405: the images name the serial port as the last console, which makes it the main
     // one: on a computer the start-up messages and the emergency prompt then go to a port
     // nobody reads, and a console reader has nothing to read. The screen becomes the main
     // console; the serial port keeps getting the kernel's messages.
-    y.Line("  - [sh, -c, 'c=0; for f in /etc/default/grub /etc/default/grub.d/*.cfg; do [ -f \"$f\" ] && grep -q \"console=tty[01] console=ttyS0\" \"$f\" && { sed -i \"s/console=tty\\([01]\\) console=ttyS0\\(,[0-9n]*\\)\\{0,1\\}/console=ttyS0\\2 console=tty\\1/\" \"$f\"; c=1; }; done; [ $c = 1 ] && { command -v update-grub >/dev/null 2>&1 && update-grub || grub-mkconfig -o /boot/grub/grub.cfg; } >/dev/null 2>&1; true']");
+    y.Line("  - [sh, -c, 'c=0; for f in /etc/default/grub /etc/default/grub.d/*.cfg; do [ -f \"$f\" ] && grep -q \"console=tty[01] console=ttyS0\" \"$f\" && { sed -i \"s/console=tty\\([01]\\) console=ttyS0\\(,[0-9n]*\\)\\{0,1\\}/console=ttyS0\\2 console=tty\\1/\" \"$f\"; c=1; }; done; [ $c = 1 ] && { if command -v update-grub >/dev/null 2>&1; then update-grub; elif command -v grub2-mkconfig >/dev/null 2>&1; then grub2-mkconfig -o /boot/grub2/grub.cfg; else grub-mkconfig -o /boot/grub/grub.cfg; fi; } >/dev/null 2>&1; true']");   // r409: Fedora's command is grub2-mkconfig (docs.fedoraproject.org, quick-docs, grub2-bootloader)
     if(distro=='d')
         y.Line("  - [sh, -c, 'systemctl restart keyboard-setup.service console-setup.service >/dev/null 2>&1; true']");
+    if(detailed::Carried())   // r410: the detailed answers; the file with them leaves the EFI partition
+        y.Line("  - [sh, -c, 'for e in /boot/efi /efi /run/charon-esp; do [ -f $e/EFI/HAK/answers.env ] && break; done; if [ -f $e/EFI/HAK/answers.env ]; then cp $e/EFI/HAK/answers.env $e/EFI/HAK/personal.sh /var/lib/charon/; chmod 600 /var/lib/charon/answers.env; rm -f $e/EFI/HAK/answers.env; sh /var/lib/charon/personal.sh install now; fi; true']");
     y.Line("  - [sh, -c, 'sh /var/lib/charon/firstboot.sh done; true']");
 }
 // r405: a ready image brings no firmware boot entry: nothing in it ever ran
@@ -317,6 +361,68 @@ inline bool RegisterImage(efi_handle esp,const Entry& e,bool beside,bool charon)
     }
     return true;
 }
+// r410 (ls): a ready image whose own EFI partition is too small for Charon (Fedora's: 100 MB, about 80 MB of Charon
+// did not fit and the copy stopped part-way). Only on a whole disk, after SeedOnto (backup table at the end, CIDATA
+// as the last partition): a new EFI partition of 256 MiB is made just before CIDATA (the root partition can still
+// grow up to it), formatted FAT16 (as the image's own: Fedora's is FAT16 too) with the SAME volume serial number,
+// so the image's fstab line "UUID=XXXX-XXXX /boot/efi" finds it; the image's \EFI is copied onto it; then the old
+// EFI partition is taken out of the table (its 100 MB stay unused). Every step before the removal leaves the old one
+// as it was: on any failure the new partition is removed again and null is returned (the caller then copies to the
+// old partition, which fails and is said, as before). Returns the new volume.
+inline efi_handle BiggerEsp(const disks::Disk& d,uint64_t wantBytes) {
+    using namespace seeddisk;
+    if(d.blockSize!=512 || !d.io)return nullptr;
+    Disk disk{d.io,d.blockSize,d.blocks,images::SeedRead,images::SeedWrite};uint8_t* work=images::SeedWork();
+    static Partition parts[16];Info info{};
+    if(Inspect(disk,work,kWorkBytes,parts,16,info)!=Error::None || !info.backupAtEnd)return nullptr;
+    const Partition* old=nullptr;const Partition* seed=nullptr;uint64_t below=0;
+    for(size_t i=0;i<info.partitionCount;++i) {
+        const auto& p=parts[i];
+        if(detail::Same(p.type.bytes,kTypeEfiSystem.bytes,16) && !old)old=&p;
+        if(p.name[0]==u'c' && p.name[1]==u'i' && p.name[2]==u'd' && p.name[3]==u'a' && p.name[4]==u't' && p.name[5]==u'a' && !p.name[6])seed=&p;
+    }
+    if(!old || !seed)return nullptr;
+    if((old->lastLba-old->firstLba+1)*512>=wantBytes)return nullptr;   // already big enough
+    for(size_t i=0;i<info.partitionCount;++i)if(&parts[i]!=seed && parts[i].lastLba>below)below=parts[i].lastLba;
+    const uint64_t count=wantBytes/512,first=(seed->firstLba-count)/2048*2048;
+    if(seed->firstLba<count+2048 || first<=below)return nullptr;
+    static uint8_t boot[512];
+    if(!images::SeedRead(d.io,old->firstLba,boot,1) || boot[510]!=0x55 || boot[511]!=0xAA)return nullptr;
+    const bool fat32=boot[22]==0 && boot[23]==0;const uint8_t* sn=boot+(fat32?67:39);
+    FatOptions options{};options.sectorSize=512;options.hiddenSectors=uint32_t(first);
+    options.serial=uint32_t(sn[0])|uint32_t(sn[1])<<8|uint32_t(sn[2])<<16|uint32_t(sn[3])<<24;
+    const Guid oldUnique=old->unique;const uint64_t oldFirst=old->firstLba;
+    static char16_t name[37];for(int k=0;k<37;++k)name[k]=old->name[k];
+    AddRequest request{};request.type=kTypeEfiSystem;images::RandomGuid(request.unique,3);request.name=name[0]?name:u"EFI System Partition";
+    request.sizeBytes=count*512;request.alignmentBytes=0;request.placement=Placement::At;request.firstLba=first;request.attributes=0;
+    AddResult added{};
+    Error error=AddPartition(disk,work,kWorkBytes,request,added);
+    charontrace::Value("CHARON bigger esp added",(uint64_t(error)<<56)|added.firstLba);
+    if(error!=Error::None)return nullptr;
+    const Guid unique=request.unique;
+    auto undo=[&]() {const auto e2=RemovePartition(disk,work,kWorkBytes,unique,kTypeEfiSystem,first);charontrace::Value("CHARON bigger esp undone",uint64_t(e2));images::Reconnect(d.handle);return efi_handle(nullptr);};
+    static Memory memory;memory.reserved=false;memory.extra=0;
+    if(!Reserve(memory,size_t(count*512)))return undo();
+    FatInfo fat{};
+    error=BuildFat(memory.data,size_t(count*512),"EFI",nullptr,0,options,&fat);
+    if(error==Error::None)error=WriteImage(disk,first,added.lbaCount,memory.data,size_t(1+2*fat.fatSectors+kFatRootEntries*32/512)*512);
+    Free(memory);
+    if(d.io->FlushBlocks)reinterpret_cast<images::BlockFlush>(d.io->FlushBlocks)(d.io);
+    charontrace::Value("CHARON bigger esp fat",uint64_t(error));
+    if(error!=Error::None)return undo();
+    images::Reconnect(d.handle);
+    efi_handle to=images::VolumeOfPartition(unique.bytes),from=images::VolumeOfPartition(oldUnique.bytes);
+    if(!to || !from)return undo();
+    FileRef a,b;a.volume=from;b.volume=to;Set(a.path,pathUnits,u"\\EFI");Set(b.path,pathUnits,u"\\EFI");size_t files=0;
+    const efi_status copied=CopyTree(a,b,0,&files);
+    charontrace::Value("CHARON bigger esp copied",(uint64_t(copied)<<32)|files);
+    if(copied!=EFI_SUCCESS || !files)return undo();
+    error=RemovePartition(disk,work,kWorkBytes,oldUnique,kTypeEfiSystem,oldFirst);
+    charontrace::Value("CHARON bigger esp old removed",uint64_t(error));
+    if(error!=Error::None)return undo();
+    images::Reconnect(d.handle);
+    return images::VolumeOfPartition(unique.bytes);
+}
 inline bool RunImage(const Entry& e) {
     if(!EnsureNetwork()) {HearOut(200);return false;}
     size_t mode=0;
@@ -325,12 +431,33 @@ inline bool RunImage(const Entry& e) {
     if(seeded) {
         if(!ask::Choose(T(u"Który tryb?",u"Which mode?"),CHARON_CHOICES(imageModes),mode))return false;
         if(Pl() && !ask::Get("locale")[0])ask::Put("locale","pl_PL");   // r405: Charon speaking Polish offers Polish first
+        {const char distro=DistroOf(e);detailed::Begin('l',distro=='d'?'D':distro=='u'?'U':distro=='a'?'A':'F');}   // r410
+        const bool fedora=DistroOf(e)=='f';
+        const Question* own=fedora?imageQuestionsFedora:imageQuestions;
+        const size_t owns=fedora?sizeof(imageQuestionsFedora)/sizeof(imageQuestionsFedora[0]):sizeof(imageQuestions)/sizeof(imageQuestions[0]);
+        detailed::SetMain(commonQuestions,sizeof(commonQuestions)/sizeof(commonQuestions[0]),own,owns);
+        if(mode==1 && !sets::Offer())return false;
         if(!ask::Run(commonQuestions,sizeof(commonQuestions)/sizeof(commonQuestions[0]),mode==0))return false;
-        if(!ask::Run(imageQuestions,sizeof(imageQuestions)/sizeof(imageQuestions[0]),mode==0))return false;
-        if(DistroOf(e)=='f' && ask::Any("desktop")) {Say(T(u"Do obrazu Fedory Charon nie dodaje pulpitów; zostaje system z samą konsolą.",u"Charon adds no desktops to the Fedora image; it stays a console-only system."));ask::Put("desktop","");}
+        if(!ask::Run(own,owns,mode==0))return false;
+        if(fedora) {ask::Put("desktop","");ask::Put("readers","");}   // r410: not asked (above)
         if(!ResolveReaders(ask::Any("desktop")))return false;
         DeriveDefaults();HashPassword();
         if(!ask::Get("hash")[0]) {Fail(T(u"Nie udało się przygotować hasła.",u"The password could not be prepared."));return false;}
+        // r410 (ls): the Fedora image's own EFI partition (100 MB) cannot hold Charon's files; on a whole disk Charon
+        // gives the system a bigger one (BiggerEsp), so the detailed questions and the software sets are asked for it
+        // too. Beside other systems that is not done: said now, before the questions.
+        if(mode==1 && fedora) {
+            Say(T(u"Obraz Fedory ma partycję EFI o rozmiarze tylko 100 megabajtów, w której nie mieszczą się pliki Charona. Jeśli wymażesz cały dysk, Charon da Fedorze nową partycję EFI o rozmiarze 256 megabajtów i przeniesie na nią jej pliki rozruchowe; odpowiedzi szczegółowe i zestawy programów zadziałają wtedy jak w innych systemach. Obok innych systemów tego nie robię i wtedy system zainstaluje się z ustawieniami domyślnymi.",
+                  u"The Fedora image has an EFI partition of only 100 megabytes, which cannot hold Charon's files. If you erase the whole disk, Charon gives Fedora a new EFI partition of 256 megabytes and moves its boot files onto it; the detailed answers and the software sets then work as in the other systems. Beside other systems I do not do that, and the system is then installed with its default settings."));
+            HearOut(200);
+        }
+        if(mode==1 && !detailed::Run())return false;   // r410: the groups of the detailed mode
+        // r409: before any disk is chosen or written: every answer was kept and the configuration fits its file
+        // (it is written only after the image is on the disk, when it is too late to find out).
+        if(!ask::Complete())return false;
+        {static char probe[32000-256];Text y{probe,sizeof(probe),0,false};probe[0]=0;ImageUserData(y,ask::Is("speech","yes") && e.speech!=Speech::none,DistroOf(e));
+         const bool fits=!y.overflow;for(auto& c:probe)c=0;
+         if(!fits) {AnswersDoNotFit();return false;}}
     }
     size_t index=0;auto& remap=images::R();remap=images::Remap{};
     // r402: beside the systems already there (dual boot), or the whole disk.
@@ -378,16 +505,18 @@ inline bool RunImage(const Entry& e) {
     if(seeded && U().host->ensureReader && !U().host->ensureReader(U().host->context))
         Say(T(u"Uwaga: nie udało się włączyć dodatku czytnika ekranu w firmware.",u"Note: the screen reader add-on could not be turned on in the firmware."));
     uint64_t written=0;const char16_t* what=T(u"Obraz na dysk",u"Image to the disk");
+    const bool ownHome=d.hasCharon && !remap.on;   // r409: Charon's own disk is erased whole: Charon is carried back with its answer sets and plan state
     const bool wrote=e.way==Way::qcow?images::QcowToDisk(e.url,d,what,&written):images::UrlToDisk(e.url,d,what,&written);
     if(!wrote) {remap.on=false;return false;}
     bool configured=true,charon=false;
     if(seeded) {
-        static char userData[9000];static char metaData[200];Text y{userData,sizeof(userData),0,false};userData[0]=0;
+        static char userData[32000];static char metaData[200];   // r409: was 9000; static, not on the stack
+Text y{userData,sizeof(userData),0,false};userData[0]=0;
         const bool speech=ask::Is("speech","yes") && e.speech!=Speech::none;
         ImageUserData(y,speech,DistroOf(e));
         Text m{metaData,sizeof(metaData),0,false};metaData[0]=0;
         {uint32_t lo,hi;__asm__ volatile("rdtsc":"=a"(lo),"=d"(hi));m.Add("instance-id: charon-");m.Number(lo);m.Add("\n");}
-        m.Line("local-hostname: ",ask::Get("hostname"));
+        m.Line("local-hostname: \"",ask::Get("hostname"),"\"");
         Say(T(u"Obraz jest już na dysku. Dodaję konfigurację: konto użytkownika, mowę i Charona.",u"The image is on the disk. Adding the configuration: the user account, speech and Charon."));
         configured=!y.overflow && images::SeedOnto(d,userData,y.size,metaData,m.size);
         for(auto& c:userData)c=0;
@@ -396,13 +525,35 @@ inline bool RunImage(const Entry& e) {
     }
     images::Reconnect(d.handle);
     if(seeded) {
-        const efi_handle esp=remap.on?(remap.hasEsp?images::VolumeOfPartition(remap.espUnique):nullptr):images::EspOn(d);
-        charon=esp && images::CharonOnto(esp) && WriteText(esp,u"\\EFI\\HAK\\speech.sh",speechScript,sizeof(speechScript)-1)
+        // r410 (ls): Fedora on a whole disk gets a bigger EFI partition first (BiggerEsp); beside other systems its
+        // 100 MB partition stays and Charon is not copied there at all (a copy that stops part-way fills it).
+        const bool fedora=DistroOf(e)=='f';
+        efi_handle esp=remap.on?(remap.hasEsp?images::VolumeOfPartition(remap.espUnique):nullptr):nullptr;
+        if(!remap.on && fedora) {
+            Say(T(u"Daję Fedorze większą partycję EFI, 256 megabajtów, i przenoszę na nią jej pliki rozruchowe.",u"Giving Fedora a bigger EFI partition, 256 megabytes, and moving its boot files onto it."));
+            esp=BiggerEsp(d,uint64_t(256)<<20);
+            if(!esp)Say(T(u"Uwaga: nie udało się zrobić większej partycji EFI; Fedora zostaje ze swoją partycją 100 megabajtów.",u"Note: the bigger EFI partition could not be made; Fedora keeps its 100-megabyte partition."));
+        }
+        if(!remap.on && !esp)esp=images::EspOn(d);
+        charon=esp && !(fedora && remap.on) && images::CharonOnto(esp,ownHome) && WriteText(esp,u"\\EFI\\HAK\\speech.sh",speechScript,sizeof(speechScript)-1)
             && WriteText(esp,u"\\EFI\\HAK\\progress.sh",progressScript,sizeof(progressScript)-1)
             && WriteText(esp,u"\\EFI\\HAK\\firstboot.sh",firstbootScript,sizeof(firstbootScript)-1)
+            && WriteText(esp,u"\\EFI\\HAK\\network.sh",networkScript,sizeof(networkScript)-1)   // r409: the connection chosen in Charon (network.conf, when Charon writes one) and the wait for the network
             && WriteText(esp,u"\\EFI\\HAK\\charon-tone",reinterpret_cast<const char*>(charonToneBinary),sizeof(charonToneBinary));
-        if(!charon)Say(T(u"Uwaga: nie udało się skopiować Charona na partycję systemową EFI nowego systemu; czytnik ekranu i menedżer rozruchu Charona zostają tylko na pendrivie.",
-            u"Note: Charon could not be copied to the new system's EFI system partition; Charon's screen reader and boot manager stay on the USB stick only."));
+        // r409: the Wi-Fi connection joined in Charon, for this installation only (firstboot.sh applies it and removes
+        // the file from the EFI partition; CharonPrivate.h keeps it out of every later copy of \EFI\HAK)
+        if(charon) {static char conf[400];const size_t bytes=NetworkConfNow(conf,sizeof(conf));
+            if(bytes && !WriteText(esp,u"\\EFI\\HAK\\network.conf",conf,bytes))
+                Say(T(u"Uwaga: nie udało się przekazać nowemu systemowi ustawień sieci Wi-Fi; połączysz się w nim ręcznie albo kablem.",u"Note: the Wi-Fi settings could not be handed to the new system; connect there by hand or with a cable."));
+            for(auto& c:conf)c=0;
+            net::ForgetJoined();}   // r409: handed over (or said that it could not be); the passphrase does not stay in memory
+        if(charon && detailed::Carried()) {static char env[16384];const size_t n=detailed::Env(env,sizeof(env));   // r410: runcmd moves both to /var/lib/charon
+            if(!n || !WriteText(esp,u"\\EFI\\HAK\\answers.env",env,n) || !WriteText(esp,u"\\EFI\\HAK\\personal.sh",personalScript,sizeof(personalScript)-1))
+                Say(T(u"Uwaga: nie udało się zapisać odpowiedzi szczegółowych; system zainstaluje się z ustawieniami domyślnymi.",u"Note: the detailed answers could not be written; the system will be installed with the default settings."));
+            for(auto& c:env)c=0;}
+        if(charon)WriteVoiceConf(esp,u"\\EFI\\HAK\\voice.conf");   // r409: runcmd copies it to /var/lib/charon for speech.sh
+        if(!charon)Say(T(u"Uwaga: nie udało się skopiować Charona na partycję systemową EFI nowego systemu; czytnik ekranu i menedżer rozruchu Charona zostają tylko tam, skąd Charon został uruchomiony. Jeśli Charon działa teraz wyłącznie z pamięci, przed ponownym uruchomieniem komputera wybierz w środowisku Charona instalację Charona na tym komputerze.",
+            u"Note: Charon could not be copied to the new system's EFI system partition; Charon's screen reader and boot manager stay only where Charon was started from. If Charon now runs from memory alone, choose to install Charon on this computer, in the Charon workspace, before the computer is restarted."));   // r409: no "USB stick" when Charon lives on the internal disk
         if(!RegisterImage(esp,e,remap.on,charon))
             Say(T(u"Uwaga: nie udało się zapisać wpisu rozruchowego w firmware. Jeśli komputer nie uruchomi nowego systemu sam, wybierz jego dysk w menu rozruchu firmware albo w menu urządzeń Charona.",
                 u"Note: the boot entry could not be written to the firmware. If the computer does not start the new system by itself, choose its disk in the firmware's boot menu or in Charon's device menu."));
@@ -430,7 +581,11 @@ inline bool RunImage(const Entry& e) {
 }
 #endif
 inline void Classic(size_t system);
+// r409: several systems in one go. CharonWsPlanDialogue.h puts its entry question here when the
+// workspace opens; it returns true when it took the dialogue over. Null, or false: one system, as always.
+inline bool (*&PlanDialogue())() {static bool (*entry)()=nullptr;return entry;}
 inline void Dialogue() {
+    if(PlanDialogue() && PlanDialogue()())return;   // r409
     ask::Clear();
     Say(T(u"Instalacja systemu z sieci. Najpierw wybierz grupę, potem system. Przy każdym systemie usłyszysz, czy ma on mowę. Na dysku nic się nie zmieni, dopóki nie wpiszesz potwierdzenia. Escape cofa o jeden krok.",
         u"Installing a system from the network. First choose a group, then a system. For every system you will hear whether it speaks. Nothing on a disk changes until you type a confirmation. Escape goes back one step."));
@@ -484,6 +639,8 @@ inline void Dialogue() {
             if(!started) {Fail(T(u"Na żadnym dysku nie znalazłem pakietu CharonDOS; powinien być w folderze EFI, HAK, packages, CharonDOS.",u"I did not find the CharonDOS package on any disk; it should be in the folder EFI, HAK, packages, CharonDOS."));HearOut(200);continue;}
             return;}
         if(!ConfirmSilent(e))continue;
+        if(!ConfirmUnofficial(e)) {HearOut(100);continue;}   // r409
+        UnofficialChosen()=e.unofficial;
         if(e.way==Way::classic) {Classic(e.classic);return;}
 #ifdef HAK_CHARON_HTTPS
         bool done=false;

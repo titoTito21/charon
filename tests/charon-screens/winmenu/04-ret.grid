@@ -1,0 +1,14 @@
+CHARON grid 49 133 0 0 1 Menedżer rozruchu Windows
+G03 56*00,31*f1|56*0000,31*0420|                                                        Windows Memory Diagnostics Tool
+G08 20*00,42*97|20*0000,42*0415|                    Windows is checking for memory problems...
+G0a 20*00,32*97|20*0000,32*0415|                    This might take several minutes.
+G0e 20*00,40*97|20*0000,40*0415|                    Running test pass  1 of  2: 38% complete
+G10 20*00,33*97|20*0000,33*0415|                    Overall test status: 19% complete
+G17 20*00,7*97|20*0000,7*040f|                    Status:
+G19 20*00,35*9e|20*0000,35*0415|                    No problems have been detected yet.
+G1d 20*00,75*9e|20*0000,75*0415|                    Although the test may appear inactive at times, it is still running. Please
+G1f 20*00,33*9e|20*0000,33*0415|                    wait until testing is complete...
+G22 20*00,69*9f|20*0000,69*0415|                    Windows will restart the computer automatically. Test results will be
+G24 20*00,33*9f|20*0000,33*0415|                    displayed again after you log on.
+G30 21*00,10*f1,94*00,8*f1|21*0000,10*0420,94*0000,8*0420|                     F1=Options                                                                                              ESC=Exit
+CHARON grid end

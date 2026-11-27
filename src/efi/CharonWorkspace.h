@@ -252,6 +252,10 @@ inline void StartProgram(efi_handle volume,const char16_t* path,const char16_t* 
 #include "CharonWsInstall2.h"
 #include "CharonWsSelfInstall.h"   // r407
 #include "CharonWsBrowser.h"
+#ifdef HAK_CHARON_HTTPS            // the installers, and with them the plan, exist only in the build with the network
+#include "CharonWsPlan.h"          // r409: a waiting multi-system plan (planrun::AtStart)
+#include "CharonWsPlanDialogue.h"  // r409: the dialogue that builds a plan, and the installers' steps
+#endif
 namespace hakefi {
 namespace ws {
 inline void StartApp(size_t index) {
@@ -1075,6 +1079,24 @@ inline Leave Run(Host& host) {
     if(!F().folder.volume)F().atVolumes=true;
     E().prefixX=E().prefixE=false;
     if(E().current>=maxBuffers || E().buffers[E().current].kind==Kind::none) {E().current=SIZE_MAX;for(size_t i=0;i<maxBuffers;++i)if(E().buffers[i].kind!=Kind::none) {E().current=i;break;}}
+    // r409: the boot menu opened the workspace because a multi-system plan is waiting: the plan
+    // takes the turn first (pass-through to an installer does not come back here).
+#ifdef HAK_CHARON_HTTPS
+    planrun::Register();
+    if(host.planResume) {host.planResume=false;Reshape();planrun::AtStart(planrun::MachineNow());}
+#ifdef HAK_CHARON_TRACE
+    net::many::SelfTest(install::EnsureNetwork);   // r410 (agent 3): test tooling, only with EFI\HAK\net-test.txt
+    {   // r410 (agent 3): test tooling, only with EFI\HAK\dos-test.txt: CharonDOS's "all tested programs" onto its package
+        FileRef ref;ref.volume=host.selfDevice;Set(ref.path,pathUnits,u"\\EFI\\HAK\\dos-test.txt");efi_file_protocol* file=nullptr;
+        if(OpenFile(ref,EFI_FILE_MODE_READ,0,&file)==EFI_SUCCESS && file) {
+            file->Close(file);efi_handle volume=nullptr;static char16_t package[pathUnits];
+            if(dosapps::Package(volume,package,pathUnits) && install::EnsureNetwork()) {
+                charontrace::Text("CHARON dostest: begins");dosapps::Fetch(volume,package,0);charontrace::Text("CHARON dostest: done");}
+            else charontrace::Text("CHARON dostest: no writable CharonDOS package or no network");
+        }
+    }
+#endif
+#endif
     Reshape();Play(Icon::open);
     {static char16_t text[500];Set(text,500,T(u"Środowisko Charona. F1 pomoc, Alt+X polecenia. ",u"Charon workspace. F1 help, Alt+X commands. "));
         static char16_t row[100];HomeLabel(s.home.index,row,100,true,nullptr);Cat(text,500,row);Say(text);}

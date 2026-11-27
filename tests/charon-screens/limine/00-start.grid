@@ -1,0 +1,7 @@
+CHARON grid 50 153 0 0 0 Limine
+G01 64*00,28*83|64*0000,28*040e|                                                                Limine 11.4.1 (x86-64, UEFI)
+G03 4*00,13*87,6*00,10*87,6*00,6*87,73*00,16*87,6*00,13*87|4*0000,13*040f,6*0000,10*040f,6*0000,6*040f,73*0000,16*040f,6*0000,13*040f|    ARROWS Select      ENTER Boot      E Edit                                                                         S Firmware Setup      B Blank Entry
+G18 67*00,19*f0|67*0000,19*0412|                                                                   Charon probe loader
+G19 67*00,20*87|67*0000,20*040f|                                                                   Windows Boot Manager
+G31 67*8f|67*040f|Booting automatically in 23, press any key to stop the countdown...
+CHARON grid end

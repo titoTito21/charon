@@ -1,0 +1,8 @@
+# CharonDOS, Windows 98 from a ready-made disk image: a floppy name must have no effect.
+lang=en
+flow=dos
+arg profile=WIN98
+arg reader=jfw331
+arg medium=DISK.IMG
+arg ready_format=raw
+arg floppy=BOOT95.IMG

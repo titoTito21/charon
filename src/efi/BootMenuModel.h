@@ -47,11 +47,16 @@ enum ReaderRow : size_t { readerRateRow, readerPitchRow, readerVolumeRow, reader
     readerMessagesRow, readerTypedRow, readerWordsRow, readerCursorRow, readerAutoReadRow, readerHintsRow,
     // r393: boot managers (hidden menus: combo; countdowns: check box) and the text formatting submenu.
     readerHiddenMenuRow, readerStopCountdownRow, readerLingerRow /* r400 */, readerFormattingRow,
-    readerSynthRow, readerSynthVoiceRow /* r393 synthesizer add-ons */, readerCount };
+    readerSynthRow, readerSynthVoiceRow /* r393 synthesizer add-ons */,
+    readerProfileRow /* r410 verbosity profile: normal, beginner, expert */, readerCount };
 // r393 "Formatowanie tekstu" rows: check boxes (formatFlags bits 0-5, then readerExtra braille, dictionary).
 enum FormattingRow : size_t { formatVoiceRow, formatIconsRow, formatColoursRow, formatBrightRow, formatFontRow, formatInverseRow,
                               formatEventsRow, formatFamiliesRow, formatStereoRow,   // r397 (user): Emacspeak event icons, voice families, stereo
-    formatBrailleRow, formatDictionaryRow, formattingCount };
+    formatBrailleRow, formatDictionaryRow,
+    formatKindRow, formatStateRow, formatPositionRow,   // r410 (user): what the screen model drives: kind of element, state and warnings, position and structure
+    formatAbsoluteRow, formatBarRow,                    // r410 V14: the r399 absolute colour ladder; the reader bar on the bottom line
+    formatItemRow, formatItemLastRow=formatItemRow+11,   // r410 V14: the custom verbosity profile, one check box per item
+    formattingCount };
 // r390: the check-box rows and their bits (capitals bits, then CharSettings readerFlag*).
 inline bool ReaderCheckRow(size_t row) {return row>=readerCapSayRow && row<=readerHintsRow;}
 constexpr size_t maximumOrder=256;
@@ -66,9 +71,21 @@ struct MenuModel {
     uint8_t pitch=10,readerRate=10,readerPitch=10,readerVolume=10;  // r382 voices (tenths)
     uint8_t messageRate=14,messagePitch=10;  // r389 boot-message voice (tenths)
     uint8_t punctuation=1,capitals=1,screenLanguage=0,readerFlags=47;  // r390 reader text settings
-    uint8_t formatFlags=255,readerExtra=153;   // r399 non-monotone voice (colour/font/style/position) + per-event icons
+    uint8_t formatFlags=252,readerExtra=153;   // r410: formatting off until the user turns it on
+    uint16_t profileItems=1083;bool readerBar=false,absoluteColours=false;   // r410 V14
+    uint8_t formatGroups=7,profile=0;          // r410 formatting groups of the screen model, verbosity profile
     // r393: synthesizer add-ons found on the disk (keys, voice counts); 0 = TVox.
     uint8_t synthKey=0,synthVoice=0;uint8_t synthKeys[8]={};uint8_t synthVoiceCounts[8]={};size_t synthCount=0;
+    uint16_t synthVoiceMask[8]={0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff};   // r410: voices whose data is installed
+    // The next (or previous) usable voice of the chosen synthesizer; false at a synthesizer with one voice.
+    bool StepSynthVoice(bool forward) {
+        const size_t slot=SynthSlot();if(slot==SIZE_MAX)return false;
+        const uint8_t n=synthVoiceCounts[slot];if(n<2)return false;
+        uint8_t v=synthVoice<n?synthVoice:0;
+        for(uint8_t tries=0;tries<n;++tries) {v=uint8_t(forward?(v+1)%n:(v+n-1)%n);if((synthVoiceMask[slot]>>v)&1)break;}
+        if(v==synthVoice || !((synthVoiceMask[slot]>>v)&1))return false;
+        synthVoice=v;return true;
+    }
     size_t SynthSlot() const {for(size_t i=0;i<synthCount;++i)if(synthKeys[i]==synthKey)return i;return SIZE_MAX;}
     uint8_t detail=7;    // r382: bit0 disk name, bit1 boot manager name, bit2 list positions
     uint8_t timers=0;    // r384: bit0 countdown speech every 10 s, bit1 countdown ticks
@@ -243,9 +260,9 @@ struct MenuModel {
         }
         // r390: choices that cycle (no edge): verbosity, symbol level, screen language.
         if(page==MenuPage::reader && (event==MenuEvent::left || event==MenuEvent::right)
-            && (index==readerVerbosityRow || index==readerPunctuationRow || index==readerLanguageRow)) {
-            uint8_t& value=index==readerVerbosityRow?verbosity:index==readerPunctuationRow?punctuation:screenLanguage;
-            const uint8_t states=index==readerVerbosityRow?3:4;
+            && (index==readerVerbosityRow || index==readerPunctuationRow || index==readerLanguageRow || index==readerProfileRow)) {
+            uint8_t& value=index==readerVerbosityRow?verbosity:index==readerPunctuationRow?punctuation:index==readerProfileRow?profile:screenLanguage;
+            const uint8_t states=index==readerVerbosityRow?3:4;   // r410 V14: the profile has four states (custom)
             value=uint8_t(event==MenuEvent::right?(value+1)%states:(value+states-1)%states);
             return MenuAction::changeReaderVoice;
         }
@@ -267,8 +284,7 @@ struct MenuModel {
                 at=event==MenuEvent::right?(at+1)%states:(at+states-1)%states;
                 const uint8_t key=at?synthKeys[at-1]:0;if(key==synthKey)return MenuAction::edge;
                 synthKey=key;synthVoice=0;return MenuAction::changeReaderVoice;}
-            const size_t slot=SynthSlot();if(slot==SIZE_MAX || synthVoiceCounts[slot]<2)return MenuAction::edge;
-            const uint8_t n=synthVoiceCounts[slot];synthVoice=uint8_t(event==MenuEvent::right?(synthVoice+1)%n:(synthVoice+n-1)%n);
+            if(!StepSynthVoice(event==MenuEvent::right))return MenuAction::edge;   // r410: only voices whose data is installed
             return MenuAction::changeReaderVoice;}
         if(page==MenuPage::reader && (event==MenuEvent::left || event==MenuEvent::right) && index==readerSynthRow) {
             const size_t states=synthCount+1;size_t at=synthKey?SynthSlot()+1:0;if(at>states-1)at=0;
@@ -276,8 +292,7 @@ struct MenuModel {
             const uint8_t key=at?synthKeys[at-1]:0;if(key==synthKey)return MenuAction::edge;
             synthKey=key;synthVoice=0;return MenuAction::changeReaderVoice;}
         if(page==MenuPage::reader && (event==MenuEvent::left || event==MenuEvent::right) && index==readerSynthVoiceRow) {
-            const size_t slot=SynthSlot();if(slot==SIZE_MAX || synthVoiceCounts[slot]<2)return MenuAction::edge;
-            const uint8_t n=synthVoiceCounts[slot];synthVoice=uint8_t(event==MenuEvent::right?(synthVoice+1)%n:(synthVoice+n-1)%n);
+            if(!StepSynthVoice(event==MenuEvent::right))return MenuAction::edge;   // r410: only voices whose data is installed
             return MenuAction::changeReaderVoice;}
         if(page==MenuPage::reader && (event==MenuEvent::left || event==MenuEvent::right) && index<readerTimerSpeechRow) {
             const bool moved=index==readerVolumeRow?Slider(readerVolume,1,10,event):Slider(index==readerRateRow?readerRate:readerPitch,5,20,event);
@@ -405,6 +420,10 @@ struct MenuModel {
         if(page==MenuPage::reader && (event==MenuEvent::enter || event==MenuEvent::space) && (index==readerHiddenMenuRow || index==readerFormattingRow || index==readerSynthRow || index==readerSynthVoiceRow))return MenuAction::none;
         if(page==MenuPage::formatting && (event==MenuEvent::enter || event==MenuEvent::space) && index<formattingCount) {
             if(index<=formatFamiliesRow)formatFlags=uint8_t(formatFlags^(1u<<index));
+            else if(index>=formatItemRow)profileItems=uint16_t(profileItems^(1u<<(index-formatItemRow)));   // r410 V14
+            else if(index==formatAbsoluteRow)absoluteColours=!absoluteColours;
+            else if(index==formatBarRow)readerBar=!readerBar;
+            else if(index>=formatKindRow)formatGroups=uint8_t(formatGroups^(1u<<(index-formatKindRow)));   // r410
             else if(index==formatStereoRow) {const unsigned s=(((readerExtra>>5)&3)+1)%3;readerExtra=uint8_t((readerExtra&~0x60)|(s<<5));}
             else readerExtra=uint8_t(readerExtra^(index==formatBrailleRow?8:16));
             return MenuAction::toggleDetail;}

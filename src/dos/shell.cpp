@@ -9,7 +9,7 @@ enum {
     M_ILLEGAL = MSG_ILLEGAL, M_DIVIDE = MSG_DIVIDE, M_MCB = MSG_MCB,
     M_BANNER, M_HINT, M_BADCMD, M_NOTFOUND, M_PATHNF, M_DENIED, M_BADDRIVE, M_NOMEM, M_SYNTAX,
     M_ERRN, M_DIROF, M_FILES, M_DIRS, M_PAUSE, M_COPIED, M_ECHO_ON, M_ECHO_OFF, M_DATE, M_TIME,
-    M_MEM1, M_MEM2, M_LABEL, M_EXEFAIL, M_NOENV, M_BATNEST, M_REQ, M_EXISTS, M_CURDIR, M_HELP, M_NOWINNT, M_NOWINPROF, M_STARTWINNT, M_STARTWIN, M_COUNT
+    M_MEM1, M_MEM2, M_LABEL, M_EXEFAIL, M_NOENV, M_BATNEST, M_REQ, M_EXISTS, M_CURDIR, M_HELP, M_NOWINNT, M_NOWINPROF, M_STARTWINNT, M_STARTWIN, M_NOLINUX, M_COUNT
 };
 static const char* const s_msg[M_COUNT][2] = {
     {"Illegal instruction at %s. Program terminated.", "Niedozwolona instrukcja pod adresem %s. Program zakończony."},
@@ -53,7 +53,8 @@ static const char* const s_msg[M_COUNT][2] = {
      "PROMPT [text]              set the prompt   ECHO [text]    print text\n"
      "DATE, TIME, VER, MEM       information      HELP           this list\n"
      "EXIT                       return to the boot manager\n"
-     "WINNT                      start the installed Windows (CharonDOS ends)\n"
+     "WINNT [name|n|/L|/D name]  start an installed Windows (CharonDOS ends)\n"
+     "LINUX [name|n|/L|/D name]  start an installed Linux (CharonDOS ends)\n"
      "WIN [profile]              start a Windows profile installed into CharonDOS\n"
      "CHARON [command]           control Charon's reader and boot manager\n"
      "name [arguments]           run name.COM, name.EXE or name.BAT\n"
@@ -70,7 +71,8 @@ static const char* const s_msg[M_COUNT][2] = {
      "PROMPT [tekst]             znak zachęty        ECHO [tekst]   wypisz tekst\n"
      "DATE, TIME, VER, MEM       informacje          HELP           ta lista\n"
      "EXIT                       powrót do menedżera rozruchu\n"
-     "WINNT                      uruchom zainstalowany Windows (CharonDOS się kończy)\n"
+     "WINNT [nazwa|n|/L|/D nazwa] uruchom zainstalowany Windows (koniec CharonDOS)\n"
+     "LINUX [nazwa|n|/L|/D nazwa] uruchom zainstalowanego Linuksa (koniec CharonDOS)\n"
      "WIN [profil]               uruchom profil Windows zainstalowany w CharonDOS\n"
      "CHARON [polecenie]         steruj czytnikiem i menedżerem rozruchu Charona\n"
      "nazwa [argumenty]          uruchom nazwa.COM, nazwa.EXE lub nazwa.BAT\n"
@@ -82,7 +84,9 @@ static const char* const s_msg[M_COUNT][2] = {
     {"No Windows profile %s is installed in CharonDOS. Install one with Charon's installer, group CharonDOS.",
      "W CharonDOS nie ma zainstalowanego profilu Windows %s. Zainstaluj go instalatorem Charona, grupa CharonDOS."},
     {"Starting Windows. CharonDOS ends.", "Uruchamiam Windows. CharonDOS się kończy."},
-    {"Starting the Windows profile %s.", "Uruchamiam profil Windows %s."}
+    {"Starting the Windows profile %s.", "Uruchamiam profil Windows %s."},
+    {"No Linux was found on this computer (no boot entry and no loader under \\EFI on any volume).",
+     "Nie znaleziono Linuksa na tym komputerze (brak wpisu rozruchowego i programu rozruchowego w \\EFI na żadnym woluminie)."}
 };
 
 enum { MAXBATCH = 6, LINE = 520 };
@@ -694,15 +698,169 @@ static void run_external(char* token, char* args)
     if (x && fs_is_con(1)) nl();
 }
 
+// ---- WINNT / LINUX (r409): choose an installed system and start it ---------------------
+// The rules are in launch_select.h; the backend collects the candidates and
+// starts the chosen one after the shell has ended. Errorlevel: 0 started (or
+// listed, or default stored), 2 none installed / no such name, 3 several and
+// no choice (Escape, or a batch file: the choice is never shown there, so
+// AUTOEXEC.BAT cannot hang).
+static LaunchList s_launch;
+struct Say { char t[700]; size_t n; };
+static void say_add(Say* s, const char* text) { for (; *text && s->n + 1 < sizeof s->t; text++) s->t[s->n++] = *text; s->t[s->n] = 0; }
+static void say_num(Say* s, u32 v) { char b[12]; d_utoa(v, b, 10); say_add(s, b); }
+// Printed (the resident reader reads the console) and, with `speak`, said
+// through Charon's live voice as well - the pattern of the CHARON command.
+static void say_out(const Say* s, bool speak)
+{
+    const char* p = s->t;
+    while (*p) out_uni(utf8_next(&p));
+    nl();
+    if (speak && fs_is_con(1)) charon_plat_speak(s_polish ? "pl" : "en", s->t);
+}
+static const char* launch_noun(int kind) { return kind == PL_WINNT ? "Windows" : "Linux"; }
+static void launch_list(int kind, const char* default_id, Say* s, bool inline_form)
+{
+    int number = 0;
+    for (int i = 0; i < s_launch.count; i++) {
+        const LaunchEntry* e = &s_launch.e[i];
+        if (e->kind != kind) continue;
+        number++;
+        if (inline_form) { say_add(s, " "); say_num(s, (u32)number); say_add(s, ": "); say_add(s, e->name); say_add(s, "."); }
+        else {
+            Say line; line.n = 0; line.t[0] = 0;
+            say_add(&line, " "); say_num(&line, (u32)number); say_add(&line, ": "); say_add(&line, e->name);
+            if (default_id && default_id[0] && launch_ieq(default_id, e->id)) say_add(&line, s_polish ? " (domyślny)" : " (default)");
+            say_out(&line, false);
+        }
+    }
+}
+static void launch_show_list(int kind, const char* default_id)
+{
+    Say s; s.n = 0; s.t[0] = 0;
+    say_add(&s, s_polish ? "Zainstalowane systemy " : "Installed "); say_add(&s, launch_noun(kind)); say_add(&s, s_polish ? ":" : " systems:");
+    say_out(&s, false);
+    launch_list(kind, default_id, &s, false);
+}
+static void launch_none(int kind) { msgln(kind == PL_WINNT ? M_NOWINNT : M_NOLINUX, nullptr, 0); s_errorlevel = 2; }
+static void launch_no_match(int kind, const char* text, const char* default_id)
+{
+    Say s; s.n = 0; s.t[0] = 0;
+    say_add(&s, s_polish ? (kind == PL_WINNT ? "Nie ma zainstalowanego Windows o nazwie " : "Nie ma zainstalowanego Linuksa o nazwie ")
+                         : (kind == PL_WINNT ? "No installed Windows is called " : "No installed Linux is called "));
+    say_add(&s, text); say_add(&s, ".");
+    say_out(&s, true);
+    launch_show_list(kind, default_id);
+    s_errorlevel = 2;
+}
+static void cmd_launch(int kind, char* args)
+{
+    static char cfg[1024], cfg_new[1200];
+    LaunchArgs a;
+    launch_parse_args(args, &a);
+    if (a.mode == LAUNCH_BAD_ARGS) { msgln(M_SYNTAX, nullptr, 0); s_errorlevel = 1; return; }
+    launch_clear(&s_launch);
+    plat_launch_discover(&s_launch);
+    long cfg_len = plat_launch_cfg_read(cfg, sizeof cfg);
+    if (cfg_len < 0) cfg_len = 0;
+    char default_id[96];
+    launch_cfg_get(cfg, (size_t)cfg_len, launch_cfg_key(kind), default_id, sizeof default_id);
+    Say s; s.n = 0; s.t[0] = 0;
+
+    if (a.mode == LAUNCH_LIST) {
+        if (!launch_count(&s_launch, kind)) { launch_none(kind); return; }
+        launch_show_list(kind, default_id);
+        return;
+    }
+    if (a.mode == LAUNCH_SET_DEFAULT) {
+        int chosen = -1;
+        if (a.text[0]) {
+            if (!launch_count(&s_launch, kind)) { launch_none(kind); return; }
+            chosen = launch_find(&s_launch, kind, a.text);
+            if (chosen < 0) { launch_no_match(kind, a.text, default_id); return; }
+        }
+        const long n = launch_cfg_set(cfg, (size_t)cfg_len, launch_cfg_key(kind), chosen >= 0 ? s_launch.e[chosen].id : nullptr, cfg_new, sizeof cfg_new);
+        if (n < 0 || !plat_launch_cfg_write(cfg_new, (unsigned long)n)) {
+            say_add(&s, s_polish ? "Nie udało się zapisać ustawienia domyślnego." : "The default could not be saved.");
+            say_out(&s, true);
+            s_errorlevel = 1;
+            return;
+        }
+        if (chosen >= 0) {
+            say_add(&s, kind == PL_WINNT ? "WINNT" : "LINUX");
+            say_add(&s, s_polish ? " bez nazwy uruchamia teraz: " : " without a name now starts ");
+            say_add(&s, s_launch.e[chosen].name); say_add(&s, ".");
+        } else {
+            say_add(&s, s_polish ? "Zapomniano ustawienie domyślne polecenia " : "The default was forgotten for ");
+            say_add(&s, kind == PL_WINNT ? "WINNT." : "LINUX.");
+        }
+        say_out(&s, true);
+        return;
+    }
+
+    const bool interactive = s_nbatch == 0 && fs_is_con(0) && fs_is_con(1);
+    int index = -1;
+    const int what = launch_choose(&s_launch, kind, a.text, default_id, interactive, &index);
+    if (what == LAUNCH_NONE) { launch_none(kind); return; }
+    if (what == LAUNCH_NO_MATCH) { launch_no_match(kind, a.text, default_id); return; }
+    if (what == LAUNCH_NO_CHOICE) { launch_show_list(kind, default_id); s_errorlevel = 3; return; }
+    if (what == LAUNCH_ASK) {
+        say_add(&s, s_polish ? "Który " : "Which "); say_add(&s, launch_noun(kind)); say_add(&s, "?");
+        launch_list(kind, default_id, &s, true);
+        say_add(&s, s_polish ? " Wpisz numer i Enter; Escape anuluje." : " Type a number and Enter; Escape cancels.");
+        say_out(&s, true);
+        char typed[6]; int n = 0;
+        bool cancelled = false;
+        for (;;) {
+            u16 key;
+            if (!kbd_wait(&key)) { g_break = false; cancelled = true; break; }
+            const u8 c = lo8(key);
+            if (c == 27 || c == 3) { cancelled = true; break; }
+            if (c == 13) { if (n) break; continue; }
+            if (c == 8) { if (n) { n--; out(8); out(' '); out(8); } continue; }
+            if (c >= '0' && c <= '9' && n < 4) { typed[n++] = (char)c; out(c); }
+        }
+        nl();
+        typed[n] = 0;
+        index = cancelled ? -1 : launch_find(&s_launch, kind, typed);
+        if (index < 0) {
+            Say c; c.n = 0; c.t[0] = 0;
+            say_add(&c, s_polish ? "Anulowano." : "Cancelled.");
+            say_out(&c, true);
+            s_errorlevel = 3;
+            return;
+        }
+    }
+    const LaunchEntry* e = &s_launch.e[index];
+    if (plat_request_launch_entry(e)) {
+        Say g; g.n = 0; g.t[0] = 0;
+        say_add(&g, s_polish ? "Nie można już znaleźć programu rozruchowego systemu " : "The boot loader can no longer be found for ");
+        say_add(&g, e->name); say_add(&g, ".");
+        say_out(&g, true);
+        s_errorlevel = 2;
+        return;
+    }
+    Say go; go.n = 0; go.t[0] = 0;
+    if (kind == PL_WINNT && e->merged) {
+        say_add(&go, s_polish ? "Uruchamiam menu rozruchu Windows; wybierz w nim system. CharonDOS kończy pracę."
+                              : "Starting the Windows boot menu; choose there. CharonDOS ends.");
+    } else {
+        say_add(&go, s_polish ? "Uruchamiam " : "Starting "); say_add(&go, e->name);
+        if (e->disk) { say_add(&go, s_polish ? " z dysku " : " from disk "); say_num(&go, e->disk); }
+        say_add(&go, s_polish ? ". CharonDOS kończy pracę." : ". CharonDOS ends.");
+    }
+    say_out(&go, true);
+    s_exit_requested = true;
+}
+
 // ---- command line ---------------------------------------------------------------------------
 struct Builtin { const char* name; int id; };
 enum { C_DIR, C_CD, C_TYPE, C_COPY, C_DEL, C_REN, C_MD, C_RD, C_CLS, C_VER, C_ECHO, C_SET, C_PATH, C_PROMPT,
-       C_DATE, C_TIME, C_MEM, C_HELP, C_EXIT, C_REM, C_PAUSE, C_GOTO, C_IF, C_CALL, C_SHIFT, C_LH, C_WINNT, C_WIN, C_CHARON };
+       C_DATE, C_TIME, C_MEM, C_HELP, C_EXIT, C_REM, C_PAUSE, C_GOTO, C_IF, C_CALL, C_SHIFT, C_LH, C_WINNT, C_WIN, C_CHARON, C_LINUX };
 static const Builtin s_builtins[] = {
     {"DIR", C_DIR}, {"CD", C_CD}, {"CHDIR", C_CD}, {"TYPE", C_TYPE}, {"COPY", C_COPY}, {"DEL", C_DEL}, {"ERASE", C_DEL},
     {"REN", C_REN}, {"RENAME", C_REN}, {"MD", C_MD}, {"MKDIR", C_MD}, {"RD", C_RD}, {"RMDIR", C_RD}, {"CLS", C_CLS},
     {"VER", C_VER}, {"ECHO", C_ECHO}, {"SET", C_SET}, {"PATH", C_PATH}, {"PROMPT", C_PROMPT}, {"DATE", C_DATE},
-    {"TIME", C_TIME}, {"MEM", C_MEM}, {"HELP", C_HELP}, {"EXIT", C_EXIT}, {"WINNT", C_WINNT}, {"WIN", C_WIN}, {"CHARON", C_CHARON}, {"REM", C_REM}, {"PAUSE", C_PAUSE},
+    {"TIME", C_TIME}, {"MEM", C_MEM}, {"HELP", C_HELP}, {"EXIT", C_EXIT}, {"WINNT", C_WINNT}, {"LINUX", C_LINUX}, {"WIN", C_WIN}, {"CHARON", C_CHARON}, {"REM", C_REM}, {"PAUSE", C_PAUSE},
     {"GOTO", C_GOTO}, {"IF", C_IF}, {"CALL", C_CALL}, {"SHIFT", C_SHIFT}, {"LH", C_LH}, {"LOADHIGH", C_LH},
 };
 
@@ -749,10 +907,8 @@ static void builtin(int id, char* args)
     case C_MEM: nl(); msgln(M_MEM1, nullptr, 655360); msgln(M_MEM2, nullptr, dos_free_bytes()); nl(); break;
     case C_HELP: msgln(M_HELP, nullptr, 0); break;
     case C_EXIT: s_exit_requested = true; break;
-    case C_WINNT:
-        if (plat_request_launch(PL_WINNT, "", nullptr, 0)) { msgln(M_NOWINNT, nullptr, 0); break; }
-        msgln(M_STARTWINNT, nullptr, 0); s_exit_requested = true;
-        break;
+    case C_WINNT: cmd_launch(PL_WINNT, args); break;
+    case C_LINUX: cmd_launch(PL_LINUX, args); break;
     case C_WIN: {
         char* name = word(&args);
         char chosen[64]; chosen[0] = 0;

@@ -1,0 +1,101 @@
+Charon Hypervisor - what is Charon's own and what is downloaded
+
+Charon's own (GPL-2.0-or-later, this folder): overlay/ (machine manager, VM wizard, guest screen reader, sound and data
+partition set-up), world.txt (the package list), tools/charon-hv-fetch.py, src/efi/CharonHypervisor.h,
+src/efi/CharonWsHypervisor.h. overlay/usr/lib/charonhv/charon_settings.py is tools/charon-os/linux/charon-settings
+(GPL-2.0-or-later), copied in when the overlay is built.
+
+keys/: Alpine Linux's package signing PUBLIC keys, from the alpine-keys package
+(https://gitlab.alpinelinux.org/alpine/aports/-/tree/master/main/alpine-keys), licence MIT.
+
+NOT shipped with Charon (user's decision, point 2b): Alpine Linux and QEMU are downloaded by Charon at install time from
+Alpine's official server (https://dl-cdn.alpinelinux.org/alpine/v3.24/) and verified (ISO sha256 from the release list;
+package indexes signed with the keys above; each package checked against the signed index). Their licences travel with
+the packages themselves (APKINDEX field L:, and /usr/share/licenses in the packages), among them: Linux kernel GPL-2.0-only,
+QEMU GPL-2.0-only (parts LGPL/BSD/MIT), BusyBox GPL-2.0-only, musl MIT, Python PSF-2.0, espeak-ng GPL-3.0-or-later,
+ALSA LGPL-2.1-or-later / GPL-2.0-or-later, tesseract Apache-2.0, OVMF (edk2) BSD-2-Clause-Patent.
+Corresponding source: https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.24-stable (build recipes) and
+https://dl-cdn.alpinelinux.org/alpine/v3.24/ ; the upstream source archives named in each APKBUILD.
+The list of what one installation fetched (with checksums) is written to \charonhv\install-report.txt on the
+"Hypervisor" partition.
+
+r410 6q/6r/6s - fetched only when first used, after the size is said (none is in the image):
+- ClamAV (clamav-daemon, clamav-scanner, clamav-clamdscan, freshclam, clamav-libunrar): GPL-2.0-only (libunrar: the
+  unRAR licence, freeware, decompression only); Alpine community/main packages. Signatures: ClamAV's own mirror
+  database.clamav.net (Cisco Talos; free use, the ClamAV database licence).
+- Suricata (network virtual patching, 6v-2): GPL-2.0-only, OISF; Alpine community package `suricata`. Rules: Emerging
+  Threats Open (rules.emergingthreats.net/open/suricata-<ver>/), fetched when virtual patching is first switched on and
+  pinned by version.txt + md5. ET Open LICENSE: sids 2000000-2799999 are BSD (ET's own, incl. MS17-010/EternalBlue and
+  BlueKeep); sids 1-3464 and 100000000-100000908 are GPLv2; both are redistributable. Charon adds one clearly-labelled
+  benign self-test rule (sid 3900001, classtype not-suspicious) for the proof; it is not a malware signature.
+- Hypervisor-side in-memory micropatches (6w prototype, hvmicropatch.py): NO new third-party component. The VMI
+  transport is QEMU's OWN built-in gdb stub (started with the monitor command `gdbserver`), spoken to with a
+  pure-Python gdb Remote Serial Protocol client written for Charon (GPL-2.0-or-later, Charon's own code). LibVMI
+  (GPL-2.0-or-later, bitdefender/libvmi) was considered and NOT used: it needs libvirt/Xen or a per-kernel profile
+  and does not build cleanly against musl, and QEMU's gdb stub already reaches any guest's memory. So nothing is
+  added to download beyond QEMU itself (already listed, GPL-2.0-only). The guard bytes of a patch are taken from
+  the exact installed binary in the guest at apply time, never redistributed. No Microsoft binaries are modified
+  on disk; the network layer (Suricata, above) stays the main protection.
+- Ghostscript (printing to PDF): AGPL-3.0-or-later, Artifex; Alpine main package.
+- chromium-headless-shell (remote modern browser): BSD-3-Clause (Chromium), Alpine community (v3.23+).
+- Flatpak: LGPL-2.1-or-later; cage: MIT; PipeWire/WirePlumber: MIT; Orca: LGPL-2.1-or-later; speech-dispatcher:
+  GPL-2.0-or-later; at-spi2-core: LGPL-2.1-or-later; seatd: MIT; all Alpine packages.
+- Firefox from Flathub (org.mozilla.firefox, published by Mozilla): MPL-2.0. Widevine CDM: Google's proprietary module,
+  downloaded by Firefox itself through its media plug-in updater after the user allows DRM; Charon neither ships nor
+  modifies it.
+- Simple-web search: DuckDuckGo's HTML page (html.duckduckgo.com), a service used as any browser uses it.
+- r410 session 7: eudev (udevd for the modern mode): GPL-2.0-or-later; mesa: MIT; orca-lang: LGPL-2.1-or-later;
+  pulseaudio-utils (pactl): LGPL-2.1-or-later; alsa-utils: GPL-2.0-or-later; samba-server (the read-only Downloads
+  share, 6v): GPL-3.0-or-later; all Alpine packages, fetched when first used.
+- r410 6x/6z/6zb/6zg - the compatibility layer (hvcompat.py), fetched only when first used:
+  - IN-GUEST route, Windows 7/8/8.1: VxKex NEXT (github.com/YuZhouRen86/VxKex-NEXT, release 1.2.3.2466, tag commit
+    406b0f87b8533b76015f8c93037571307c5185ef). GitHub reports NO licence for the repository (API license: null) -
+    effectively all rights reserved; redistribution is unclear, so Charon NEVER bundles it: it is fetched from the
+    project's own GitHub release at the user's request (6zb) and that "no licence" is said once. KexSetup sets the
+    IFEO VerifierDlls value per program; it does not modify system files.
+  - HYPERVISOR route, Windows XP/Vista: Wine (Alpine community package `wine`): LGPL-2.1-or-later. READER (6zh
+    resolved): DEFAULT is the Cthulhu native Wine accessibility bridge (git.stormux.org/storm/cthulhu, an Orca
+    fork, LGPL-2.1; pinned tag 2026.08.06 = commit a02388c7fe5c79605b386a379eabc339d2e2c5fc, built and proven
+    r410 session 14; the native Wine bridge was introduced in commit c9f56cb7). Its cthulhu-wine-access.exe helper
+    is built here with Winegcc (64-bit, the project's own wine-access/ CMake) and reads standard Win32/MSAA
+    controls (oleacc/ole32/rpcrt4/user32) over Cthulhu's own D-Bus org.stormux.Cthulhu1.Service, speaking Charon's
+    voices via speech-dispatcher's sd_charon module; the class-based fallback is adapted from Mudb0y/wine-a11y,
+    LGPL-2.1; prism (Cthulhu's speech backend) MPL-2.0. It reads
+    STANDARD controls only - custom-drawn/DirectX/game UIs are NOT read and fall to the NVDA fallback. A general
+    Wine->AT-SPI bridge (so Orca/Linda could read Wine apps) does not exist off the shelf and is post-r410.
+    FALLBACK: the Windows NVDA installed INSIDE the Wine prefix, reading by MSAA/UI Automation (6zg): NVDA by NV
+    Access, GPL-2.0 (pinned release 2024.1, download.nvaccess.org, SHA-256 verified on fetch and written to compat.log);
+    its bundled eSpeak NG is GPL-3.0-or-later (a Charon voice). winetricks (NOT an Alpine package: the official
+    script github.com/Winetricks/winetricks, release 20260125, LGPL-3.0, fetched and SHA-256-recorded, verbs applied
+    best-effort); cabextract: GPL-2.0; imagemagick: ImageMagick licence (Apache-2.0-like). TECHNIQUE taken (not the code) from
+    dnl-nash/wineinstall (commit a28affa4, 2026-10-18), which has NO licence file - recorded; the script itself is
+    not shipped (it is unlicensed, renames ~/.wine and has unbounded download loops), only the technique, rebuilt
+    cleanly here with pinned versions.
+- r410 6u(2) - Linda, the Linux screen reader for the modern-browser mode (hvlinda.py), fetched only when the modern
+  browser is first run with Linda:
+  - Linda (github.com/Mudb0y/linda): GPL-2.0-or-later - "NVDA for the Linux desktop", independent of NV Access.
+    Its readme delivers it ONLY through the Nix package manager, built on the machine itself; Charon does the same
+    (`nix profile add github:Mudb0y/linda`), so NOTHING of Linda is bundled in Charon's release.
+  - Nix (Alpine community package `nix`): LGPL-2.1-or-later. Used only as Linda's build/delivery tool; its store is
+    on the Hypervisor DATA partition (/hv/nix bound on /nix), never in Charon's release.
+  - wxPython (Linda's GUI toolkit, pulled into Linda's Nix build because Linda is NVDA-based): wxWindows Library
+    Licence (LGPL-2.1 with the wxWindows exception). Built by Nix from source, not bundled by Charon.
+  - The minimal X11 session Linda needs (its key service wants X11, not Wayland): xorg-server (MIT), openbox
+    (GPL-2.0-only), xf86-input-libinput / setxkbmap / xkbcomp / xkeyboard-config (MIT), all Alpine packages. If
+    Linda cannot be built, Orca (LGPL-2.1, above) keeps reading the modern browser with the same Charon voices.
+- RHVoice (one of Charon's voices; the hypervisor's voice follows Charon's settings, 6f): the engine is RHVoice
+  1.18.5 (git 6929324d2f0486dc889aebe4e0a630d9ea30b143), LGPL-2.1-or-later, with its front end GPL-2.0-or-later.
+  NOT an Alpine package: built reproducibly from source for Alpine/musl like Charon's other synth add-ons
+  (charonhv-rhvoice, recorded in charon-hv-bin/rhvoice-build-info.txt with the toolchain and SHA-256); the voice
+  data keep their own per-voice licences (RHVoice's VOICES list). eSpeak NG (GPL-3.0-or-later, Alpine) and Charon's
+  TVox (MIT-0, built from Charon's own src/hypervisor/tvox at first start, 6m) are the other voices.
+- r410 6i/6za - Supermium, the maintained browser for the old-Windows guests (XP/Vista/7/8/8.1), fetched into the
+  guest only at the user's request (the per-version secure-use set), never bundled: Supermium v150-r3
+  (github.com/win32ss/supermium, release 2026-11-18), an unofficial Chromium fork by win32ss (NOT Google).
+  Licence: BSD-3-Clause (Chromium) with the project's own changes; free (Patreon donations); the GitHub release
+  carries no separate LICENSE file; not Authenticode-signed. SHA-256 pinned per installer in manifests.json
+  (supermium_150_32_setup.exe 3075846a...; _64 408290c6...). The README states support for "Windows XP, 2003,
+  Vista, 7, 8.x, and newer"; Widevine DRM works only on Windows 7 and up (Google's CDM), so on XP/Vista protected
+  video falls back to the hypervisor's modern-browser mode (6s) - the proxy offers it (6za, hvproxy.offer_modern).
+- Own code (GPL-2.0-or-later): hvsimple.py, hvremote.py, hvscan.py, hvprint.py, hvclock.py, hvpkg.py, hvretro.py, hvmodern.py,
+  hvroute.py, hvshare.py, hvcompat.py, hvmicropatch.py, hvlinda.py, sd_charon (speech-dispatcher output module with Charon's voices), charonhv-say.

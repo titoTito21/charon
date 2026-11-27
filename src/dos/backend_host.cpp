@@ -95,8 +95,11 @@ bool plat_key_poll(PlatKey* key)
 bool plat_quit(void) { return g_scripted ? g_key_pos >= g_nkeys : !g_interactive; }
 void plat_idle(unsigned ms) { if (!g_scripted && g_interactive && ms) Sleep(ms); }
 uint32_t plat_millis(void) { return GetTickCount(); }
+static PlatTime g_rtc;        // r409: --rtc "YYYY-MM-DD HH:MM:SS" stands in for the hardware clock
+static bool g_have_rtc;
 void plat_time(PlatTime* out)
 {
+    if (g_have_rtc) { *out = g_rtc; charon_clock_local(out); return; }   // as the UEFI backend: clock, then \EFI\HAK\clock.txt
     SYSTEMTIME t;
     GetLocalTime(&t);
     out->year = t.wYear; out->month = (uint8_t)t.wMonth; out->day = (uint8_t)t.wDay;
@@ -224,7 +227,8 @@ void plat_closedir(void* handle) { HostDir* dir = (HostDir*)handle; FindClose(di
 int plat_request_launch(int kind, const char* name, char* chosen, size_t chosen_size)
 {
     // Host tests: no firmware to start anything; report what would be started.
-    const char* env = getenv(kind == PL_WINNT ? "CHARONDOS_TEST_WINNT" : "CHARONDOS_TEST_WIN");
+    // r409: WINNT no longer comes here (plat_request_launch_entry below).
+    const char* env = kind == PL_WIN ? getenv("CHARONDOS_TEST_WIN") : nullptr;
     if (!env || !*env) return 2;
     if (chosen && chosen_size) {
         const char* src = (name && *name) ? name : env;
@@ -232,7 +236,150 @@ int plat_request_launch(int kind, const char* name, char* chosen, size_t chosen_
         for (; src[i] && i + 1 < chosen_size; i++) chosen[i] = src[i];
         chosen[i] = 0;
     }
-    fprintf(stderr, "[launch %s %s]\n", kind == PL_WINNT ? "winnt" : "win", (name && *name) ? name : env);
+    fprintf(stderr, "[launch win %s]\n", (name && *name) ? name : env);
+    return 0;
+}
+
+// ---- WINNT / LINUX (r409): the installed systems, faked for the tests --------
+//   --volume GUID=DIR[@disk]   a host folder stands in for one volume (its
+//                              \EFI tree is scanned; \EFI\HAK\systems.txt in
+//                              it is Charon's registry)
+//   --fwboot FILE              firmware boot entries in BootOrder order, one
+//                              per line: description|partition GUID|path
+//   --self DIR                 the folder of CHARONDOS.EFI (BOOT.CFG)
+// Nothing is started: the entry that would be started is printed to stderr.
+struct HostVolume { char part[40]; wchar_t dir[MAX_PATH]; uint16_t disk; };
+static HostVolume g_volumes[8];
+static int g_nvolumes;
+static wchar_t g_fwboot[MAX_PATH], g_self_dir_host[MAX_PATH];
+
+static void volume_path(const HostVolume* v, const char* path, wchar_t* out)
+{
+    wchar_t wide[MAX_PATH];
+    MultiByteToWideChar(CP_UTF8, 0, path, -1, wide, MAX_PATH);
+    wcscpy(out, v->dir);
+    wcsncat(out, wide, MAX_PATH - wcslen(out) - 1);
+}
+static bool volume_file(void* context, const char* path, uint32_t* size)
+{
+    wchar_t full[MAX_PATH];
+    volume_path((const HostVolume*)context, path, full);
+    WIN32_FILE_ATTRIBUTE_DATA d;
+    if (!GetFileAttributesExW(full, GetFileExInfoStandard, &d) || (d.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) return false;
+    if (size) *size = d.nFileSizeLow;
+    return true;
+}
+static int volume_names(void* context, const char* folder, bool folders, char (*out)[64], int cap)
+{
+    wchar_t full[MAX_PATH];
+    volume_path((const HostVolume*)context, folder, full);
+    wcsncat(full, L"\\*", MAX_PATH - wcslen(full) - 1);
+    WIN32_FIND_DATAW d;
+    const HANDLE h = FindFirstFileW(full, &d);
+    if (h == INVALID_HANDLE_VALUE) return 0;
+    // Sorted by name, so that the tests do not depend on the host file system's order.
+    int n = 0;
+    do {
+        const bool is_dir = (d.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+        if (is_dir != folders || !wcscmp(d.cFileName, L".") || !wcscmp(d.cFileName, L"..") || n >= cap) continue;
+        char name[64];
+        if (!WideCharToMultiByte(CP_UTF8, 0, d.cFileName, -1, name, sizeof name, nullptr, nullptr)) continue;
+        int at = n;
+        while (at > 0 && _stricmp(out[at - 1], name) > 0) { strcpy(out[at], out[at - 1]); at--; }
+        strcpy(out[at], name);
+        n++;
+    } while (FindNextFileW(h, &d));
+    FindClose(h);
+    return n;
+}
+static long read_whole(const wchar_t* path, char* buffer, unsigned long capacity)
+{
+    const HANDLE h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return -1;
+    DWORD n = 0;
+    const BOOL ok = ReadFile(h, buffer, capacity, &n, nullptr);
+    CloseHandle(h);
+    return ok ? (long)n : -1;
+}
+int plat_launch_discover(LaunchList* out)
+{
+    static char text[8192];
+    // 1. Charon's registry, on any volume.
+    for (int i = 0; i < g_nvolumes; i++) {
+        wchar_t path[MAX_PATH];
+        volume_path(&g_volumes[i], "\\EFI\\HAK\\systems.txt", path);
+        const long n = read_whole(path, text, sizeof text);
+        if (n > 0) launch_parse_registry(text, (size_t)n, out);
+    }
+    for (int i = 0; i < out->count;) {
+        // The registry is a source of names: a line whose loader is gone is not an installed system.
+        bool there = false;
+        for (int v = 0; v < g_nvolumes; v++)
+            if (!_stricmp(out->e[i].part, g_volumes[v].part) && volume_file(&g_volumes[v], out->e[i].path, nullptr)) {
+                there = true;
+                if (!out->e[i].disk) out->e[i].disk = g_volumes[v].disk;
+            }
+        if (there) i++; else launch_remove(out, i);
+    }
+    // 2. Firmware entries.
+    if (g_fwboot[0]) {
+        const long n = read_whole(g_fwboot, text, sizeof text - 1);
+        if (n > 0) {
+            text[n] = 0;
+            for (char* line = strtok(text, "\r\n"); line; line = strtok(nullptr, "\r\n")) {
+                char* part = strchr(line, '|');
+                if (!part) continue;
+                *part++ = 0;
+                char* path = strchr(part, '|');
+                if (!path) continue;
+                *path++ = 0;
+                uint16_t disk = 0;
+                for (int v = 0; v < g_nvolumes; v++) if (!_stricmp(part, g_volumes[v].part)) disk = g_volumes[v].disk;
+                launch_add_firmware(out, line, part, path, disk);
+            }
+        }
+    }
+    // 3. Scan of every volume.
+    for (int i = 0; i < g_nvolumes; i++) {
+        LaunchVolume v;
+        v.context = &g_volumes[i]; v.part = g_volumes[i].part; v.disk = g_volumes[i].disk;
+        v.file = volume_file; v.names = volume_names;
+        launch_scan_volume(&v, out);
+    }
+    return out->count;
+}
+static bool self_file(wchar_t* out)
+{
+    if (!g_self_dir_host[0]) return false;
+    wcscpy(out, g_self_dir_host);
+    wcsncat(out, L"\\BOOT.CFG", MAX_PATH - wcslen(out) - 1);
+    return true;
+}
+long plat_launch_cfg_read(char* buffer, unsigned long capacity)
+{
+    wchar_t path[MAX_PATH];
+    return self_file(path) ? read_whole(path, buffer, capacity) : -1;
+}
+int plat_launch_cfg_write(const char* data, unsigned long length)
+{
+    wchar_t path[MAX_PATH];
+    if (!self_file(path)) return 0;
+    const HANDLE h = CreateFileW(path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return 0;
+    DWORD n = 0;
+    const BOOL ok = WriteFile(h, data, length, &n, nullptr);
+    FlushFileBuffers(h);
+    CloseHandle(h);
+    return ok && n == length ? 1 : 0;
+}
+int plat_request_launch_entry(const LaunchEntry* entry)
+{
+    // The loader must still be on its volume (as the UEFI backend checks).
+    bool found = false;
+    for (int v = 0; v < g_nvolumes; v++)
+        if (!_stricmp(entry->part, g_volumes[v].part) && volume_file(&g_volumes[v], entry->path, nullptr)) found = true;
+    if (!found) return 2;
+    fprintf(stderr, "[launch %s %s %s:%s]\n", entry->kind == PL_WINNT ? "winnt" : "linux", entry->id, entry->part, entry->path);
     return 0;
 }
 
@@ -394,6 +541,27 @@ int main(int argc, char** argv)
         else if (!strcmp(argv[i], "--dump-screen")) dump = true;
         else if (!strcmp(argv[i], "--hak") && i + 1 < argc) { wchar_t w[MAX_PATH]; MultiByteToWideChar(CP_ACP, 0, argv[++i], -1, w, MAX_PATH); GetFullPathNameW(w, MAX_PATH, g_hak_dir, nullptr); }
         else if (!strcmp(argv[i], "--pcm") && i + 1 < argc) g_pcm = fopen(argv[++i], "wb");
+        else if (!strcmp(argv[i], "--rtc") && i + 1 < argc) {
+            unsigned y, mo, d, h, mi, s;
+            if (sscanf(argv[++i], "%u-%u-%u %u:%u:%u", &y, &mo, &d, &h, &mi, &s) != 6) { fprintf(stderr, "bad --rtc\n"); return 2; }
+            g_rtc.year = (uint16_t)y; g_rtc.month = (uint8_t)mo; g_rtc.day = (uint8_t)d; g_rtc.hour = (uint8_t)h; g_rtc.minute = (uint8_t)mi; g_rtc.second = (uint8_t)s; g_rtc.hsec = 0;
+            g_have_rtc = true;
+        }
+        else if (!strcmp(argv[i], "--volume") && i + 1 < argc) {      // r409: GUID=DIR[@disk]
+            const char* v = argv[++i];
+            const char* eq = strchr(v, '=');
+            if (!eq || eq - v >= 40 || g_nvolumes >= 8) { fprintf(stderr, "bad --volume\n"); return 2; }
+            HostVolume* vol = &g_volumes[g_nvolumes++];
+            memcpy(vol->part, v, (size_t)(eq - v)); vol->part[eq - v] = 0;
+            char dir[MAX_PATH];
+            strncpy(dir, eq + 1, MAX_PATH - 1); dir[MAX_PATH - 1] = 0;
+            char* at = strrchr(dir, '@');
+            vol->disk = 0;
+            if (at && at[1] >= '0' && at[1] <= '9' && !strpbrk(at, "\\/")) { vol->disk = (uint16_t)atoi(at + 1); *at = 0; }
+            wchar_t w[MAX_PATH]; MultiByteToWideChar(CP_ACP, 0, dir, -1, w, MAX_PATH); GetFullPathNameW(w, MAX_PATH, vol->dir, nullptr);
+        }
+        else if (!strcmp(argv[i], "--fwboot") && i + 1 < argc) { wchar_t w[MAX_PATH]; MultiByteToWideChar(CP_ACP, 0, argv[++i], -1, w, MAX_PATH); GetFullPathNameW(w, MAX_PATH, g_fwboot, nullptr); }
+        else if (!strcmp(argv[i], "--self") && i + 1 < argc) { wchar_t w[MAX_PATH]; MultiByteToWideChar(CP_ACP, 0, argv[++i], -1, w, MAX_PATH); GetFullPathNameW(w, MAX_PATH, g_self_dir_host, nullptr); }
         else if (!strcmp(argv[i], "--inttrace") && i + 1 < argc) g_inttrace = fopen(argv[++i], "wb");
         else { fprintf(stderr, "unknown option %s\n", argv[i]); return 2; }
     }

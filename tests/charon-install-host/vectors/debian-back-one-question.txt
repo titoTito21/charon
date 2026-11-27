@@ -1,0 +1,8 @@
+# Debian, express mode: Escape at the second question goes back to the first, which is answered differently.
+lang=en
+flow=debian
+mode=quick
+keys=ENTER ESC DOWN ENTER ENTER "test" ENTER "test" ENTER
+keys=ENTER ENTER
+keys=ENTER
+put diskmode=whole

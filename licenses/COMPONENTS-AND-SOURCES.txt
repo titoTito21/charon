@@ -76,3 +76,66 @@ RELEASE AUDIT ITEMS STILL TO COMPLETE
 
 No private signing keys, PFX files, firmware enrollment changes or user data were
 copied into this directory. No release packager or virtual machine was launched.
+
+Added in r400
+- BearSSL (TLS for https downloads), MIT licence: licenses/bearssl. Source: https://bearssl.org
+- Network drivers in EFI/HAK/drivers: net-*.efi are edk2 NetworkPkg modules (BSD-2-Clause-Patent,
+  source https://github.com/tianocore/edk2); nic-*.efi are iPXE drivers (GPL-2.0-or-later, source
+  https://github.com/ipxe/ipxe), both taken unchanged from the QEMU distribution (licenses/qemu-as-shipped).
+- CharonDOS (EFI/HAK/packages/CharonDOS): GPL-2.0-or-later, source in charon-source-r400.zip (src/dos).
+
+Added in r402
+- Trust anchors: the root certificates of Mozilla's list as distributed by the curl project (cacert.pem, MPL-2.0);
+  only subject names and public keys are embedded (src/efi/third_party/trust-anchors/roots.pem).
+- DOS programs are not shipped: CharonDOS downloads them from the FreeDOS repository on request.
+- The UDF reader (CharonUdf.h) and the WIM splitter (CharonWimSplit.h)
+  are Charon code, GPL-2.0-or-later; the split format follows the public description in wimlib.
+
+Added in r403
+- CHARONPC.EFI (CharonDOS package): Bochs 3.1 (LGPL-2.1-or-later), musl 1.2.5 (MIT),
+  libc++/libc++abi of LLVM 23.1.5 (Apache-2.0 WITH LLVM-exception) and Charon glue (src/pc,
+  GPL-2.0-or-later); details in licenses\charonpc\LICENCES.txt. The unmodified Bochs and musl
+  source archives are in licenses\corresponding-source.
+- Windows 95/98/ME/XP and their screen readers are not shipped: the system comes from the
+  user's own medium; a chosen reader is downloaded from its archive and checked by SHA-256.
+
+Added in r408
+- AudioDxe.efi: GPL-2.0-or-later as a whole since r408 (audio-driver\R408-LICENCE-NOTE.txt).
+- UEFI driver pack (\EFI\HAK\drivers): licence texts in driver-pack\, list of every driver, its origin
+  and licence in driver-pack\DRIVER-PACK.txt and NETWORK-DRIVERS.txt, sources and build scripts in
+  corresponding-source\driver-pack-source.zip.
+- Programs for the running system (OS-tools\, \EFI\HAK\os): GPL-2.0-or-later, source = the files themselves.
+- NVDA inside Windows Setup: Charon does not ship NVDA; it downloads the installer from nvaccess.org. The
+  helper programs Charon writes to \charon\pe are built from src/windows (GPL-2.0-or-later).
+
+Added in r409
+- AudioDxe.efi r409: GPL-2.0-or-later as since r408; what changed and where the r408 driver is:
+  audio-driver\R409-LICENCE-NOTE.txt.
+- RHVoice add-on: 13 voices. The engine as before (synth-addons\LICENCES.txt); each voice has its own
+  licence: synth-addons\LICENCES.txt, RHVOICE-VOICES.txt, rhvoice-voices.tsv. Cezary, Evgeniy-Eng and Lyubov
+  are CC BY-NC-ND 4.0 (non-commercial use only, no changed versions). Alan, Bdl and Clb have no licence file
+  upstream and are included as Debian distributes them. Repositories and commits:
+  corresponding-source\synth-upstream\RHVOICE-VOICE-SOURCES.txt.
+- nvdaControllerClient.dll (\EFI\HAK\addon): NV Access, LGPL-2.1, unchanged: nvda-controller-client\.
+- Windows profiles: Win11Debloat, WinUtil, ReviOS and AtlasOS are NOT shipped; Charon-WindowsProfile.ps1
+  downloads the pinned release the user chose and checks its SHA-256. Tiny11 is NOT shipped either.
+- Stormux, Linda, Nix, RHVoice packages of the distributions: downloaded by the installed system, not shipped.
+- In the images built on the build computer (CHARON.EFI, CHARONVOICE.EFI, CHARONDOS.EFI, espeak.tts,
+  rhvoice.tts, seven files of the driver pack) the account name inside debug paths was replaced by "user"
+  after the build (same length; work/scrub-private-r409.py in the source repository). Nothing else differs
+  from the build output.
+
+Added in r410
+- Reader control (CHARON.EFI / CHARONVOICE.EFI), CharonDOS and CharonPC rebuilt from the r410 source
+  tree. The multi-boot plan now OFFERS the "Windows, Debian, installer and Charon Hypervisor" preset in
+  the normal list; its full end-to-end install was not run in a VM (honest proof scope: the r410 section
+  of charon-r409-multiboot-results.txt and charon-r410-install-results.txt).
+- AudioDxe.efi: UNCHANGED since r409 (byte-identical); GPL-2.0-or-later. Details: audio-driver\R410-LICENCE-NOTE.txt
+  and the kept audio-driver\R409-LICENCE-NOTE.txt.
+- Driver pack and the 13-voice RHVoice add-on: UNCHANGED since r409 (driver-pack\, synth-addons\). The
+  voices Cezary, Evgeniy-Eng and Lyubov remain CC BY-NC-ND 4.0 (non-commercial, no changed versions).
+- Corresponding source for r410: corresponding-source\charon-source-r410.zip; results:
+  corresponding-source\charon-r410-install-results.txt and the other charon-r410-*-results.txt.
+- The four r410 images (CHARON.EFI, CHARONVOICE.EFI, CHARONDOS.EFI, CHARONPC.EFI) and the two synth
+  modules (espeak.tts, rhvoice.tts) were scanned for the build computer's account name: 0 hits, so no
+  scrub was needed (work/release-inputs-r410.json). The reused driver pack had already been scrubbed for r409.

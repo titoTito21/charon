@@ -1,14 +1,14 @@
-Charon OS companion programs: host test run of 2026-11-22
+Charon OS companion programs: host test run of 2026-11-24 (r410, settings formats 1 to E)
 (python tests/run-tests.py; Python 3.15, Windows PowerShell 5.1.26100, Clang of work/llvm-23.1.5).
 No firmware variable and no EFI system partition of the host was touched: scratch folders and a
 firmware stand-in only.
 
 work folder: <work>
-Charon-BootManager.ps1: parsed by PowerShell 5.1.26100.9818, no errors
-Charon-Settings.ps1: parsed by PowerShell 5.1.26100.9818, no errors
-CharonOs.Common.ps1: parsed by PowerShell 5.1.26100.9818, no errors
-CharonOs.Fields.ps1: parsed by PowerShell 5.1.26100.9818, no errors
-Install-CharonTools.ps1: parsed by PowerShell 5.1.26100.9818, no errors
+Charon-BootManager.ps1: parsed by PowerShell 5.1.26100.10068, no errors
+Charon-Settings.ps1: parsed by PowerShell 5.1.26100.10068, no errors
+CharonOs.Common.ps1: parsed by PowerShell 5.1.26100.10068, no errors
+CharonOs.Fields.ps1: parsed by PowerShell 5.1.26100.10068, no errors
+Install-CharonTools.ps1: parsed by PowerShell 5.1.26100.10068, no errors
 PASS syntax: every .ps1 parses with Windows PowerShell 5.1
 PASS form: Windows files are UTF-8 with BOM (.ps1) and CRLF
 PASS form: CharonOs.Fields.ps1 matches charon_fields.py
@@ -16,7 +16,7 @@ PASS syntax: linux/charon-settings compiles with Python 3.15
 PASS form: linux/charon-settings has LF line ends, no BOM, a python3 shebang
 PASS syntax: linux/charon-bootmanager compiles with Python 3.15
 PASS form: linux/charon-bootmanager has LF line ends, no BOM, a python3 shebang
-PASS form: the settings table in linux/charon-settings is the one in charon_fields.py (51 rows)
+PASS form: the settings table in linux/charon-settings is the one in charon_fields.py (70 rows)
 PASS syntax: sh -n linux/install-charon-tools.sh
 host harness built from src/efi with work/llvm-23.1.5/bin/clang++.exe
 PASS python: 40 records written by the program are byte-identical to Charon's EncodeSettings and load with LoadCharSettings
@@ -26,16 +26,29 @@ PASS python: changing one setting changes only its byte and the sequence (bytes 
 PASS python: a damaged newest slot falls back to the other one, as LoadCharSettings does
 PASS python: two unreadable slots are reported as invalid (exit 4), as LoadCharSettings does
 PASS python: nothing is written over invalid settings without a repair
-PASS python: a record of a newer format (CHARS00D) makes the program refuse to write (exit 6), files untouched
+PASS python: a record of a newer format (CHARS00F, which Charon's DecodeSettings rejects too) makes the program refuse to write (exit 6), files untouched
+PASS python: with a newer record in the other slot the program still shows the record it can read, and writes nothing
 PASS python: a boot manager that writes a newer format makes the program refuse to write (exit 6)
 PASS python: a bit format B does not store (formatFlags 128) is refused (exit 5), nothing written
 PASS python: with a boot manager that writes format B the record is CHARS00B and Charon loads it
-PASS python: members a format B record cannot hold in full (defaults 255 and 153) are cut to its bits, and Charon loads the record
-PASS python: records in the older formats 1-9, A, B have Charon's sizes and decode in Charon to the values set
+PASS python: a new format B record starts from that format's defaults (bytes 40 and 41 = 60 and 25, within its bits), and Charon loads the record
+PASS python: records in the older formats 1-9, A, B, C, D have Charon's sizes and decode in Charon to the values set
 PASS python: a setting the target format does not store is refused (exit 5), nothing written
 PASS python: a value EncodeSettings rejects (rate 21) is refused (exit 5), nothing written
-PASS python: the record SaveCharSettings leaves behind with its default byte 41 = 153 is reported invalid and repaired; Charon loads the repair
-PASS python: restore defaults writes Charon's defaults (byte 41 without bit 7)
+PASS python: a record with a value out of range (rate 3) is reported invalid, as LoadCharSettings does, and repaired: the default for that value, every other member kept; Charon loads the repair
+PASS python: a format E record with every new bit in use is read as DecodeSettings reads it (detail = byte 32 & 7, timers = byte 33 & 3, punctuation = byte 36 & 3, capitals = byte 37 & 7, screenLanguage = byte 38 & 3; groups, profile 3, 12 items, bar, colours)
+PASS python: changing one old setting (rate) in a format E record changes bytes 8 and 22 only; the record stays CHARS00E and the new bits survive
+PASS python: changing the five old settings that share a byte with new bits (bytes 32, 33, 36, 37, 38) changes only their own bits
+PASS python: the new settings are changed by their rows (a custom profile item, reader bar, a formatting group, the profile, the loading sound) and Charon decodes them
+PASS python: a value EncodeSettings rejects in a new member (profileItems 4096) is refused (exit 5), nothing written
+PASS python: a format D record is read as DecodeSettings reads it (groups 5, profile 2, items 1083) and stays CHARS00D, bytes 8 and 22 changed only, when rate changes
+PASS python: what format D does not store (the custom profile 3, the reader bar) is refused (exit 5), nothing written
+PASS python: a boot manager image carrying CHARS00E makes the program write format E; the new record is Charon's EncodeSettings of its defaults with that change
+PASS python: a format D record under a boot manager that writes format E is rewritten as CHARS00E, byte for byte what Charon's SaveCharSettings writes from the same record
+PASS python: a format C record with byte 41 bit 7 set (Charon r408, r409) is valid, as in DecodeSettings, and keeps the bit when other settings change
+PASS python: with a boot manager that writes format C a new record is CHARS00C with bytes 40, 41 = 255, 25 and no new bits; turning the loading sound on is refused (exit 5)
+PASS python: 21 records with single bit fields set in bytes 32, 33, 36-39, 41 of formats B to E are accepted or reported invalid exactly as by DecodeSettings (9 accepted)
+PASS python: restore defaults writes the record Charon's EncodeSettings gives for CharSettings{} (byte 40 = 252, byte 41 = 153)
 PASS python: the reader-only marker is created (as the installers write it) and removed
 PASS python: nothing but the two settings slots was created in EFI/HAK
 PASS python: synthesizer add-ons are listed with the keys of Charon's synths::KeyOf; manifests without module or voice are left out
@@ -69,16 +82,29 @@ PASS powershell: changing one setting changes only its byte and the sequence (by
 PASS powershell: a damaged newest slot falls back to the other one, as LoadCharSettings does
 PASS powershell: two unreadable slots are reported as invalid (exit 4), as LoadCharSettings does
 PASS powershell: nothing is written over invalid settings without a repair
-PASS powershell: a record of a newer format (CHARS00D) makes the program refuse to write (exit 6), files untouched
+PASS powershell: a record of a newer format (CHARS00F, which Charon's DecodeSettings rejects too) makes the program refuse to write (exit 6), files untouched
+PASS powershell: with a newer record in the other slot the program still shows the record it can read, and writes nothing
 PASS powershell: a boot manager that writes a newer format makes the program refuse to write (exit 6)
 PASS powershell: a bit format B does not store (formatFlags 128) is refused (exit 5), nothing written
 PASS powershell: with a boot manager that writes format B the record is CHARS00B and Charon loads it
-PASS powershell: members a format B record cannot hold in full (defaults 255 and 153) are cut to its bits, and Charon loads the record
-PASS powershell: records in the older formats 1-9, A, B have Charon's sizes and decode in Charon to the values set
+PASS powershell: a new format B record starts from that format's defaults (bytes 40 and 41 = 60 and 25, within its bits), and Charon loads the record
+PASS powershell: records in the older formats 1-9, A, B, C, D have Charon's sizes and decode in Charon to the values set
 PASS powershell: a setting the target format does not store is refused (exit 5), nothing written
 PASS powershell: a value EncodeSettings rejects (rate 21) is refused (exit 5), nothing written
-PASS powershell: the record SaveCharSettings leaves behind with its default byte 41 = 153 is reported invalid and repaired; Charon loads the repair
-PASS powershell: restore defaults writes Charon's defaults (byte 41 without bit 7)
+PASS powershell: a record with a value out of range (rate 3) is reported invalid, as LoadCharSettings does, and repaired: the default for that value, every other member kept; Charon loads the repair
+PASS powershell: a format E record with every new bit in use is read as DecodeSettings reads it (detail = byte 32 & 7, timers = byte 33 & 3, punctuation = byte 36 & 3, capitals = byte 37 & 7, screenLanguage = byte 38 & 3; groups, profile 3, 12 items, bar, colours)
+PASS powershell: changing one old setting (rate) in a format E record changes bytes 8 and 22 only; the record stays CHARS00E and the new bits survive
+PASS powershell: changing the five old settings that share a byte with new bits (bytes 32, 33, 36, 37, 38) changes only their own bits
+PASS powershell: the new settings are changed by their rows (a custom profile item, reader bar, a formatting group, the profile, the loading sound) and Charon decodes them
+PASS powershell: a value EncodeSettings rejects in a new member (profileItems 4096) is refused (exit 5), nothing written
+PASS powershell: a format D record is read as DecodeSettings reads it (groups 5, profile 2, items 1083) and stays CHARS00D, bytes 8 and 22 changed only, when rate changes
+PASS powershell: what format D does not store (the custom profile 3, the reader bar) is refused (exit 5), nothing written
+PASS powershell: a boot manager image carrying CHARS00E makes the program write format E; the new record is Charon's EncodeSettings of its defaults with that change
+PASS powershell: a format D record under a boot manager that writes format E is rewritten as CHARS00E, byte for byte what Charon's SaveCharSettings writes from the same record
+PASS powershell: a format C record with byte 41 bit 7 set (Charon r408, r409) is valid, as in DecodeSettings, and keeps the bit when other settings change
+PASS powershell: with a boot manager that writes format C a new record is CHARS00C with bytes 40, 41 = 255, 25 and no new bits; turning the loading sound on is refused (exit 5)
+PASS powershell: 21 records with single bit fields set in bytes 32, 33, 36-39, 41 of formats B to E are accepted or reported invalid exactly as by DecodeSettings (9 accepted)
+PASS powershell: restore defaults writes the record Charon's EncodeSettings gives for CharSettings{} (byte 40 = 252, byte 41 = 153)
 PASS powershell: the reader-only marker is created (as the installers write it) and removed
 PASS powershell: nothing but the two settings slots was created in EFI/HAK
 PASS powershell: synthesizer add-ons are listed with the keys of Charon's synths::KeyOf; manifests without module or voice are left out
@@ -106,9 +132,9 @@ PASS powershell: a text-menu session (rate 80%, language Polish, symbol level al
 PASS powershell: the text menus use no escape sequences or cursor addressing
 PASS powershell boot manager: a text-menu session (list, Charon first, yes, list) changes BootOrder
 PASS dialog settings: operating its check boxes, drop-down lists and track bars and saving gives the record Charon loads
-PASS dialog settings (en): 103 controls, every one named, each field directly after its label in the tab order, 9 track bars with spoken values, access keys unique, default and cancel button
+PASS dialog settings (en): 123 controls, every one named, each field directly after its label in the tab order, 9 track bars with spoken values, access keys unique, default and cancel button
 PASS dialog bootmanager (en): 18 controls, every one named, each field directly after its label in the tab order, 0 track bars with spoken values, access keys unique, default and cancel button
-PASS dialog settings (pl): 103 controls, every one named, each field directly after its label in the tab order, 9 track bars with spoken values, access keys unique, default and cancel button
+PASS dialog settings (pl): 123 controls, every one named, each field directly after its label in the tab order, 9 track bars with spoken values, access keys unique, default and cancel button
 PASS dialog bootmanager (pl): 18 controls, every one named, each field directly after its label in the tab order, 0 track bars with spoken values, access keys unique, default and cancel button
 PASS powershell boot manager: with Charon-SecureBoot.ps1 beside it the Secure Boot item calls Get-CharonSecureBootState and Disable-CharonSecureBoot (trial mode on the stand-in), passing its questions through; firmware files untouched
 PASS powershell boot manager: without Charon-SecureBoot.ps1 the Secure Boot item only shows the state
@@ -119,4 +145,4 @@ PASS install-charon-tools.sh --uninstall: removes them again
 PASS linux/charon-settings.desktop: Terminal=true, names in English and Polish
 PASS linux/charon-bootmanager.desktop: Terminal=true, names in English and Polish
 
-108 passed, 0 failed
+134 passed, 0 failed

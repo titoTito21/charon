@@ -6,6 +6,7 @@
 // passed to an installer by size and by GPT identifiers. Nothing is written.
 // GPL-2.0-or-later.
 #include "CharonWsCore.h"
+#include "CharonDiskIdentity.h"   // r409: serial and model from identify data
 namespace hakefi {
 namespace ws {
 namespace disks {
@@ -21,6 +22,7 @@ struct Disk {
     efi_handle handle;media::BlockIo* io;
     uint64_t blocks;uint32_t blockSize;bool removable,readOnly,usb,nvme,gpt,hasCharon,blank;   // blank: first sector all zero, no partition table, nothing to lose
     uint8_t guid[16];
+    char serial[40],model[48];         // r409: from the firmware's disk information; "" = the firmware gives none (USB, SCSI, virtio)
     Part parts[maxParts];size_t partCount;
     uint64_t freeFirst,freeBlocks;     // the largest gap
 };
@@ -75,6 +77,60 @@ inline void ReadGpt(Disk& d) {
         if(i<d.partCount && d.parts[i].last+1>at)at=d.parts[i].last+1;
     }
 }
+// r409: EFI_DISK_INFO_PROTOCOL on the disk's handle: the ATA IDENTIFY DEVICE block of an IDE or
+// AHCI disk, the Identify Controller block of an NVMe disk. Read at every Load(), never cached.
+// An unattended plan may only run on the disk whose serial its [disk.N] section names; a disk
+// without identify data has no serial and is never matched by anything weaker.
+inline bool SameBytes(const void* a,const void* b,size_t n) {const uint8_t* x=static_cast<const uint8_t*>(a);const uint8_t* y=static_cast<const uint8_t*>(b);for(size_t i=0;i<n;++i)if(x[i]!=y[i])return false;return true;}
+struct DiskInfo {
+    efi_guid Interface;
+    efi_status (*Inquiry)(DiskInfo*,void*,uint32_t*) EFIAPI;
+    efi_status (*Identify)(DiskInfo*,void*,uint32_t*) EFIAPI;
+    efi_status (*SenseData)(DiskInfo*,void*,uint32_t*,uint8_t*) EFIAPI;
+    efi_status (*WhichIde)(DiskInfo*,uint32_t*,uint32_t*) EFIAPI;
+};
+// r410 (helper bw's finding F1): EDK2's NvmExpressDxe answers EFI_DISK_INFO.Identify with the Identify NAMESPACE
+// data (NvmExpressDiskInfo.c: CopyMem(IdentifyData,&Device->NamespaceData,...)), which holds no serial. The serial
+// and model are in the Identify CONTROLLER data (CNS=1), asked through EFI_NVM_EXPRESS_PASS_THRU_PROTOCOL on the
+// controller handle (UEFI 2.10 section 13.15; layout as in edk2 MdePkg/Include/Protocol/NvmExpressPassthru.h,
+// NamespaceId 0 = the controller, admin queue 0, opcode 06h Identify). Read at every Load(), never cached.
+struct NvmeCommand {uint32_t cdw0;uint8_t flags;uint32_t nsid,cdw2,cdw3,cdw10,cdw11,cdw12,cdw13,cdw14,cdw15;};
+struct NvmeCompletion {uint32_t dw0,dw1,dw2,dw3;};
+struct NvmePacket {uint64_t timeout;void* transfer;uint32_t transferLength;void* metadata;uint32_t metadataLength;uint8_t queueType;NvmeCommand* cmd;NvmeCompletion* completion;};
+struct NvmeMode {uint32_t attributes,ioAlign,version;};
+struct NvmePassThru {
+    NvmeMode* mode;
+    efi_status (*PassThru)(NvmePassThru*,uint32_t,NvmePacket*,void*) EFIAPI;
+    void* getNextNamespace;void* buildDevicePath;void* getNamespace;
+};
+inline bool NvmeControllerIdentity(Disk& d) {
+    static efi_guid passGuid={0x52c78312,0x8edc,0x4233,{0x98,0xf2,0x1a,0x1a,0xa5,0xe3,0x88,0xa5}};
+    auto* boot=U().host->boot;uint8_t* path=nullptr;
+    if(boot->HandleProtocol(d.handle,&media::pathGuid,(void**)&path)!=EFI_SUCCESS || !path)return false;
+    auto* remaining=reinterpret_cast<efi_device_path_protocol*>(path);efi_handle controller=nullptr;NvmePassThru* pt=nullptr;
+    if(boot->LocateDevicePath(&passGuid,&remaining,&controller)!=EFI_SUCCESS || !controller)return false;
+    if(boot->HandleProtocol(controller,&passGuid,(void**)&pt)!=EFI_SUCCESS || !pt || !pt->PassThru)return false;
+    alignas(4096) static uint8_t data[4096];memset(data,0,sizeof(data));
+    NvmeCommand cmd;memset(&cmd,0,sizeof(cmd));cmd.cdw0=0x06;cmd.flags=0x04;cmd.nsid=0;cmd.cdw10=1;   // Identify, CNS=1
+    NvmeCompletion done;memset(&done,0,sizeof(done));
+    NvmePacket p;memset(&p,0,sizeof(p));p.timeout=50000000;p.transfer=data;p.transferLength=sizeof(data);p.queueType=0;p.cmd=&cmd;p.completion=&done;
+    if(pt->PassThru(pt,0,&p,nullptr)!=EFI_SUCCESS)return false;
+    return diskidentity::FromNvme(data,sizeof(data),d.serial,sizeof(d.serial),d.model,sizeof(d.model));
+}
+inline void ReadIdentity(Disk& d) {
+    static efi_guid infoGuid={0xd432a67f,0x14dc,0x484b,{0xb3,0xbb,0x3f,0x02,0x91,0x84,0x93,0x27}};
+    static const efi_guid ide={0x5e948fe3,0x26d3,0x42b5,{0xaf,0x17,0x61,0x02,0x87,0x18,0x8d,0xec}};
+    static const efi_guid ahci={0x9e498932,0x4abc,0x45af,{0xa3,0x4d,0x02,0x47,0x78,0x7b,0xe7,0xc6}};
+    static const efi_guid nvme={0x3ab14680,0x5d3f,0x4a4d,{0xbc,0xdc,0xcc,0x38,0x00,0x18,0xc7,0xf7}};
+    d.serial[0]=d.model[0]=0;DiskInfo* info=nullptr;
+    if(d.nvme) {const bool got=NvmeControllerIdentity(d);charontrace::Value("CHARON disk: NVMe controller identify, serial found",got?1:0);if(got)return;}
+    if(U().host->boot->HandleProtocol(d.handle,&infoGuid,(void**)&info)!=EFI_SUCCESS || !info || !info->Identify)return;
+    alignas(16) static uint8_t identify[4096];memset(identify,0,sizeof(identify));uint32_t size=sizeof(identify);
+    if(info->Identify(info,identify,&size)!=EFI_SUCCESS)return;
+    if(SameBytes(&info->Interface,&nvme,sizeof(efi_guid)))diskidentity::FromNvme(identify,size,d.serial,sizeof(d.serial),d.model,sizeof(d.model));
+    else if(SameBytes(&info->Interface,&ide,sizeof(efi_guid)) || SameBytes(&info->Interface,&ahci,sizeof(efi_guid)))
+        diskidentity::FromAta(identify,size,d.serial,sizeof(d.serial),d.model,sizeof(d.model));
+}
 // Every whole disk with media (CD/DVD drives and RAM disks are left out).
 inline void Load() {
     auto& s=D();s.count=0;auto* boot=U().host->boot;efi_handle* handles=nullptr;size_t n=0;
@@ -102,7 +158,7 @@ inline void Load() {
         if(memory)continue;
         // PathLength leaves the end node out: the whole disk path must lead Charon's volume path.
         if(self && bytes) {const size_t own=media::PathLength(self);bool same=own!=SIZE_MAX && own>=bytes;for(size_t k=0;same && k<bytes;++k)if(self[k]!=path[k])same=false;d.hasCharon=same;}
-        ReadGpt(d);++s.count;
+        ReadGpt(d);ReadIdentity(d);++s.count;
     }
     boot->FreePool(handles);
 }

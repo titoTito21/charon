@@ -1,0 +1,5 @@
+CHARON grid 31 100 18 99 1 systemd-boot
+G0e 32*00,27*87|59*0000|                                        Charon probe loader
+G0f 32*00,24*87|56*0000|                                           Windows Setup
+G10 32*00,36*f0|68*0000|                                   Reboot Into Firmware Interface   
+CHARON grid end

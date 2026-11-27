@@ -14,6 +14,8 @@ import os, shutil, subprocess, sys
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import charon_private_paths
 container = root.parent.parent
 args = [a for a in sys.argv[1:] if not a.startswith('--')]
 opts = [a for a in sys.argv[1:] if a.startswith('--')]
@@ -31,8 +33,8 @@ shared = ['cpu', 'bios', 'video', 'dosfs', 'dosint', 'shell', 'util', 'sound', '
 warn = ['-std=c++17', '-Wall', '-Wextra', '-Werror']
 
 
-def run(*command):
-    r = subprocess.run(list(map(str, command)), capture_output=True, text=True)
+def run(*command, cwd=None):
+    r = subprocess.run(list(map(str, command)), capture_output=True, text=True, cwd=cwd)
     if r.returncode:
         sys.exit(f'FAILED: {" ".join(map(str, command))}\n{r.stdout}{r.stderr}')
 
@@ -63,7 +65,8 @@ SECTIONS {
              '-fno-exceptions', '-fno-rtti', '-fno-threadsafe-statics', '-fshort-wchar', '-fno-pic', '-fno-pie',
              '-mcmodel=large', '-mno-red-zone', '-mno-sse', '-mno-mmx', '-ffunction-sections', '-fdata-sections',
              '-fno-unwind-tables', '-fno-asynchronous-unwind-tables',
-             '-I', obj / 'include', '-I', root / 'tools/charon-compat-include']
+             '-I', obj / 'include', '-I', root / 'tools/charon-compat-include',
+             *charon_private_paths.prefix_map((build, 'build'), (root, 'charon'), (container, 'host'))]
     objects = []
     for name in shared + ['backend_uefi']:
         o = obj / f'{name}.o'
@@ -75,8 +78,25 @@ SECTIONS {
     run(lld, '--emit-relocs', '--no-undefined', '-z', 'max-page-size=4096', '-T', obj / 'image.lds', obj / 'closed.o',
         '-o', obj / 'CHARONDOS.elf')
     out = build / 'CHARONDOS.EFI'
-    run(imagetool, 'GenImage', '-c', 'PE', '-t', 'UEFI_APPLICATION', '-b', '0x100000', '-o', out, obj / 'CHARONDOS.elf')
+    # r410: a bare ELF name (ImageTool copies the path it is given into the PE debug entry).
+    run(imagetool, 'GenImage', '-c', 'PE', '-t', 'UEFI_APPLICATION', '-b', '0x100000', '-o', '../CHARONDOS.EFI', 'CHARONDOS.elf', cwd=obj)
     data = out.read_bytes()
     if data[:2] != b'MZ':
         sys.exit('FAILED: the image is not a PE file')
+    charon_private_paths.check(out)
+    # r410: Charon names a boot entry after the boot manager whose text it finds in the entry's image
+    # (src/efi/CharonBootManagers.h, texts stored one letter up). CharonDOS must carry none of them:
+    # r409's image held Windows' name and the device list said "CharonDOS (Windows Boot Manager)".
+    import re
+    literal = r'\{"((?:[^"\\]|\\.)+)",u"((?:[^"\\]|\\.)*)"\}'
+    table = (root / 'src/efi/CharonBootManagers.h').read_text(encoding='utf-8')
+    found = []
+    for raised, name in re.findall(literal, table):
+        if '\\' in raised:
+            continue
+        text = bytes(ord(c) - 1 for c in raised)
+        if text in data or b''.join(bytes([c, 0]) for c in text) in data:
+            found.append(name or text.decode('latin-1'))
+    if found:
+        sys.exit('FAILED: CHARONDOS.EFI holds the text Charon recognises a boot manager by: ' + ', '.join(found))
     print('PASS', out, len(data), 'bytes')

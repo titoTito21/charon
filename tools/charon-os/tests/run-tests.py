@@ -16,6 +16,9 @@ What is checked
      Charon's LoadCharSettings and compared with Charon's EncodeSettings; records written
      by Charon's SaveCharSettings are read by each program; both write in turns.
   3. Older record formats, refusals (newer format, invalid record), the repair.
+     Formats D (r410 V13) and E (r410 V14): the new bits survive a change of an old setting
+     byte for byte, the masks are the ones of DecodeSettings, a boot manager image carrying
+     CHARS00E makes the programs write format E, format F is refused.
   4. Synthesizer keys against synths::KeyOf, the Continue target against ParseContinueTarget.
   5. The boot manager programs on a firmware stand-in: order, Charon first / second /
      removed, BootNext, firmware setup, reader add-on.
@@ -206,10 +209,36 @@ def slot(esp, letter):
 
 
 def stored(values):
-    """What a format C record holds after the programs wrote `values`."""
-    result = dict(values)
-    result['readerExtra'] = result['readerExtra'] & 0x7f
+    """What a record of the newest format holds after the programs wrote `values`: all of it."""
+    return dict(values)
+
+
+def for_format(values, version):
+    """The members a record of format `version` stores, cut to the bits that format holds."""
+    age = spec.VERSIONS.index
+    result = {name: value for name, value in values.items() if age(spec.MEMBER_SINCE[name]) <= age(version)}
+    if version in 'AB':
+        result['formatFlags'] &= 63
+        result['readerExtra'] &= 31
+    if version == 'C':
+        result['readerExtra'] &= 0x7f              # a new format C record never gets bit 7
+    if version == 'D':
+        result['profile'] = min(result['profile'], 2)   # the custom profile needs format E
     return result
+
+
+def sealed(record, version=None):
+    """The record with another format character (optional) and a fresh CRC."""
+    record = bytearray(record)
+    if version:
+        record[7] = ord(version)
+    at = len(record) - 4
+    record[at:] = struct.pack('<I', zlib.crc32(bytes(record[:at])) & 0xffffffff)
+    return bytes(record)
+
+
+def same(decoded, values):
+    return all(str(decoded.get(name)) == str(value) for name, value in values.items())
 
 
 def random_settings(rng):
@@ -221,8 +250,10 @@ def random_settings(rng):
                 readerVolume=rng.randint(1, 10), detail=rng.randint(0, 7), timers=rng.randint(0, 3), messageRate=rng.randint(5, 20),
                 messagePitch=rng.randint(5, 20), punctuation=rng.randint(0, 3), capitals=rng.randint(0, 7),
                 screenLanguage=rng.randint(0, 3), readerFlags=rng.randint(0, 63), formatFlags=rng.randint(0, 255),
-                readerExtra=rng.randint(0, 2) | (rng.randint(0, 7) << 2) | (rng.randint(0, 2) << 5),
-                synthKey=rng.randint(0, 255), synthVoice=rng.randint(0, 15))
+                readerExtra=rng.randint(0, 2) | (rng.randint(0, 7) << 2) | (rng.randint(0, 2) << 5) | (rng.randint(0, 1) << 7),
+                synthKey=rng.randint(0, 255), synthVoice=rng.randint(0, 15), formatGroups=rng.randint(0, 7),
+                profile=rng.randint(0, 3), profileItems=rng.randint(0, 4095), readerBar=rng.randint(0, 1),
+                absoluteColours=rng.randint(0, 1))
 
 
 def members_of(values):
@@ -315,7 +346,8 @@ def test_syntax(work):
         module = importlib.util.module_from_spec(importlib.util.spec_from_loader('charon_settings_linux', loader))
         loader.exec_module(module)
         same = all(getattr(module, name, None) == getattr(spec, name) for name in
-                   ('VERSIONS', 'MEMBERS', 'DEFAULTS', 'DEFAULTS_AB', 'MEMBER_SINCE', 'AUTO_DELAYS', 'PAGES', 'ROWS'))
+                   ('VERSIONS', 'NEWEST', 'MEMBERS', 'DEFAULTS', 'DEFAULTS_AB', 'DEFAULTS_C', 'MEMBER_SINCE', 'AUTO_DELAYS',
+                    'PAGES', 'ROWS', 'LINGER_NOTE_EN', 'LINGER_NOTE_PL'))
         check('form: the settings table in linux/charon-settings is the one in charon_fields.py (%d rows)' % len(spec.ROWS), same)
     shell = shutil.which('sh')
     for script in (OS_DIR / 'linux' / 'install-charon-tools.sh',):
@@ -336,7 +368,7 @@ def test_record(tools, host, work, vectors):
         expected = stored(values)
         loaded_code, loaded, text = host.call('load', esp)
         ok = code == 0 and loaded_code == 0 and loaded.get('status') == 'ok' and loaded.get('slota') == 'ok' \
-            and loaded.get('slotb') == 'notfound' and loaded.get('sequence') == '1' and loaded.get('format') == 'C' \
+            and loaded.get('slotb') == 'notfound' and loaded.get('sequence') == '1' and loaded.get('format') == spec.NEWEST \
             and members_of(loaded) == expected and members_of(pairs(out)) == expected
         if ok:
             _, encoded, _ = host.call('encode', 'sequence=1', *host_arguments(expected))
@@ -355,7 +387,7 @@ def test_record(tools, host, work, vectors):
         code, saved, text = host.call('save', esp, *host_arguments(stored(values)))
         shown_code, out, err = tools.settings(esp, show)
         shown = pairs(out)
-        if not (code == 0 and shown_code == 0 and members_of(shown) == members_of(saved) and shown.get('sequence') == '1' and shown.get('format') == 'C'):
+        if not (code == 0 and shown_code == 0 and members_of(shown) == members_of(saved) and shown.get('sequence') == '1' and shown.get('format') == spec.NEWEST):
             equal = False
             detail = 'vector %d: %s | %s %s' % (index, text, out, err)
             break
@@ -408,16 +440,20 @@ def test_record(tools, host, work, vectors):
     esp = new_esp(work, tag + '-newer')
     tools.settings(esp, *tools.set_arguments(vectors[1]))
     newer = bytearray(slot(esp, 'a').read_bytes())
-    newer[7] = ord('D')
+    newer[7] = ord('F')
     newer[8] = 2
     newer[44:48] = struct.pack('<I', zlib.crc32(bytes(newer[:44])))
     slot(esp, 'b').write_bytes(bytes(newer))
     a_before = slot(esp, 'a').read_bytes()
     code, out, err = tools.settings(esp, *tools.set_arguments({'rate': 9}))
-    check('%s: a record of a newer format (CHARS00D) makes the program refuse to write (exit 6), files untouched' % tag,
-          code == 6 and slot(esp, 'a').read_bytes() == a_before and slot(esp, 'b').read_bytes() == bytes(newer), out + err)
+    host_code, _, _ = host.call('decode', bytes(newer).hex())
+    check('%s: a record of a newer format (CHARS00F, which Charon\'s DecodeSettings rejects too) makes the program refuse to write (exit 6), files untouched' % tag,
+          code == 6 and host_code == 4 and slot(esp, 'a').read_bytes() == a_before and slot(esp, 'b').read_bytes() == bytes(newer), out + err)
+    code, out, err = tools.settings(esp, show)
+    check('%s: with a newer record in the other slot the program still shows the record it can read, and writes nothing' % tag,
+          code == 0 and pairs(out).get('sequence') == '1' and slot(esp, 'a').read_bytes() == a_before and slot(esp, 'b').read_bytes() == bytes(newer), out + err)
     esp = new_esp(work, tag + '-newer-binary')
-    (esp / 'EFI' / 'HAK' / 'HAKBOOT.EFI').write_bytes(b'MZ' + bytes(300) + b'CHARS00D' + bytes(100))
+    (esp / 'EFI' / 'HAK' / 'HAKBOOT.EFI').write_bytes(b'MZ' + bytes(300) + b'CHARS00F' + bytes(100))
     code, out, err = tools.settings(esp, *tools.set_arguments({'rate': 9}))
     check('%s: a boot manager that writes a newer format makes the program refuse to write (exit 6)' % tag,
           code == 6 and not slot(esp, 'a').exists(), out + err)
@@ -425,37 +461,29 @@ def test_record(tools, host, work, vectors):
     # G. the format follows the installed boot manager, then the record; older formats load in Charon.
     esp = new_esp(work, tag + '-binary-b')
     (esp / 'EFI' / 'HAK' / 'HAKBOOT.EFI').write_bytes(b'MZ' + bytes(300) + b'CHARS00B' + bytes(100))
-    code, out, err = tools.settings(esp, *tools.set_arguments(dict(vectors[6], formatFlags=128 | 5)))
+    code, out, err = tools.settings(esp, *tools.set_arguments(dict(for_format(vectors[6], 'B'), formatFlags=128 | 5)))
     check('%s: a bit format B does not store (formatFlags 128) is refused (exit 5), nothing written' % tag, code == 5 and not slot(esp, 'a').exists(), out + err)
-    expected = dict(vectors[6])
-    expected['formatFlags'] &= 63
-    expected['readerExtra'] &= 31
+    expected = for_format(vectors[6], 'B')
     code, out, err = tools.settings(esp, *tools.set_arguments(expected))
     raw = slot(esp, 'a').read_bytes() if slot(esp, 'a').exists() else b''
     _, loaded, text = host.call('load', esp)
     check('%s: with a boot manager that writes format B the record is CHARS00B and Charon loads it' % tag,
-          code == 0 and raw[:8] == b'CHARS00B' and loaded.get('status') == 'ok' and members_of(loaded) == expected, out + err + text)
+          code == 0 and raw[:8] == b'CHARS00B' and loaded.get('status') == 'ok' and same(loaded, expected), out + err + text)
     esp = new_esp(work, tag + '-binary-b-defaults')
     (esp / 'EFI' / 'HAK' / 'HAKBOOT.EFI').write_bytes(b'MZ' + bytes(300) + b'CHARS00B' + bytes(100))
     code, out, err = tools.settings(esp, *tools.set_arguments({'rate': 12}))
     raw = slot(esp, 'a').read_bytes() if slot(esp, 'a').exists() else b''
     _, loaded, text = host.call('load', esp)
-    check('%s: members a format B record cannot hold in full (defaults 255 and 153) are cut to its bits, and Charon loads the record' % tag,
-          code == 0 and raw[:8] == b'CHARS00B' and raw[40] <= 63 and raw[41] <= 31 and loaded.get('status') == 'ok' and loaded.get('rate') == '12', out + err + text)
+    check('%s: a new format B record starts from that format\'s defaults (bytes 40 and 41 = 60 and 25, within its bits), and Charon loads the record' % tag,
+          code == 0 and raw[:8] == b'CHARS00B' and raw[40] == 60 and raw[41] == 25 and loaded.get('status') == 'ok' and loaded.get('rate') == '12', out + err + text)
     ok = True
     detail = ''
     for version in spec.VERSIONS[:-1]:
         esp = new_esp(work, '%s-format-%s' % (tag, version))
-        values = {name: value for name, value in vectors[7].items() if spec.VERSIONS.index(spec.MEMBER_SINCE[name]) <= spec.VERSIONS.index(version)}
-        if version in 'AB':
-            values['formatFlags'] &= 63
-            values['readerExtra'] &= 31
-            if version == 'A':
-                values.pop('synthKey', None)
-                values.pop('synthVoice', None)
+        values = for_format(vectors[7], version)
         code, out, err = tools.settings(esp, tools.option['format'], version, *tools.set_arguments(values))
         raw = slot(esp, 'a').read_bytes() if slot(esp, 'a').exists() else b''
-        size = 48 if version in '9ABC' else 40 if version in '78' else 32
+        size = 48 if version in '9ABCDE' else 40 if version in '78' else 32
         _, decoded, text = host.call('decode', raw.hex())
         good = code == 0 and len(raw) == size and raw[:8] == b'CHARS00' + version.encode() and decoded.get('decode') == 'ok'
         good = good and all(int(decoded[name]) == value for name, value in values.items())
@@ -464,7 +492,7 @@ def test_record(tools, host, work, vectors):
             ok = False
             detail = 'format %s: %s %s %s' % (version, out, err, text)
             break
-    check('%s: records in the older formats 1-9, A, B have Charon\'s sizes and decode in Charon to the values set' % tag, ok, detail)
+    check('%s: records in the older formats 1-9, A, B, C, D have Charon\'s sizes and decode in Charon to the values set' % tag, ok, detail)
     esp = new_esp(work, tag + '-format-refuse')
     code, out, err = tools.settings(esp, tools.option['format'], '8', *tools.set_arguments({'punctuation': 2}))
     check('%s: a setting the target format does not store is refused (exit 5), nothing written' % tag, code == 5 and not slot(esp, 'a').exists(), out + err)
@@ -473,27 +501,33 @@ def test_record(tools, host, work, vectors):
     refused, _, _ = host.call('encode', 'sequence=1', 'rate=21')
     check('%s: a value EncodeSettings rejects (rate 21) is refused (exit 5), nothing written' % tag, code == 5 and refused == 5 and not slot(esp, 'a').exists(), out + err)
 
-    # H. the record Charon itself cannot read back (default readerExtra 153, bit 7): shown as invalid, repaired.
+    # H. a record with a right frame and a value Charon rejects: shown as invalid, repaired.
     esp = new_esp(work, tag + '-repair')
-    code, saved, text = host.call('save', esp)
-    tree_defect = code == 5 and saved.get('status') == 'deviceerror' and slot(esp, 'a').exists() and slot(esp, 'a').read_bytes()[41] == 153
-    if tree_defect:
-        code, out, err = tools.settings(esp, show)
-        ok = code == 4 and 'record=invalid' in out
-        code, out, err = tools.settings(esp, tools.option['repair'])
-        _, loaded, text = host.call('load', esp)
-        expected = dict(spec.DEFAULTS)
-        check('%s: the record SaveCharSettings leaves behind with its default byte 41 = 153 is reported invalid and repaired; Charon loads the repair' % tag,
-              ok and code == 0 and loaded.get('status') == 'ok' and loaded.get('sequence') == '2' and members_of(loaded) == expected, out + err + text)
-    else:
-        check('%s: repair test skipped: SaveCharSettings accepted its own defaults in this tree' % tag, True)
+    tools.settings(esp, *tools.set_arguments(vectors[9]))
+    broken = bytearray(slot(esp, 'a').read_bytes())
+    broken[22] = 3                                   # rate below 5
+    slot(esp, 'a').write_bytes(sealed(broken))
+    host_code, _, _ = host.call('load', esp)
+    code, out, err = tools.settings(esp, show)
+    ok = host_code == 4 and code == 4 and 'record=invalid' in out
+    code, out, err = tools.settings(esp, tools.option['repair'])
+    _, loaded, text = host.call('load', esp)
+    expected = dict(vectors[9], rate=spec.DEFAULTS['rate'])
+    check('%s: a record with a value out of range (rate 3) is reported invalid, as LoadCharSettings does, and repaired: the default for that value, every other member kept; Charon loads the repair' % tag,
+          ok and code == 0 and loaded.get('status') == 'ok' and loaded.get('sequence') == '2' and members_of(loaded) == expected, out + err + text)
+
+    # J. formats D (V13) and E (V14).
+    test_new_formats(tools, host, work, vectors)
 
     # I. defaults and the reader-only marker.
     esp = new_esp(work, tag + '-defaults')
     tools.settings(esp, *tools.set_arguments(vectors[8]))
     code, out, err = tools.settings(esp, tools.option['defaults'])
     _, loaded, _ = host.call('load', esp)
-    check('%s: restore defaults writes Charon\'s defaults (byte 41 without bit 7)' % tag, code == 0 and members_of(loaded) == dict(spec.DEFAULTS), out + err)
+    raw = slot(esp, 'b').read_bytes() if slot(esp, 'b').exists() else bytes(48)
+    _, encoded, _ = host.call('encode', 'sequence=2')
+    check('%s: restore defaults writes the record Charon\'s EncodeSettings gives for CharSettings{} (byte 40 = 252, byte 41 = 153)' % tag,
+          code == 0 and members_of(loaded) == dict(spec.DEFAULTS) and raw.hex() == encoded.get('record') and raw[40] == 252 and raw[41] == 153, out + err)
     marker = esp / 'EFI' / 'HAK' / 'reader-only'
     tools.settings(esp, tools.option['readeronly'], 'on')
     on = marker.exists() and marker.read_bytes() == b'reader-only\r\n'
@@ -501,6 +535,150 @@ def test_record(tools, host, work, vectors):
     check('%s: the reader-only marker is created (as the installers write it) and removed' % tag, on and not marker.exists())
     names = sorted(p.name for p in (esp / 'EFI' / 'HAK').iterdir())
     check('%s: nothing but the two settings slots was created in EFI/HAK' % tag, names == ['charon-settings-a.bin', 'charon-settings-b.bin'], names)
+
+
+def test_new_formats(tools, host, work, vectors):
+    """Formats D (r410 V13) and E (r410 V14) against CharSettings.h on the host."""
+    tag = tools.name
+    show = tools.option['show']
+    hak = lambda esp: esp / 'EFI' / 'HAK'
+    rich = dict(vectors[2], detail=5, timers=1, punctuation=2, capitals=5, screenLanguage=1, formatGroups=5, profile=3,
+                profileItems=0xa5a, readerBar=1, absoluteColours=1, readerExtra=128 | 2 | 8 | (1 << 5), rate=11)
+
+    # 1. a format E record: one old setting changes, every other byte stays.
+    esp = new_esp(work, tag + '-e-keep')
+    _, encoded, _ = host.call('encode', 'sequence=1', *host_arguments(rich))
+    before = bytes.fromhex(encoded.get('record', ''))
+    slot(esp, 'a').write_bytes(before)
+    code, out, err = tools.settings(esp, show)
+    _, decoded, _ = host.call('decode', before.hex())
+    check('%s: a format E record with every new bit in use is read as DecodeSettings reads it (detail = byte 32 & 7, timers = byte 33 & 3, '
+          'punctuation = byte 36 & 3, capitals = byte 37 & 7, screenLanguage = byte 38 & 3; groups, profile 3, 12 items, bar, colours)' % tag,
+          code == 0 and before[:8] == b'CHARS00E' and before[32] == 5 | (0xa5a & 31) << 3 and before[33] == 1 | ((0xa5a >> 5) & 63) << 2
+          and before[37] == 5 | 8 | 16 | 32 and before[36] == 2 | 5 << 2 and before[38] == 1 | 3 << 2
+          and members_of(pairs(out)) == members_of(decoded) == rich and pairs(out).get('format') == 'E', out + err)
+    code, out, err = tools.settings(esp, *tools.set_arguments({'rate': 17}))
+    after = slot(esp, 'b').read_bytes() if slot(esp, 'b').exists() else bytes(48)
+    differing = [i for i in range(44) if before[i] != after[i]]
+    _, decoded, _ = host.call('decode', after.hex())
+    check('%s: changing one old setting (rate) in a format E record changes bytes 8 and 22 only; the record stays CHARS00E and the new bits survive' % tag,
+          code == 0 and differing == [8, 22] and slot(esp, 'a').read_bytes() == before and decoded.get('decode') == 'ok'
+          and same(decoded, dict(rich, rate=17)), '%s %s %s' % (differing, out, err))
+    code, out, err = tools.settings(esp, *tools.set_arguments({'detail': 2, 'timers': 2, 'punctuation': 1, 'capitals': 2, 'screenLanguage': 3}))
+    third = slot(esp, 'a').read_bytes()
+    differing = [i for i in range(44) if after[i] != third[i]]
+    ok = code == 0 and differing == [8, 32, 33, 36, 37, 38]
+    ok = ok and all(third[i] & ~m & 0xff == after[i] & ~m & 0xff for i, m in ((32, 7), (33, 3), (36, 3), (37, 7), (38, 3)))
+    ok = ok and (third[32] & 7, third[33] & 3, third[36] & 3, third[37] & 7, third[38] & 3) == (2, 2, 1, 2, 3)
+    _, decoded, _ = host.call('decode', third.hex())
+    check('%s: changing the five old settings that share a byte with new bits (bytes 32, 33, 36, 37, 38) changes only their own bits' % tag,
+          ok and same(decoded, dict(rich, rate=17, detail=2, timers=2, punctuation=1, capitals=2, screenLanguage=3)), '%s %s %s' % (differing, out, err))
+    code, out, err = tools.settings(esp, *tools.set_arguments({'itemHints': 1, 'readerBar': 0, 'groupState': 1, 'profile': 1, 'linger': 0}))
+    fourth = slot(esp, 'b').read_bytes()
+    _, decoded, _ = host.call('decode', fourth.hex())
+    check('%s: the new settings are changed by their rows (a custom profile item, reader bar, a formatting group, the profile, the loading sound) and Charon decodes them' % tag,
+          code == 0 and same(decoded, dict(profileItems=0xa5a | 4, readerBar=0, absoluteColours=1, formatGroups=7, profile=1, readerExtra=rich['readerExtra'] & 0x7f,
+                                           detail=2, capitals=2)), out + err)
+    code, out, err = tools.settings(esp, *tools.set_arguments({'profileItems': 4096}))
+    refused, _, _ = host.call('encode', 'sequence=1', 'profileItems=4096')
+    check('%s: a value EncodeSettings rejects in a new member (profileItems 4096) is refused (exit 5), nothing written' % tag,
+          code == 5 and refused == 5 and slot(esp, 'b').read_bytes() == fourth and slot(esp, 'a').read_bytes() == third, out + err)
+
+    # 2. a format D record (r410 V13): groups and profile in bytes 36 and 38, nothing in bytes 32, 33, 37.
+    plain = dict(rich, profile=2, profileItems=0, readerBar=0, absoluteColours=0)
+    _, encoded, _ = host.call('encode', 'sequence=1', *host_arguments(plain))
+    record_d = sealed(bytes.fromhex(encoded.get('record', '')), 'D')
+    _, decoded_d, _ = host.call('decode', record_d.hex())
+    esp = new_esp(work, tag + '-d-keep')
+    slot(esp, 'a').write_bytes(record_d)
+    code, out, err = tools.settings(esp, show)
+    shown = pairs(out)
+    code2, out2, err2 = tools.settings(esp, *tools.set_arguments({'rate': 17}))
+    after = slot(esp, 'b').read_bytes() if slot(esp, 'b').exists() else bytes(48)
+    differing = [i for i in range(44) if record_d[i] != after[i]]
+    _, decoded, _ = host.call('decode', after.hex())
+    check('%s: a format D record is read as DecodeSettings reads it (groups 5, profile 2, items 1083) and stays CHARS00D, bytes 8 and 22 changed only, when rate changes' % tag,
+          code == 0 and decoded_d.get('decode') == 'ok' and shown.get('format') == 'D' and members_of(shown) == members_of(decoded_d)
+          and shown.get('formatGroups') == '5' and shown.get('profile') == '2' and shown.get('profileItems') == '1083'
+          and code2 == 0 and differing == [8, 22] and after[:8] == b'CHARS00D' and decoded.get('decode') == 'ok'
+          and same(decoded, dict(formatGroups=5, profile=2, rate=17)), '%s %s %s %s %s' % (differing, out, err, out2, err2))
+    code, out, err = tools.settings(esp, *tools.set_arguments({'profile': 3}))
+    code2, out2, err2 = tools.settings(esp, *tools.set_arguments({'readerBar': 1}))
+    check('%s: what format D does not store (the custom profile 3, the reader bar) is refused (exit 5), nothing written' % tag,
+          code == 5 and code2 == 5 and slot(esp, 'b').read_bytes() == after and slot(esp, 'a').read_bytes() == record_d, out + err + out2 + err2)
+
+    # 3. the boot manager image decides: CHARS00E inside HAKBOOT.EFI means format E is written.
+    image = b'MZ' + bytes(300) + b'CHARS00\0' + bytes(21) + b'CHARS00E' + bytes(100)
+    esp = new_esp(work, tag + '-binary-e')
+    (hak(esp) / 'HAKBOOT.EFI').write_bytes(image)
+    code, out, err = tools.settings(esp, *tools.set_arguments({'rate': 12}))
+    raw = slot(esp, 'a').read_bytes() if slot(esp, 'a').exists() else b''
+    _, encoded, _ = host.call('encode', 'sequence=1', 'rate=12')
+    check('%s: a boot manager image carrying CHARS00E makes the program write format E; the new record is Charon\'s EncodeSettings of its defaults with that change' % tag,
+          code == 0 and raw[:8] == b'CHARS00E' and raw.hex() == encoded.get('record'), out + err)
+    esp = new_esp(work, tag + '-binary-e-upgrade')
+    copy = new_esp(work, tag + '-binary-e-upgrade-host')
+    for folder in (esp, copy):
+        (hak(folder) / 'HAKBOOT.EFI').write_bytes(image)
+        slot(folder, 'a').write_bytes(record_d)
+    code, out, err = tools.settings(esp, *tools.set_arguments({'rate': 17}))
+    host_code, _, text = host.call('save', copy, 'rate=17')
+    raw = slot(esp, 'b').read_bytes() if slot(esp, 'b').exists() else b''
+    check('%s: a format D record under a boot manager that writes format E is rewritten as CHARS00E, byte for byte what Charon\'s SaveCharSettings writes from the same record' % tag,
+          code == 0 and host_code == 0 and raw[:8] == b'CHARS00E' and raw == slot(copy, 'b').read_bytes() and slot(esp, 'a').read_bytes() == record_d, out + err + text)
+
+    # 4. format C: bit 7 of byte 41 (r408) is read and kept, never turned on by the programs.
+    old = dict(rich, formatGroups=0, profile=0, profileItems=0, readerBar=0, absoluteColours=0)
+    _, encoded, _ = host.call('encode', 'sequence=1', *host_arguments(old))
+    record_c = sealed(bytes.fromhex(encoded.get('record', '')), 'C')
+    _, decoded_c, _ = host.call('decode', record_c.hex())
+    esp = new_esp(work, tag + '-c-keep')
+    slot(esp, 'a').write_bytes(record_c)
+    code, out, err = tools.settings(esp, show)
+    shown = pairs(out)
+    code2, out2, err2 = tools.settings(esp, *tools.set_arguments({'rate': 17, 'stopCountdown': 1}))
+    after = slot(esp, 'b').read_bytes() if slot(esp, 'b').exists() else bytes(48)
+    differing = [i for i in range(44) if record_c[i] != after[i]]
+    check('%s: a format C record with byte 41 bit 7 set (Charon r408, r409) is valid, as in DecodeSettings, and keeps the bit when other settings change' % tag,
+          code == 0 and decoded_c.get('decode') == 'ok' and record_c[41] & 128 and members_of(shown) == members_of(decoded_c) and shown.get('format') == 'C'
+          and code2 == 0 and after[:8] == b'CHARS00C' and differing == [8, 22, 41] and after[41] == record_c[41] | 4, '%s %s %s %s %s' % (differing, out, err, out2, err2))
+    esp = new_esp(work, tag + '-binary-c')
+    (hak(esp) / 'HAKBOOT.EFI').write_bytes(b'MZ' + bytes(300) + b'CHARS00C' + bytes(100))
+    code, out, err = tools.settings(esp, *tools.set_arguments({'rate': 12}))
+    raw = slot(esp, 'a').read_bytes() if slot(esp, 'a').exists() else bytes(48)
+    _, decoded, _ = host.call('decode', raw.hex())
+    code2, out2, err2 = tools.settings(esp, *tools.set_arguments({'linger': 1}))
+    code3, out3, err3 = tools.settings(esp, *tools.set_arguments({'readerExtra': 153}))
+    check('%s: with a boot manager that writes format C a new record is CHARS00C with bytes 40, 41 = 255, 25 and no new bits; turning the loading sound on is refused (exit 5)' % tag,
+          code == 0 and raw[:8] == b'CHARS00C' and (raw[40], raw[41]) == (255, 25) and raw[32] <= 7 and raw[33] <= 3 and raw[36] <= 3 and raw[37] <= 7 and raw[38] <= 3
+          and decoded.get('decode') == 'ok' and code2 == 5 and code3 == 5 and slot(esp, 'a').read_bytes() == raw and not slot(esp, 'b').exists(),
+          out + err + out2 + err2 + out3 + err3)
+
+    # 5. which bits a format accepts: the programs and DecodeSettings give the same verdict.
+    _, encoded, _ = host.call('encode', 'sequence=1', *host_arguments(dict(old, readerExtra=old['readerExtra'] & 0x7f)))
+    base = bytes.fromhex(encoded.get('record', ''))
+    cases = [('E', 32, 0xf8), ('E', 33, 0xfc), ('E', 37, 0x38), ('E', 36, 0x1c), ('E', 38, 0x0c), ('E', 41, 0x80),
+             ('E', 37, 0x40), ('E', 36, 0x20), ('E', 38, 0x10), ('E', 39, 0x40),
+             ('D', 36, 0x1c), ('D', 38, 0x08), ('D', 38, 0x0c), ('D', 32, 0x08), ('D', 33, 0x04), ('D', 37, 0x08),
+             ('C', 41, 0x80), ('C', 36, 0x04), ('C', 38, 0x04), ('C', 32, 0x08), ('B', 41, 0x80)]
+    wrong = []
+    accepted = 0
+    for index, (version, at, bits) in enumerate(cases):
+        record = bytearray(base)
+        if version == 'B':
+            record[40] &= 63
+            record[41] &= 31
+        record[at] |= bits
+        record = sealed(record, version)
+        host_code, _, _ = host.call('decode', record.hex())
+        esp = new_esp(work, '%s-bits-%d' % (tag, index))
+        slot(esp, 'a').write_bytes(record)
+        code, out, err = tools.settings(esp, show)
+        accepted += 1 if host_code == 0 else 0
+        if (code == 0) != (host_code == 0) or code not in (0, 4) or (code == 0 and members_of(pairs(out)) != members_of(host.call('decode', record.hex())[1])):
+            wrong.append((version, at, bits, code, host_code))
+    check('%s: %d records with single bit fields set in bytes 32, 33, 36-39, 41 of formats B to E are accepted or reported invalid exactly as by DecodeSettings (%d accepted)'
+          % (tag, len(cases), accepted), not wrong and accepted == 9, wrong)
 
 
 def test_synths(tools, host, work):
@@ -747,7 +925,7 @@ def test_dialogs(work, host):
     code, out, err = run([ps.exe, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps.settings_file, '-EspPath', esp, '-NoFirmware', '-Language', 'en',
                           '-GuiSelfTest', '-Set', 'rate=16,wrap=1,punctuation=3,stereo=2,flagWords=1,welcomeSound=0,readerVolume=4'])
     _, loaded, text = host.call('load', esp)
-    expected = dict(spec.DEFAULTS, rate=16, wrap=1, punctuation=3, readerExtra=25 | (2 << 5), readerFlags=47 | 16, welcome=5, readerVolume=4)
+    expected = dict(spec.DEFAULTS, rate=16, wrap=1, punctuation=3, readerExtra=spec.DEFAULTS['readerExtra'] | (2 << 5), readerFlags=47 | 16, welcome=5, readerVolume=4)
     check('dialog settings: operating its check boxes, drop-down lists and track bars and saving gives the record Charon loads',
           code == 0 and 'dialog-saved' in out and loaded.get('status') == 'ok' and members_of(loaded) == expected, out[-400:] + err + text)
     esp = new_esp(work, 'dialog')
@@ -795,10 +973,11 @@ def main():
     rng = random.Random(408)
     low = dict(spec.DEFAULTS, rate=5, pitch=5, readerRate=5, readerPitch=5, messageRate=5, messagePitch=5, speechVolume=1, readerVolume=1,
                effectsVolume=0, welcome=0, detail=0, timers=0, capitals=0, readerFlags=0, formatFlags=0, readerExtra=0, autoSeconds=0,
-               startMelody=0, sounds=0, verbosity=0, progress=0, punctuation=0)
+               startMelody=0, sounds=0, verbosity=0, progress=0, punctuation=0, formatGroups=0, profileItems=0)
     high = dict(spec.DEFAULTS, language=2, wrap=1, explicitMessages=1, startMelody=4, backgroundMelody=4, rate=20, pitch=20, readerRate=20,
                 readerPitch=20, messageRate=20, messagePitch=20, verbosity=2, progress=3, rememberLast=1, autoSeconds=255, punctuation=3,
-                capitals=7, screenLanguage=3, readerFlags=63, formatFlags=255, readerExtra=2 | 4 | 8 | 16 | (2 << 5), synthKey=255, synthVoice=15)
+                capitals=7, screenLanguage=3, readerFlags=63, formatFlags=255, readerExtra=2 | 4 | 8 | 16 | (2 << 5) | 128, synthKey=255, synthVoice=15,
+                formatGroups=7, profile=3, profileItems=4095, readerBar=1, absoluteColours=1)
     vectors = [dict(spec.DEFAULTS), low, high] + [random_settings(rng) for _ in range(9 if quick else 37)]
     for tools in (PythonTools(), PowerShellTools()):
         if only and tools.name != only:

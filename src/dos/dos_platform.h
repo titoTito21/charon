@@ -9,8 +9,9 @@
 #pragma once
 #include <stddef.h>
 #include <stdint.h>
+#include "launch_select.h"                // r409: LaunchEntry, LaunchList
 
-typedef uint16_t dchar16;                 // one UTF-16 code unit
+typedef uint16_t dchar16;                // one UTF-16 code unit
 
 // ---- keyboard -----------------------------------------------------------
 enum {
@@ -105,8 +106,24 @@ void plat_pcm_end(void);
 // the console is restored. `name` may be empty (WIN: the first profile).
 // Returns 0, or 2 when the target does not exist (out names the profile
 // that was chosen, when any).
-enum { PL_WINNT = 1, PL_WIN = 2 };
+enum { PL_WINNT = 1, PL_WIN = 2, PL_LINUX = 3 };
 int plat_request_launch(int kind, const char* name, char* chosen, size_t chosen_size);
+
+// r409: WINNT and LINUX choose among the installed systems (launch_select.h
+// holds the rules; PL_WINNT == LAUNCH_WINDOWS, PL_LINUX == LAUNCH_LINUX).
+// plat_launch_discover collects every Windows and Linux it can find, in the
+// fixed order registry (\EFI\HAK\systems.txt on any volume), firmware boot
+// entries, scan of \EFI\<dir>\ on every volume; it starts nothing and writes
+// nothing. Returns the number of entries.
+int plat_launch_discover(LaunchList* out);
+// BOOT.CFG next to CHARONDOS.EFI (the defaults of WINNT and LINUX).
+// read: bytes read, -1 = no such file or unreadable. write: 1 = written.
+long plat_launch_cfg_read(char* buffer, unsigned long capacity);
+int plat_launch_cfg_write(const char* data, unsigned long length);
+// Records `entry` (one that plat_launch_discover returned) as what the backend
+// starts once the shell has ended, exactly as plat_request_launch does for
+// WIN. Returns 0, or 2 when its loader can no longer be found.
+int plat_request_launch_entry(const LaunchEntry* entry);
 
 // ---- entry point of the shared code --------------------------------------
 struct DosOptions {

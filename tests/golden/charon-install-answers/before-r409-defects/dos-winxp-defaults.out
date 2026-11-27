@@ -1,0 +1,16 @@
+# CharonDOS Windows profile, written by Charon's installer (r403); format: src/pc/PLAN.txt=
+profile=WINXP
+lang=en
+memory=512
+com1=bns
+sound=sb16
+net=ne2000
+reader=nvda-2017.3
+reader_setup=READER\NVDA2017.EXE
+disk=DISK.IMG
+disk_format=raw
+disk_create_mb=4095
+cdrom=SETUP.ISO
+boot=cdrom
+state=install
+setup_auto=no

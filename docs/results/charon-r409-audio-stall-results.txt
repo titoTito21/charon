@@ -1,0 +1,344 @@
+Charon r409 - the sound stalls of the Windows-in-RAM trials and the "hung dialogue"       2026-11-23
+==========================================================================================================
+
+Words used below. MEASURED: read from a log or a meter of a run. INFERRED: concluded, not observed.
+RAN: executed in this work. COMPILED ONLY: built, not executed. All VM runs: VMware Workstation, UEFI,
+HD Audio, sound on the host's speakers, one machine at a time (work/r409stall, deleted afterwards).
+Evidence of this work: work/r409stall-evidence/ (serial traces with host wall-clock times, host audio meter
+logs, vmware.log copies, the driver scripts, the host test's output).
+
+
+1. What the old evidence shows (work/r409win-evidence)
+------------------------------------------------------
+  Stalls. "CHARON pump device=8000000000000012" (EFI_TIMEOUT from the stream driver) followed by
+    "CHARON audio recovered=N" occurs 46 times in the five serial files, mostly in runs of consecutive
+    recoveries with no speech progress in between: up to 8 in a row (d-serial.txt:980-1048), 6 in a row in the
+    "hang" file. MEASURED. Each "recovered" is a full restart of the stream: stop, codec setup, begin.
+  The hang. a-serial-hang-after-audio-recovery.txt (second boot of the file, lines 58-308): workspace ->
+    "Install a system from the network" -> the dialogue's introduction ("Installing a system from the network.
+    First choose a group ...", line 241) is spoken; recoveries 1 and 2 (lines 262, 270), one more speech chunk,
+    recoveries 3, 4, 5, 6 (lines 279-303); the file ends after recovery 6's "CHARON audio begin=0". Nothing of
+    the next step ("Which group?") follows. MEASURED.
+    Times: the serial file has none. From file times and the meter: the dialogue was entered at about 13:25:20
+    (a-02.png, 13:25:22, shows the introduction); the serial copy was taken at 13:26:17. The step that follows
+    the introduction waits 15 s at most (install::HearOut(150), CharonWsInstall.h:289), so "Which group?" was
+    due by about 13:25:36 and had not come 40 s later. MEASURED (from file times).
+    Sound from outside (r409win-a-audio-meter.txt, first block): NO sound of this machine from 13:25:09 to
+    13:26:04 although Charon was speaking the whole time; single 0.1 s blips at 13:26:04, :12, :14, :16; sound
+    without gaps from 13:26:21 on, for five minutes, with pauses like ordinary speech. MEASURED.
+  What "hung" meant. Recorded: no new spoken or trace line for at least 40 s; the test's key presses of that
+    time left no trace. NOT recorded: a screenshot during the hang, the machine's vmware.log (the machine was
+    deleted), whether the screen changed. The meter says the machine was not dead: sound came back four seconds
+    after the serial copy was taken and went on like a dialogue being driven. So the best reading is a freeze of
+    about one minute that ended by itself, not a permanent hang. INFERRED.
+
+
+2. Cause
+--------
+2.1 Why the stream stalls in VMware at all - MEASURED in this work (vmware.log against the serial trace)
+    The stream driver declares EFI_TIMEOUT when its 1 ms poll comes more than 70 ms late (HAK_RING_MAX_POLL_NS,
+    HakAudioRing.h:11; 20 ms in the first revision, as BUILD-NOTES.md still says near its top) or the hardware
+    cursor stands still for 200 ms (src/efi/audio_stream/driver/HakAudioStream.c:109-110, :125-126).
+    [Corrected in section 6: this text first said 20 ms.]
+    VMware creates the host's sound stream on the machine's processor thread when the guest starts the stream:
+      vmware-new.log 14:40:27.018 vcpu-0 "Creating WAVE backend stream" .. 27.056 "Created poll thread" (38 ms);
+      Charon's trace: first pump of the first utterance returns at 27.058, "pump device=...12" at 27.059.
+    The guest does not run for those 38 ms and the poll is 38 ms late. On an idle host the creation takes
+    23-48 ms (section 6), more than half of the 70 ms the driver allows; anything else that holds the machine
+    in the same moment, or a busier host, takes it over the limit: the recoveries at start-up and the "pairs"
+    (a recovery 25-35 ms after a recovery) are this. The driver takes its clock BEFORE it starts the stream
+    (HakAudioStream.c:194-196: LastTick, then HdaControllerSetStreamState(TRUE)).
+2.2 Every restart is paid for on the processor thread - MEASURED
+    For each "CHARON audio recovered" vmware.log has, on vcpu-0: "Stopping WAVE stream", "Closing WAVE stream",
+    "Destroying poll thread", "Creating WAVE backend stream", "SoundWaveSelectHostDevice", "Initializing 18
+    buffers", "Created poll thread" (vmware-base.log: 67 creations for 65 recoveries). While those host calls
+    run, no instruction of the guest runs: no key, no speech, no trace, no timeout of Charon's own.
+2.3 The storm - MEASURED for the mechanism, INFERRED for the old trace
+    The restart itself creates the condition of the next fault (2.1): whenever the host needs more than 70 ms
+    to create its stream, the restarted stream faults at once, is restarted, faults ... Before this work
+    nothing stopped that but a count of 64 restarts per utterance (CharonVoiceProvider.h, Recover(); was
+    line 117, "recoveries_>=maximumRecoveries").
+    With several machines playing at once and the host short of disk, the host's sound calls took seconds
+    instead of 30 ms. Six restarts in about a minute, sound blips 2 to 8 s apart, then sound again: each
+    restart held the machine for seconds, inside a step of the dialogue that reads no keys while it waits for
+    the speech (HearOut). That is the "hang". INFERRED - it fits every number of section 1, but the machine's
+    own log of that minute does not exist. It could NOT be reproduced as a host-side stall: making VMware's
+    sound thread or the host's audio service stop needs administrator rights (OpenThread on vmware-vmx: error
+    5), and stalling the host's audio would have disturbed the other agents' machines.
+2.4 A second defect found on the way - MEASURED (reproduced, section 4.3)
+    After the 64th restart of one utterance the old code never spoke again in that session: SpeakThunk asked
+    EnsureRunning first, EnsureRunning went to Recover, Recover returned the fault because the count was
+    used up, and the count is reset only AFTER a successful EnsureRunning (old lines 190-191). With a stall
+    that lasts, the 64 restarts are used up in 1.75 s. From then on keys still move the dialogue on the screen,
+    every cue is "deferred" and nothing is spoken: for a blind user, and for a test that watches the spoken
+    lines of the trace, the dialogue is dead.
+2.5 Checked and found bounded (no change needed)
+    Every wait for speech in the dialogue code is a counted loop: CharonWsInstall.h:290 (HearOut),
+    CharonWsAsk.h:233, CharonWsRamDisk.h:82/:396, CharonWsBrowser.h:228, BootMenu.h:732-736 (LaunchSay),
+    :1503-1508, CharonResident.h:4386-4393, :4887-4893, :4929-4935. VoiceProvider::Stop drains for 5000 x 1 ms
+    at most. AudioDxe: HdaControllerSendCommands (10 x 5 ms per verb, one retry), stream reset and run/stop
+    (PollMem 100 ms / 10 ms), HakHdaCodecWaitPower (50 x 2 ms) are bounded; the driver's only unbounded loop
+    (HdaCodecAudioIoStartPlayback, "while (StreamRunning)") is not on Charon's path. The AudioEngine and
+    LiveVoice pumps are bounded by their budgets. The trace's serial output is bounded (1024 polls per byte).
+    No unbounded wait on audio progress was found in Charon's own code; what was unbounded in effect was the
+    NUMBER and RATE of device restarts, each of which the hypervisor may stretch without limit.
+
+
+3. The fix (audio/voice files only; the dialogue headers were not touched)
+--------------------------------------------------------------------------
+  New: src/efi/CharonAudioStall.h - class StallPolicy, no EFI types (so the host test runs the same code).
+    A stream that stalls again before it has taken 300 ms of sound did not recover. The third such stall in a
+    row is not restarted: the stream stays stopped ("rests") 1 s, then 2, 4, at most 8 s while it keeps
+    stalling, and is opened again after the rest; the stream opened after a rest gets one try. A restart that
+    itself took more than 250 ms counts double and is followed by a rest of at least four times its own
+    length (60 s at most). 4 s of sound without a restart ends the episode. Stalls with sound in between are
+    restarted at once, as since r400.
+  src/efi/CharonVoiceProvider.h
+    :121-152 Recover(): asks the policy; on "rest" the stream is stopped and NOT opened; a restart that fails
+             to open is followed by a rest instead of a failed voice; the 64-per-utterance count now leads to
+             a rest, not to a dead voice (2.4).
+    :159-181 Ticks()/CalibrateClock(): the processor's time-stamp counter, measured against Stall once in
+             Initialize (:50; 12 ms at start-up - the only change on the normal path). Firmware timer events
+             are not used: their time stands still while the machine is held.
+    :185     Rest(): trace "CHARON audio stalled, stream rests, s=N", success for the caller.
+    :190-194 EnsureRunning(): nothing touches the card during a rest; trace "CHARON audio rest over";
+    :229-236 the open after a rest is timed, and a failed one leads to the next, longer rest.
+    :301     PumpThunk returns success at once during a rest: speech stays queued (a newer utterance replaces
+             it as always), no synthesis, no device call. So the dialogue's counted waits run at full speed
+             and the workspace no longer latches "audio failed" (CharonWsCore.h:133) because of a stall.
+    :344     the policy is told how much the stream has played.
+    :377, :399, :459 cues, tones and beeps asked for during a rest are dropped (a cue seconds late says nothing).
+    Traces added: "CHARON audio clock, ticks per ms", "... restart slow, ms", "... restart status",
+             "... open after rest", "... open after rest slow, ms".
+  src/efi/CharonAudioDevice.h:129 Submitted() (frames the HDA stream took since Open).
+  Test-only code, compiled only with -DHAK_CHARON_STALLTEST (CharonVoiceProvider.h:786-796, :268, :345;
+    CharonAudioDevice.h:130-132): for every utterance longer than 150 bytes the stream is treated as stalled
+    from 1.5 s to 9.5 s after it was asked for, on every pump; the REAL stream is then stopped and restarted as
+    after the driver's EFI_TIMEOUT. -DHAK_CHARON_STALLTEST_OLD (:133-137) switches the rule before r409 back
+    on, to compare. Neither is defined in a normal build.
+  One mistake made and removed on the way: the clock was first measured inside Recover with Stall. The screen
+    reader hooks Stall and changes the synthesizer in it (CharonResident.h:4608-4614); in the one run where two
+    start-up recoveries hit that path, speech came out in scraps for the rest of the session (serial-new.txt,
+    meter-new.txt). The measurement was moved to Initialize; the cause of the scraps is INFERRED from that one
+    run, the later runs with recoveries and the measurement in Initialize speak normally.
+
+
+4. Proof
+--------
+4.1 Host test - RAN AND PASSED: tests/CharonAudioStallTests.cpp, 316 checks, 0 failed
+    (work/llvm-23.1.5/bin/clang++ -std=c++17 -O1 -Wall -Wextra; output in r409stall-evidence/host-stall-tests.txt).
+    It runs StallPolicy against a simulated card (takes 48 frames/ms, takes nothing while stalled, the driver
+    faults 200 ms after the last progress, a restart holds everything for a given time, a pump every 10 ms):
+      40 s stall, restart 30 ms:  before r409  64 restarts in 15 s, then VOICE FAILED;
+                                  r409          9 restarts, 7 rests, sound again 1.1 s after the card resumed
+      60 s stall, restart 8 s:    before r409  held 64 s (the whole stall); r409 3 restarts, held 24 s
+      250 ms stall every 1.5 s:   r409         40 restarts, no rest (unchanged behaviour)
+      rest lengths 1, 2, 4, 8, 8 s; reset after 4 s of sound; slow restart -> rest 4x its length, 60 s at most;
+      a rest always ends (no usable clock: counted in calls; a wrapping clock).
+    This is a test of the rule, not of the provider or the driver.
+    The older host tests of the provider and device (tests/CharonVoiceProviderTests.cpp,
+    CharonAudioDeviceTests.cpp) could NOT be compiled on this host with the include paths tried (they predate
+    r404: they expect gain -12). Whether they built before this change was not established. NOT RUN.
+4.2 VM, the fix under a lasting stall - RAN (build with -DHAK_CHARON_STALLTEST; serial-fix2.txt,
+    meter-fix2.txt, vmware-fix2.log). The stall is injected (see section 3); everything after it is real.
+      15:51:46.7 the introduction is spoken (meter: sound 15:51:46-48)
+      15:51:48.2 recoveries 1, 2, 3 within 80 ms -> "stream rests, s=1"
+      15:51:49.2 rest over, opened, stalls -> rests 2 s; 51.2 -> 4 s; 55.4 -> 8 s        (meter: silence)
+      15:52:01.8 "Which group?" is announced - the dialogue went on after its own 15 s wait, during the rest
+      15:52:02.9 rest over, stream opened, first PCM; meter: sound from 15:52:03
+      15:52:03.4, :09.6, :17.8 Down, Down, Up: each announced and spoken at once (meter: sound each time)
+      host sound streams created in the whole run: 7 (1 at start-up, 6 for the stall and its end)
+4.3 VM, the same stall with the rule before r409 - RAN (-DHAK_CHARON_STALLTEST_OLD; serial-old.txt,
+    meter-old.txt, vmware-old.log, old-rule-screen-keys-answered-voice-dead.png)
+      15:53:10.29 .. 15:53:12.04: 64 restarts in 1.75 s (64 host stream creations in the run), then
+      "pump device=...12" and nothing more from the voice: "Which group?" is announced once (15:53:25.6) and not
+      spoken, every later key gives "CHARON cue deferred" and no speech; the meter has no sound after 15:53:12.
+      The screen shows the keys being answered. This is defect 2.4, reproduced.
+4.4 VM, real stalls, normal build (work/charon-win-r409stall; serial-final.txt, meter-final.txt) - RAN
+    Stalls made by pausing and continuing the machine with vmrun during speech (12 + 6 times): 18 recoveries
+    about 1 s apart, each restarted at once, no rest (there was sound in between), "Which group?" 17 s after
+    the introduction, three keys announced and spoken; the meter has sound in 13 of the 14 seconds of the first series.
+    The same with the build before the change (work/charon-win-r409w4; serial-base.txt): 56 + 9 recoveries in
+    five rounds, the dialogue went on every time - pausing does not reproduce the hang, it shows that
+    restarts with sound in between behave as before.
+    Disconnecting the machine's sound card (vmrun disconnectNamedDevice sound) during speech: VMware switches
+    to a dummy backend, no fault, the dialogue goes on (old build; serial-base.txt 15:30:20).
+4.5 Builds (project's Windows build, new directories)
+    work/charon-win-r409stall/CHARON.EFI        --trace  sha256 68b5e7b1aa5c6e8f...   RAN (4.4)
+    work/charon-win-r409stall-drv/CHARONVOICE.EFI        sha256 9f1183c1750a917c...   COMPILED ONLY (it was on
+      the test disk as a file; it was not loaded as a firmware driver in these runs)
+    Both were built from the tree as it stood at 15:50, i.e. with the other agents' dialogue changes of that
+    moment in them. The test builds (-test, -oldrule, a control build of the same tree without the change)
+    were removed.
+
+
+5. Not proven, and what remains
+-------------------------------
+  1. That the hang of 13:25 was the mechanism of 2.3. It is the reading that fits the meter and the trace; the
+     machine's own log is gone and a host-side stall could not be made without administrator rights.
+  2. A single restart or the driver's own stop that the hypervisor never lets return cannot be bounded by any
+     code in the guest. The fix bounds how often Charon gives the host that chance (two restarts, then one
+     try per rest) and how long it keeps trying; it cannot interrupt one call.
+  3. The trigger itself is in the stream driver and is NOT fixed: AudioDxe takes its poll clock before it
+     starts the stream (HakAudioStream.c:194-196), so the time the hypervisor needs to create its host stream
+     (23-48 ms idle, measured) counts against the 70 ms limit. DONE LATER as a candidate driver, AudioDxe-r409:
+     see section 6.
+  4. During the dialogue's HearOut steps no key is read (up to 15 s, 30 s at some places). With speech that
+     cannot be heard that is 15 s of a silent, deaf dialogue. A fix belongs in CharonWsInstall.h:289-291
+     (another agent's file): leave the loop on any key press, and leave it early when the voice reports a
+     rest - the provider would need one more effects call for that ("AudioResting"). Not done.
+  5. While the stream rests, speech asked for is kept and spoken after the rest, but only the newest
+     utterance: what the dialogue said in between is lost to the ear. On the screen and in braille it stays.
+  6. Real hardware: nothing of this ran on a physical sound card. There a stall with sound in between (a disk
+     read) takes the unchanged path; three stalls in a row without 300 ms of sound now cost a 1 s pause where
+     they used to be restarted at once.
+  7. The resident reader (CHARONVOICE.EFI as Driver####) uses the same provider; not run with this change.
+  8. AC'97, ES1371 and USB sound devices never report EFI_TIMEOUT; their paths are unchanged and were not run.
+
+
+6. Follow-up: the trigger in AudioDxe (candidate driver AudioDxe-r409)                     2026-11-23, 16:00-16:55
+=================================================================================================================
+Evidence: work/r409stall-evidence/ (files named serial-driver-*, meter-driver-*, qemu-*, host-provider-*; scripts
+boots.sh, pass.sh, qboots.py, qgrub.sh, build-audiodxe.cmd). One machine at a time; all deleted afterwards.
+
+6.0 Correction of sections 2 and 5
+    The late-poll limit of the driver is 70 ms (HAK_RING_MAX_POLL_NS, since r404), not 20 ms as first written
+    from the top of BUILD-NOTES.md. A start that takes 23-48 ms is therefore NOT a fault by itself; it uses up
+    a third to two thirds of the allowance, and the fault comes when the host's stream creation takes longer
+    than 70 ms or coincides with another hold-up. Sections 2.1, 2.3 and 5.3 are corrected in place.
+
+6.1 Source and build
+    Authoritative source: src/efi/audio_stream/driver/ (HakAudioStream.c and the files apply-driver-extension.py
+    lists); build copy work/ha/OpenCorePkg/Staging/AudioDxe/HdaController/ (identical before and after this
+    work); build: build-host-baseline.cmd work\charon-audio-driver-r347 (MSVC 14.51, EDK2 in work/ha).
+    A rebuild of the unchanged source gave AudioDxe-r408.efi byte for byte (sha256 910ada69...).
+    Two things to know (now in BUILD-NOTES.md): the build does not notice a changed _CL_/CL, so the module's
+    output directory has to be deleted between trace and normal builds; and a shell that sets
+    NoDefaultCurrentDirectoryInExePath makes "call edksetup.bat" fail.
+
+6.2 Where the time sits - MEASURED (trace driver with r408 logic, AudioDxe-r408-measure-trace.efi, VMware, 15 starts
+    in serial-driver-r408-measure-*.txt; r409 trace driver, 10 starts)
+      time from the driver's LastTick to the return of HdaControllerSetStreamState(TRUE) ("HAK start run ns"):
+        r408 logic  40 24 24 42 25 25 27 28 28 27 23 23 ms (and 47, 29, 27 in the first three boots)
+        r409        41 27 25 33 26 25 26 25 27 26 ms
+      gap seen by the first poll after the start:
+        r408 logic  40.9 24.8 24.8 42.9 25.9 25.1 27.8 28.5 28.4 27.2 23.6 23.8 ms  (= the start call)
+        r409        under 1.5 ms in all ten (0 0 1.46 0 0 0 0.04 0.02 0.13 0 ms)
+      cursor (LPIB) read right after the call returned: 0 in 10 of 10 starts
+      time of the poll's own register reads: 13-33 microseconds
+    So the wait is in the write of the RUN bit, not in the cursor read, and the stream has not moved when the
+    call returns.
+
+6.3 The change (HakAudioStream.c:207-234; same text in work/ha)
+    After HdaControllerSetStreamState(TRUE) returns the driver reads the cursor once. If it is 0, LastTick and
+    LastProgressTick are taken there; a cursor that has already moved keeps the clock taken before the call.
+    The 70 ms and 200 ms limits and every later poll are unchanged; on a card whose start takes microseconds the
+    clock moves by microseconds. Trace builds print the start time, the cursor and the first three polls.
+    Test builds only: -DHAK_AUDIO_STARTDELAY_MS=n (a Stall before the RUN write) and -DHAK_AUDIO_OLDSTART=1.
+    Builds: work/charon-audio-driver-r409/AudioDxe-r409.efi (208896 bytes, sha256
+    ebe6899accbfebd1a77c3b409361eb6091525957052940c178e95019acc1064f), AudioDxe-r409-trace.efi, logs beside
+    them; r408 untouched. The measurements of 6.4-6.6 ran on a build of the same code made 40 minutes earlier
+    (it differs from the final file in 2 bytes; two builds of one source always did); the GRUB run of 6.4 and
+    one QEMU sound capture ran on the final file.
+
+6.4 r408 against r409, same scripts - MEASURED. App in all runs: work/charon-win-r409stall (with StallPolicy).
+                                                        AudioDxe-r408            AudioDxe-r409
+    VMware, 10 power-ons each (boots.sh)
+      recoveries at start-up / back-to-back pairs       0 / 0                    0 / 0
+      power-on -> first speech sample (trace), median   2.23 s                   2.39 s   (*)
+      seconds with sound, of them at least half full    107 / 80                 101 / 79
+    QEMU/OVMF (whpx), 6 fresh machines each (qboots.py)
+      launch -> first speech sample, median             5.80 s (5.42-6.10)       5.68 s (5.61-5.70)
+      recoveries (none at start-up) / pairs             2 / 1                    1 / 0
+      exceptions                                        0                        0
+    VMware, full pass (pass.sh; one run each)
+      menu pass, 7 items down and up                    17 spoken, 23 s sound    17 spoken, 22 s sound
+      settings list (28 items)                          28 spoken                28 spoken
+      synthesizer TVox -> eSpeak NG -> RHVoice -> TVox  each switch spoken in the new voice; sound 9, 10, 9 s
+                                                        with r408 and 9, 11, 9 s with r409
+      UEFI Shell started from the menu, "ver", "exit"   shell screen spoken, "Returned from UEFI Shell" spoken; both
+      pause/unpause stalls in the install dialogue      12 + 4 + 1 recoveries    12 + 4 + 1 recoveries
+        (12 + 8 pauses with vmrun)                      0 pairs, 0 rests         0 pairs, 0 rests
+      whole pass: utterances / recoveries / exceptions  85 / 17 / 0              85 / 17 / 0
+      seconds of sound at least half full (host meter)  138                      140
+    QEMU/OVMF: GRUB started from Charon's device list, three keys in GRUB, "c", "exit", back in Charon (qgrub.sh)
+      GRUB's menu and messages read, return announced,  yes; 1 recovery,         yes; 1 recovery,
+      device list spoken after the return               0 exceptions             0 exceptions
+    (*) The trace's times are arrival times on the host and come in steps of about 0.3 s (visible in the
+        "audio open -> first PCM" column: 0, 300, 550 ms); 2.23 against 2.39 s is inside that step. No difference
+        was measurable in either direction.
+    Pauses make the machine itself late by more than 70 ms, which no driver can tell from a stall: the same
+    17 recoveries with both, as expected.
+    One QEMU boot with the final r409 file and a sound capture: 12 of 13 captured seconds hold speech, 0
+    recoveries. In the other QEMU runs speech was judged from the trace, not from captured sound.
+
+6.5 What the change is for - RAN (test drivers, VMware, 2 power-ons each; serial-driver-delay*.txt)
+    A host that needs 100 ms more to create its stream, modelled by -DHAK_AUDIO_STARTDELAY_MS=100 (start call
+    121-140 ms; cursor after the call 0):
+      clock as in r408 (test-delay100-r408rule.efi): every start faults (12 of 12, fault reason 1), 12 recoveries,
+        8 rests of the StallPolicy, NO speech sample at all, 0 seconds of sound on the host. With the app before
+        this work it would be the 64-restart storm of section 4.3.
+      r409 (test-delay100-r409.efi): 0 recoveries, speech as usual (20 seconds with sound, 16 at least half full).
+    This is a model of the slow host (a real one could not be made, section 2.3); the delay sits where the wait
+    was measured, and the cursor behaves as measured.
+
+6.6 Something else seen, NOT tied to either driver - not investigated
+    In 2 of about 58 VMware power-ons of this afternoon (one with AudioDxe-r408, one with r409; both with the
+    app of this work) speech came out in scraps of 40 ms every 2-3 s for one to two minutes after start, with
+    keys answered late; then it was normal. In both runs the trace line "CHARON selfram move" (BootMenu.h:1720,
+    Charon moving itself into memory, normally 10 s after start) was missing during the scraps; in the run that
+    lasted long enough it came three minutes late and the hint messages began only after it. The other agents'
+    Windows installs were loading the host's disk at the time. INFERRED: the self-copy starves the voice while
+    the disk is slow. It was not seen in the two runs made with builds from before this work, which is too few
+    to say whether it is older than this work. Section 3's remark about "scraps" after a Stall inside Recover
+    described the first of these two runs; that explanation is therefore doubtful (the Stall was moved anyway).
+
+6.7 Not done
+    - Real hardware: neither the driver change nor the app change ran on a physical card.
+    - A started SYSTEM's own sound after the hand-over (Debian or Windows playing by itself): not run. What ran
+      is the hand-over to the UEFI Shell (VMware) and to GRUB (QEMU) and the return, with the reader speaking in
+      both and Charon speaking after the return.
+    - A real slow host: only the model of 6.5.
+    - AC'97, ES1371, USB sound: untouched and not run.
+
+6.8 The old host tests and a new one
+    How earlier rounds built them: work/build-provider-deadline-tests.cmd (r346: MSVC, with objects of the voice
+    built then) and work/charon-r354-checks.py (r354: g++ in the Haiku guest). Nothing later builds them.
+    tests/CharonAudioDeviceTests.cpp: BUILT with MSVC and that recipe (include work/charon-audio-device-host/
+      include; the freestanding tools/charon-compat-include must NOT be on the path - that was the failure
+      reported in section 4.1). RAN: "FAIL 25: ... gain==-12" - the device has asked for gain 127 since r404.
+      With that one number corrected in a copy: "FAIL 13: type==ByProtocol && ..." - its fixture does not know
+      the look-ups for USB and built-in cards added in r405/r406. Identical result with the sources before and
+      after this work.
+    tests/CharonVoiceProviderTests.cpp: MSVC cannot compile it (CharonSynthModule.h:85, the r393 add-on
+      interface: 71 errors, the same before and after this work). BUILT with the tree's Clang for the host and
+      the voice's current sources (CharonLiveVoice.cpp, tvox_freestanding.cpp, tvox_dsp_stream.c, tvox_dsp_mit.c,
+      tvox_numeric.c, CharonPool.c, tvox_context_msvc.asm; linked with a 512 MB stack - the provider object
+      overflows the default one). RAN (with the gain corrected as above): "FAIL 27: handle==handles[0]" at the
+      first Initialize - the fixture rejects the provider's look-up of its own image, added in r393. Identical
+      before and after this work.
+    Both are records of r354 and fail on their own fixtures before they reach any code changed here; bringing
+    them up to date was not done.
+    NEW tests/CharonVoiceStallProviderTests.cpp - RAN AND PASSED, 39 checks, 0 failed (host Clang, same link as
+      above; output in r409stall-evidence/host-provider-stall-test.txt). The real VoiceProvider, LiveVoice and
+      TVox against a simulated HDA stream whose write reports EFI_TIMEOUT:
+        lasting stall, 3000 pumps: 5 restarts of the stream, 0 pump errors (rests counted in calls: the fixture
+          has no clock); speech asked for during the stall accepted; the card plays again -> 24198 frames after
+          656 pumps, without a new request;
+        70 stalls with sound in between in a row: 70 immediate restarts, no error (more than the old limit of 64);
+        two stalls back to back, then sound: two restarts, no rest; Stop and Shutdown during a rest succeed.
+      The same test against the provider before this work (host-provider-stall-test-before-r409.txt): 64 restarts,
+      2936 pump errors, speech refused from then on, 0 frames after the card plays again.
+
+6.9 Recommendation
+    Nothing measured is worse with AudioDxe-r409 than with r408, nothing was unstable with it that was stable
+    with r408, and it removes the measured trigger (6.2, 6.5). On an idle host the two cannot be told apart
+    (6.4): the gain shows only when the host's stream creation takes more than 70 ms, and that was shown with a
+    model, not with a real slow host. By the coordinator's rule r409 may ship. The one thing against it lies
+    outside this work: r409 has not run on a physical card; the change there is one extra read of the cursor
+    and a clock taken some microseconds later. If the release cannot have a hardware pass, keeping AudioDxe-r408
+    with the StallPolicy loses nothing that was observed today: the StallPolicy alone turns the storm into
+    rests and a working voice (4.2); r409 additionally keeps the speech (6.5).
+    Changed files of the follow-up: src/efi/audio_stream/driver/HakAudioStream.c, BUILD-NOTES.md;
+    tests/CharonVoiceStallProviderTests.cpp (new); this file. Outside the tree: work/ha/.../HakAudioStream.c
+    (build copy, identical), work/charon-audio-driver-r409/ (drivers and logs), work/r409stall-evidence/.

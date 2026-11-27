@@ -394,10 +394,12 @@ SETTINGS_DEFAULTS = dict(language=0, wrap=0, sounds=1, explicit=0, startMelody=1
     readerExtra=25, synthKey=0, synthVoice=0)   # readerExtra<=127: DecodeSettings range
 
 
-def settings_record(seq, **over):
+def settings_record(seq, version='C', bits=None, **over):
+    """A 48-byte record of format `version`; `bits` = {byte index: bits OR-ed in} for the fields of
+    formats D and E that share a byte with an older setting (CharSettings.h V13, V14)."""
     f = dict(SETTINGS_DEFAULTS); f.update(over)
     b = bytearray(48)
-    b[0:8] = b'CHARS00C'
+    b[0:8] = b'CHARS00' + version.encode('ascii')
     b[8:16] = struct.pack('<Q', seq)
     b[16] = f['language']; b[17] = f['wrap']; b[18] = f['sounds']; b[19] = f['explicit']
     b[20] = f['startMelody']; b[21] = f['bgMelody']; b[22] = f['rate']
@@ -407,8 +409,12 @@ def settings_record(seq, **over):
     b[32] = f['detail']; b[33] = f['timers']; b[34] = f['msgRate']; b[35] = f['msgPitch']
     b[36] = f['punct']; b[37] = f['capitals']; b[38] = f['screenLang']; b[39] = f['readerFlags']
     b[40] = f['formatFlags']; b[41] = f['readerExtra']; b[42] = f['synthKey']; b[43] = f['synthVoice']
+    for index, value in (bits or {}).items(): b[index] |= value
     b[44:48] = struct.pack('<I', binascii.crc32(bytes(b[0:44])) & 0xffffffff)
     return bytes(b)
+
+
+def settings_crc_ok(rec): return struct.unpack('<I', rec[44:48])[0] == (binascii.crc32(rec[0:44]) & 0xffffffff)
 
 
 def settings_seq(data): return struct.unpack('<Q', data[8:16])[0]
@@ -423,7 +429,9 @@ class Box:
         self.c.mkdir(); self.d.mkdir(); self.hak.mkdir()
         for name, data in PROGRAMS.items(): (self.c / name).write_bytes(data)
 
-    def seed_settings(self, seq=1, **over): (self.hak / 'charon-settings-a.bin').write_bytes(settings_record(seq, **over))
+    def seed_settings(self, seq=1, **over):
+        (self.hak / 'charon-settings-a.bin').write_bytes(settings_record(seq, **over))
+        return (self.hak / 'charon-settings-a.bin').read_bytes()
 
     def run(self, command=None, keys=None, extra=()):
         argv = [str(exe), '--root', f'C={self.c}', '--root', f'D={self.d}', '--hak', str(self.hak), *extra]
@@ -431,6 +439,7 @@ class Box:
         if keys is not None: argv += ['--keys', keys]
         r = subprocess.run(argv, capture_output=True, timeout=30)
         text = r.stdout.decode('utf-8', 'replace')
+        self.err = r.stderr.decode('utf-8', 'replace')      # r409: what the host backend would start or speak
         if verbose: print(f'--- {command or keys!r} -> {r.returncode}\n{text}')
         return r.returncode, text
 
@@ -759,10 +768,76 @@ def charon_rate_report_only(b):
 
 @case
 def charon_refuses_newer_format(b):
-    (b.hak / 'charon-settings-a.bin').write_bytes(b'CHARS00D' + bytes(40))   # version newer than understood
+    newer = settings_record(1, version='F')                                    # the first format past E (r410 V14)
+    (b.hak / 'charon-settings-a.bin').write_bytes(newer)
     code, out = b.run('CHARON RATE 70')
     assert 'newer format' in out and code == 1, out
-    assert (b.hak / 'charon-settings-a.bin').read_bytes()[:8] == b'CHARS00D', 'must not overwrite'
+    assert (b.hak / 'charon-settings-a.bin').read_bytes() == newer, 'must not overwrite'
+    assert not (b.hak / 'charon-settings-b.bin').exists(), 'must not write the other slot'
+    code, out = b.run('CHARON')
+    assert 'newer format' in out, out
+
+# r410: formats D (V13) and E (V14) put new settings into bits of bytes 32, 33, 36, 37, 38 that
+# were zero before. CHARON reads the old settings through the header's masks and writes the
+# record back in its own format with those bits untouched.
+V14_BITS = {32: 0x1a << 3, 33: 0x12 << 2, 36: 5 << 2, 37: 8 | 16 | 32, 38: 3 << 2}   # items 0xa5a, groups 5, bar, colours, profile 3
+
+@case
+def charon_format_e_new_bits_survive(b):
+    before = b.seed_settings(seq=1, version='E', bits=V14_BITS, punct=2, capitals=5, detail=5, timers=1, screenLang=1,
+                             readerExtra=153, formatFlags=252, readerRate=10)
+    code, out = b.run('CHARON')
+    assert 'Reader rate 50%' in out and 'Punctuation most' in out, out      # punctuation = byte 36 & 3, not 22
+    code, out = b.run('CHARON RATE 60')
+    assert code == 0 and 'Reader rate 60 %' in out, (code, out)
+    a = (b.hak / 'charon-settings-a.bin').read_bytes()
+    bb = (b.hak / 'charon-settings-b.bin').read_bytes()
+    assert settings_seq(a) == 3 and settings_seq(bb) == 2, (settings_seq(a), settings_seq(bb))
+    for rec in (a, bb):
+        assert rec[:8] == b'CHARS00E' and settings_crc_ok(rec), rec[:8]
+        assert [i for i in range(44) if rec[i] != before[i]] == [8, 29], [i for i in range(44) if rec[i] != before[i]]
+    code, out = b.run('CHARON PUNCT all')
+    assert code == 0 and 'Punctuation all' in out, (code, out)
+    after = (b.hak / 'charon-settings-a.bin').read_bytes()
+    assert settings_seq(after) == 5 and after[:8] == b'CHARS00E' and settings_crc_ok(after)
+    assert after[36] == 3 | (5 << 2), after[36]                             # only bits 0-1 of byte 36 changed
+    assert [i for i in range(16, 44) if after[i] != a[i]] == [36]
+    code, out = b.run('CHARON LANG pl')
+    code, out = b.run('CHARON SOUNDS off')
+    code, out = b.run('CHARON VOICE tvox')
+    last = (b.hak / 'charon-settings-a.bin').read_bytes()
+    assert last[:8] == b'CHARS00E' and settings_crc_ok(last) and (last[16], last[18]) == (2, 0)
+    assert [i for i in range(19, 44) if last[i] != after[i]] == [], 'LANG, SOUNDS and VOICE keep every other byte'
+
+@case
+def charon_format_d_stays_d(b):
+    before = b.seed_settings(seq=1, version='D', bits={36: 5 << 2, 38: 2 << 2}, punct=1, screenLang=3)
+    code, out = b.run('CHARON VOLUME 40')
+    assert code == 0, (code, out)
+    for name in ('charon-settings-a.bin', 'charon-settings-b.bin'):
+        rec = (b.hak / name).read_bytes()
+        assert rec[:8] == b'CHARS00D' and settings_crc_ok(rec), rec[:8]
+        assert [i for i in range(16, 44) if rec[i] != before[i]] == [31] and rec[31] == 4, rec[31]
+
+@case
+def charon_format_c_keeps_bit7(b):
+    before = b.seed_settings(seq=1, readerExtra=153)      # byte 41 bit 7: accepted in format C since r408
+    code, out = b.run('CHARON PITCH 100')
+    assert code == 0 and 'Reader pitch 100 %' in out, (code, out)
+    rec = (b.hak / 'charon-settings-a.bin').read_bytes()
+    assert rec[:8] == b'CHARS00C' and settings_crc_ok(rec) and rec[41] == 153 and rec[30] == 20
+    assert [i for i in range(16, 44) if rec[i] != before[i]] == [30]
+
+@case
+def charon_rejects_bits_the_format_does_not_have(b):
+    # The same verdicts as DecodeSettings: format D has no custom profile and no bits in bytes 32, 33, 37;
+    # format C none in bytes 36 and 38; format E none in byte 37 bit 6.
+    for version, bits in (('D', {38: 3 << 2}), ('D', {32: 8}), ('D', {37: 8}), ('C', {36: 4}), ('C', {38: 4}), ('E', {37: 64}), ('E', {36: 32})):
+        before = b.seed_settings(seq=1, version=version, bits=bits)
+        code, out = b.run('CHARON RATE 70')
+        assert code == 1 and 'not found' in out, (version, bits, code, out)
+        assert (b.hak / 'charon-settings-a.bin').read_bytes() == before, 'must not overwrite'
+        assert not (b.hak / 'charon-settings-b.bin').exists(), 'must not write the other slot'
 
 @case
 def charon_punct_lang_sounds(b):
@@ -815,6 +890,334 @@ def charon_voice_lists_and_sets(b):
     code, out = b.run('CHARON VOICE eloquence')
     assert code == 0, (code, out)
     assert settings_byte((b.hak / 'charon-settings-a.bin').read_bytes(), 42) != 0, 'synth key stored'
+
+# ---- r409: WINNT and LINUX choose among the installed systems -------------------------
+# A host folder stands in for each volume (--volume GUID=DIR@disk), a text file for the
+# firmware boot entries (--fwboot), a folder for \EFI\CharonDOS (--self, BOOT.CFG). The
+# host backend starts nothing: it prints "[launch linux|winnt <id> <partition>:<path>]"
+# to stderr (Box.err) for the entry the UEFI backend would start.
+G1 = 'aaaaaaaa-0000-4000-8000-000000000001'
+G2 = 'bbbbbbbb-0000-4000-8000-000000000002'
+G3 = 'cccccccc-0000-4000-8000-000000000003'
+
+
+class Systems:
+    """Fake volumes, firmware entries and the folder of CHARONDOS.EFI for one Box."""
+    def __init__(self, box):
+        self.box = box; self.volumes = []; self.fw = []
+        self.self_dir = box.top / 'self'; self.self_dir.mkdir()
+
+    def volume(self, guid, disk=1):
+        d = self.box.top / ('vol' + str(len(self.volumes) + 1)); d.mkdir()
+        self.volumes.append((guid, d, disk))
+        return d
+
+    def loader(self, vol, path, size=100):
+        f = vol / path.strip('\\').replace('\\', '/')
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(b'L' * size)
+
+    def registry(self, vol, lines):
+        f = vol / 'EFI' / 'HAK' / 'systems.txt'
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(('# charon-systems 1\r\n' + '\r\n'.join(lines) + '\r\n').encode('utf-8'))
+
+    def args(self):
+        out = ['--self', str(self.self_dir)]
+        for guid, d, disk in self.volumes: out += ['--volume', f'{guid}={d}@{disk}']
+        if self.fw:
+            f = self.box.top / 'fwboot.txt'
+            f.write_bytes('\r\n'.join(self.fw).encode('utf-8') + b'\r\n')
+            out += ['--fwboot', str(f)]
+        return out
+
+    def run(self, command=None, keys=None, extra=()):
+        return self.box.run(command, keys, extra=[*self.args(), *extra])
+
+    def cfg(self):
+        f = self.self_dir / 'BOOT.CFG'
+        return f.read_bytes().decode('utf-8') if f.exists() else None
+
+
+def two_linux(b):
+    """Debian and Ubuntu, both in Charon's registry, on one shared EFI partition."""
+    s = Systems(b); v = s.volume(G1, 1)
+    s.loader(v, r'\EFI\debian\shimx64.efi'); s.loader(v, r'\EFI\debian\grubx64.efi')
+    s.loader(v, r'\EFI\ubuntu\shimx64.efi')
+    s.registry(v, [f'debian|Debian 13|linux|{G1}|\\EFI\\debian\\shimx64.efi|0000beef|2026-11-23',
+                   f'ubuntu|Ubuntu 26.04|linux|{G1}|\\EFI\\ubuntu\\shimx64.efi|0000beef|2026-11-23',
+                   f'dos|CharonDOS|charondos|{G1}|\\EFI\\CharonDOS\\CHARONDOS.EFI|0000beef|2026-11-23'])
+    return s
+
+
+@case
+def launch_linux_none_installed(b):
+    s = Systems(b)
+    code, out = s.run('LINUX')
+    assert 'No Linux was found on this computer (no boot entry and no loader under \\EFI on any volume).' in out, out
+    assert code == 2 and 'launch' not in b.err, (code, b.err)
+    code, out = s.run('LINUX', extra=['--pl'])
+    assert 'Nie znaleziono Linuksa na tym komputerze' in out and code == 2, (code, out)
+    code, out = s.run('LINUX /L')
+    assert 'No Linux was found' in out and code == 2, (code, out)
+
+@case
+def launch_winnt_none_installed(b):
+    s = Systems(b); v = s.volume(G1)
+    s.loader(v, r'\EFI\debian\grubx64.efi')              # a Linux is not a Windows
+    code, out = s.run('WINNT')
+    assert 'Windows was not found on this computer' in out and code == 2, (code, out)
+    assert 'launch' not in b.err, b.err
+
+@case
+def launch_linux_one_found_by_scan_prefers_shim(b):
+    s = Systems(b); v = s.volume(G1, 2)
+    s.loader(v, r'\EFI\debian\grubx64.efi'); s.loader(v, r'\EFI\debian\shimx64.efi')
+    code, out = s.run('LINUX')
+    assert 'Starting Debian from disk 2. CharonDOS ends.' in out, out
+    assert code == 0, code
+    assert f'[launch linux dir:{G1}:\\EFI\\debian\\shimx64.efi {G1}:\\EFI\\debian\\shimx64.efi]' in b.err, b.err
+    assert '[speak en] Starting Debian from disk 2. CharonDOS ends.' in b.err, b.err
+
+@case
+def launch_linux_grub_systemd_and_unified_kernel(b):
+    s = Systems(b); v = s.volume(G1)
+    s.loader(v, r'\EFI\fedora\grubx64.efi')              # no shim: GRUB itself
+    s.loader(v, r'\EFI\systemd\systemd-bootx64.efi')
+    s.loader(v, r'\EFI\Linux\arch-6.12.efi'); s.loader(v, r'\EFI\Linux\notes.txt')
+    code, out = s.run('LINUX /L')
+    names = [l for l in lines_of(out) if l[:1].isdigit()]
+    assert names == ['1: Fedora', '2: Linux, arch-6.12.efi', '3: Linux, systemd-boot'], names
+    assert code == 0 and 'launch' not in b.err, (code, b.err)
+    s.run('LINUX 3')
+    assert '\\EFI\\systemd\\systemd-bootx64.efi]' in b.err, b.err
+
+@case
+def launch_scan_skips_charon_and_fallback_file(b):
+    s = Systems(b); v = s.volume(G1)
+    s.loader(v, r'\EFI\HAK\HAKBOOT.EFI', 777); s.loader(v, r'\EFI\HAK\grubx64.efi')
+    s.loader(v, r'\EFI\CharonDOS\CHARONDOS.EFI', 555); s.loader(v, r'\EFI\CharonDOS\shimx64.efi')
+    s.loader(v, r'\EFI\BOOT\BOOTX64.EFI', 777); s.loader(v, r'\EFI\BOOT\grubx64.efi')
+    code, out = s.run('LINUX')                           # the fallback file is Charon itself (same size)
+    assert 'No Linux was found' in out and code == 2, (code, out)
+    v2 = s.volume(G2, 2)
+    s.loader(v2, r'\EFI\BOOT\BOOTX64.EFI', 4321)         # another volume: an unknown loader, nothing else there
+    code, out = s.run('LINUX')
+    assert 'Starting Linux from disk 2. CharonDOS ends.' in out and code == 0, (code, out)
+    assert f'{G2}:\\EFI\\BOOT\\BOOTX64.EFI]' in b.err, b.err
+    s.loader(v2, r'\EFI\debian\shimx64.efi')             # a real loader there: the fallback file is no longer offered
+    code, out = s.run('LINUX /L')
+    assert [l for l in lines_of(out) if l[:1].isdigit()] == ['1: Debian'], out
+    # Charon's own start medium left in the drive: Charon is BOOTX64.EFI there, with no HAKBOOT.EFI beside it.
+    v3 = s.volume(G3, 3)
+    s.loader(v3, r'\EFI\BOOT\BOOTX64.EFI', 999); s.loader(v3, r'\EFI\HAK\CHARONVOICE.EFI', 5)
+    code, out = s.run('LINUX /L')
+    assert [l for l in lines_of(out) if l[:1].isdigit()] == ['1: Debian'], out   # seen in VMware: the disc was offered as "2: Linux"
+
+@case
+def launch_registry_names_numbers_and_prefixes(b):
+    s = two_linux(b)
+    code, out = s.run('LINUX /L')
+    assert [l for l in lines_of(out) if l[:1].isdigit()] == ['1: Debian 13', '2: Ubuntu 26.04'], out
+    assert 'Installed Linux systems:' in out and code == 0, (code, out)
+    for arg, want in (('2', 'ubuntu'), ('UBU', 'ubuntu'), ('ubuntu', 'ubuntu'), ('deb', 'debian'), ('1', 'debian'), ('Debian 13', 'debian')):
+        code, out = s.run('LINUX ' + arg)
+        assert code == 0 and f'[launch linux {want} ' in b.err, (arg, code, out, b.err)
+    code, out = s.run('LINUX 2')
+    assert 'Starting Ubuntu 26.04 from disk 1. CharonDOS ends.' in out, out
+
+@case
+def launch_no_such_name_lists_and_errorlevel_2(b):
+    s = two_linux(b)
+    code, out = s.run('LINUX SUSE')
+    assert 'No installed Linux is called SUSE.' in out and '1: Debian 13' in out and '2: Ubuntu 26.04' in out, out
+    assert code == 2 and 'launch' not in b.err, (code, b.err)
+    code, out = s.run('LINUX 7')
+    assert 'No installed Linux is called 7.' in out and code == 2, (code, out)
+    code, out = s.run('LINUX SUSE', extra=['--pl'])
+    assert 'Nie ma zainstalowanego Linuksa o nazwie SUSE.' in out, out
+
+@case
+def launch_several_no_default_asks_by_number(b):
+    s = two_linux(b)
+    code, out = s.run(keys='LINUX{ENTER}2{ENTER}')
+    assert 'Which Linux? 1: Debian 13. 2: Ubuntu 26.04. Type a number and Enter; Escape cancels.' in out, out
+    assert '[speak en] Which Linux? 1: Debian 13. 2: Ubuntu 26.04. Type a number and Enter; Escape cancels.' in b.err, b.err
+    assert '[launch linux ubuntu ' in b.err and 'Starting Ubuntu 26.04 from disk 1. CharonDOS ends.' in out, (out, b.err)
+    code, out = s.run(keys='LINUX{ENTER}2{ENTER}', extra=['--pl'])
+    assert 'Który Linux? 1: Debian 13. 2: Ubuntu 26.04. Wpisz numer i Enter; Escape anuluje.' in b.err, b.err
+    assert 'Uruchamiam Ubuntu 26.04 z dysku 1. CharonDOS kończy pracę.' in b.err, b.err
+
+@case
+def launch_choice_escape_and_bad_number_cancel(b):
+    s = two_linux(b)
+    code, out = s.run(keys='LINUX{ENTER}{ESC}IF ERRORLEVEL 3 ECHO LEVEL3{ENTER}IF ERRORLEVEL 4 ECHO LEVEL4{ENTER}')
+    assert 'Cancelled.' in out and 'LEVEL3' in lines_of(out) and 'LEVEL4' not in lines_of(out), out
+    assert 'launch' not in b.err, b.err
+    code, out = s.run(keys='LINUX{ENTER}9{ENTER}IF ERRORLEVEL 3 ECHO LEVEL3{ENTER}')
+    assert 'Cancelled.' in out and 'LEVEL3' in lines_of(out) and 'launch' not in b.err, (out, b.err)
+    code, out = s.run(keys='LINUX{ENTER}{ENTER}x1{ENTER}')    # Enter alone and letters are ignored
+    assert '[launch linux debian ' in b.err, b.err
+
+@case
+def launch_in_batch_file_never_waits(b):
+    s = two_linux(b)
+    b.bat('T.BAT', ['@ECHO OFF', 'LINUX', 'IF ERRORLEVEL 3 ECHO GOT3', 'IF ERRORLEVEL 4 ECHO GOT4', 'ECHO after'])
+    code, out = s.run('T')                               # would time out if the choice waited for a key
+    ls = lines_of(out)
+    assert 'GOT3' in ls and 'GOT4' not in ls and 'after' in ls, out
+    assert 'Which Linux' not in out and '1: Debian 13' in ls and '2: Ubuntu 26.04' in ls, out
+    assert 'launch' not in b.err, b.err
+    b.bat('U.BAT', ['@ECHO OFF', 'LINUX UBUNTU', 'ECHO not reached by the shell that ends'])
+    code, out = s.run('U')
+    assert '[launch linux ubuntu ' in b.err, b.err
+
+@case
+def launch_default_set_used_and_forgotten(b):
+    s = two_linux(b)
+    (s.self_dir / 'BOOT.CFG').write_bytes(b'winnt=win11\r\ncolour=7\r\n')
+    code, out = s.run('LINUX /D UBU')
+    assert code == 0 and 'LINUX without a name now starts Ubuntu 26.04.' in out, (code, out)
+    assert s.cfg() == 'winnt=win11\r\ncolour=7\r\nlinux=ubuntu\r\n', repr(s.cfg())
+    code, out = s.run('LINUX')
+    assert '[launch linux ubuntu ' in b.err and 'Which Linux' not in out, (out, b.err)
+    code, out = s.run('LINUX /L')
+    assert '2: Ubuntu 26.04 (default)' in lines_of(out), out
+    code, out = s.run('LINUX 1')                         # an argument still wins over the default
+    assert '[launch linux debian ' in b.err, b.err
+    code, out = s.run('LINUX /D NOSUCH')
+    assert code == 2 and 'No installed Linux is called NOSUCH.' in out, (code, out)
+    assert s.cfg() == 'winnt=win11\r\ncolour=7\r\nlinux=ubuntu\r\n', repr(s.cfg())
+    code, out = s.run('LINUX /D')
+    assert code == 0 and 'The default was forgotten for LINUX.' in out, (code, out)
+    assert s.cfg() == 'winnt=win11\r\ncolour=7\r\n', repr(s.cfg())
+    b.bat('T.BAT', ['@ECHO OFF', 'LINUX', 'IF ERRORLEVEL 3 ECHO GOT3'])
+    code, out = s.run('T')
+    assert 'GOT3' in lines_of(out), out
+
+@case
+def launch_default_that_is_gone_asks_again(b):
+    s = two_linux(b)
+    (s.self_dir / 'BOOT.CFG').write_bytes(b'linux=fedora\r\n')
+    code, out = s.run(keys='LINUX{ENTER}1{ENTER}')
+    assert 'Which Linux?' in out and '[launch linux debian ' in b.err, (out, b.err)
+
+@case
+def launch_firmware_entries_merge_with_scan(b):
+    s = Systems(b); v = s.volume(G1, 1); w = s.volume(G2, 2)
+    s.loader(v, r'\EFI\debian\shimx64.efi'); s.loader(v, r'\EFI\debian\grubx64.efi')
+    s.loader(v, r'\EFI\Microsoft\Boot\bootmgfw.efi'); s.loader(v, r'\EFI\HAK\HAKBOOT.EFI')
+    s.loader(w, r'\EFI\custom\vmlinuz.efi')
+    s.fw = [f'Charon|{G1}|\\EFI\\HAK\\HAKBOOT.EFI', f'Windows Boot Manager|{G1}|\\EFI\\MICROSOFT\\BOOT\\BOOTMGFW.EFI',
+            f'debian|{G1}|\\EFI\\debian\\shimx64.efi', f'My kernel|{G2}|\\EFI\\custom\\vmlinuz.efi',
+            f'Gone|{G3}|\\EFI\\gone\\grubx64.efi', f'CharonDOS|{G1}|\\EFI\\CharonDOS\\CHARONDOS.EFI']
+    code, out = s.run('LINUX /L')
+    assert [l for l in lines_of(out) if l[:1].isdigit()] == ['1: Debian', '2: My kernel', '3: Gone'], out
+    code, out = s.run('WINNT /L')
+    assert [l for l in lines_of(out) if l[:1].isdigit()] == ['1: Windows'], out
+    code, out = s.run('LINUX 2')
+    assert 'Starting My kernel from disk 2. CharonDOS ends.' in out and f'{G2}:\\EFI\\custom\\vmlinuz.efi]' in b.err, (out, b.err)
+    code, out = s.run('LINUX 3')                         # its partition is not connected
+    assert 'The boot loader can no longer be found for Gone.' in out and code == 2 and 'launch' not in b.err, (code, out)
+
+@case
+def launch_registry_line_without_loader_is_not_installed(b):
+    s = Systems(b); v = s.volume(G1)
+    s.loader(v, r'\EFI\debian\shimx64.efi')
+    s.registry(v, [f'debian|Debian 13|linux|{G1}|\\EFI\\debian\\shimx64.efi|1|d',
+                   f'ubuntu|Ubuntu 26.04|linux|{G1}|\\EFI\\ubuntu\\shimx64.efi|1|d',       # removed since
+                   f'other|Other|linux|{G3}|\\EFI\\other\\grubx64.efi|1|d',                # disk not connected
+                   'broken line', 'x|y|linux'])
+    code, out = s.run('LINUX')
+    assert 'Starting Debian 13 from disk 1. CharonDOS ends.' in out and code == 0, (code, out)
+
+@case
+def launch_winnt_one_and_two_windows(b):
+    s = Systems(b); v = s.volume(G1, 1)
+    s.loader(v, r'\EFI\Microsoft\Boot\bootmgfw.efi')
+    code, out = s.run('WINNT')
+    assert 'Starting Windows from disk 1. CharonDOS ends.' in out and code == 0, (code, out)
+    assert f'[launch winnt dir:{G1}:\\EFI\\Microsoft\\Boot\\bootmgfw.efi ' in b.err, b.err
+    s.registry(v, [f'win11|Windows 11 Pro|windows|{G1}|\\EFI\\Microsoft\\Boot\\bootmgfw.efi|1|d'])
+    code, out = s.run('WINNT')
+    assert 'Starting Windows 11 Pro from disk 1. CharonDOS ends.' in out and '[launch winnt win11 ' in b.err, (out, b.err)
+    # Two Windows that share one boot store: one loader, the choice is made in Windows' own menu.
+    s.registry(v, [f'win10|Windows 10|windows|{G1}|\\EFI\\Microsoft\\Boot\\bootmgfw.efi|1|d',
+                   f'win11|Windows 11 Pro|windows|{G1}|\\EFI\\Microsoft\\Boot\\bootmgfw.efi|1|d'])
+    code, out = s.run('WINNT')
+    assert 'Starting the Windows boot menu; choose there. CharonDOS ends.' in out and code == 0, (code, out)
+    assert '[launch winnt win10 ' in b.err, b.err
+    code, out = s.run('WINNT /L')
+    assert [l for l in lines_of(out) if l[:1].isdigit()] == ['1: Windows 10, Windows 11 Pro'], out
+    code, out = s.run('WINNT', extra=['--pl'])
+    assert 'Uruchamiam menu rozruchu Windows; wybierz w nim system.' in b.err, b.err
+
+@case
+def launch_two_windows_on_two_disks_and_default(b):
+    s = Systems(b); v = s.volume(G1, 1); w = s.volume(G2, 2)
+    s.loader(v, r'\EFI\Microsoft\Boot\bootmgfw.efi'); s.loader(w, r'\EFI\Microsoft\Boot\bootmgfw.efi')
+    s.registry(v, [f'win10|Windows 10|windows|{G1}|\\EFI\\Microsoft\\Boot\\bootmgfw.efi|1|d',
+                   f'win11|Windows 11|windows|{G2}|\\EFI\\Microsoft\\Boot\\bootmgfw.efi|1|d'])
+    code, out = s.run(keys='WINNT{ENTER}2{ENTER}')
+    assert 'Which Windows? 1: Windows 10. 2: Windows 11. Type a number and Enter; Escape cancels.' in out, out
+    assert 'Starting Windows 11 from disk 2. CharonDOS ends.' in out and '[launch winnt win11 ' in b.err, (out, b.err)
+    code, out = s.run('WINNT /D 1')
+    assert s.cfg() == 'winnt=win10\r\n', repr(s.cfg())
+    code, out = s.run('WINNT')
+    assert '[launch winnt win10 ' in b.err, b.err
+    code, out = s.run('LINUX')                           # the Windows default says nothing about Linux
+    assert 'No Linux was found' in out and code == 2, (code, out)
+
+@case
+def launch_bad_switch_and_help(b):
+    s = two_linux(b)
+    code, out = s.run('LINUX /X')
+    assert 'Syntax error' in out and code == 1 and 'launch' not in b.err, (code, out, b.err)
+    code, out = s.run('LINUX /L extra')
+    assert 'Syntax error' in out, out
+    code, out = s.run('HELP')
+    assert 'LINUX [name|n|/L|/D name]  start an installed Linux (CharonDOS ends)' in out, out
+    assert 'WINNT [name|n|/L|/D name]  start an installed Windows (CharonDOS ends)' in out, out
+    code, out = s.run('HELP', extra=['--pl'])
+    assert 'LINUX [nazwa|n|/L|/D nazwa] uruchom zainstalowanego Linuksa (koniec CharonDOS)' in out, out
+    mine = [l for l in out.replace('\r', '').split('\n') if l.startswith(('WINNT', 'LINUX'))]
+    assert len(mine) == 2 and all(len(l) < 80 for l in mine), mine      # the screen is 80 columns wide
+
+
+# ---- r409: the hardware clock keeps universal time, CharonDOS shows local time ------------
+# --rtc stands in for the hardware clock; \EFI\HAK\clock.txt (written by a plan's finish step)
+# says that it keeps universal time and names the zone.
+@case
+def clock_without_file_is_shown_as_it_is(b):
+    code, out = b.run('DATE', extra=['--rtc', '2026-07-01 22:30:15'])
+    assert 'Current date is 2026-07-01' in out, out
+    code, out = b.run('TIME', extra=['--rtc', '2026-07-01 22:30:15'])
+    assert 'Current time is 22:30:15' in out, out
+
+@case
+def clock_universal_time_shown_as_local(b):
+    (b.hak / 'clock.txt').write_bytes(b'rtc=utc\r\nzone=Europe/Warsaw\r\n')
+    code, out = b.run('TIME', extra=['--rtc', '2026-07-01 22:30:15'])
+    assert 'Current time is 00:30:15' in out, out               # summer time, +2
+    code, out = b.run('DATE', extra=['--rtc', '2026-07-01 22:30:15'])
+    assert 'Current date is 2026-07-02' in out, out               # and the date moves with it
+    code, out = b.run('TIME', extra=['--rtc', '2026-11-23 11:05:00'])
+    assert 'Current time is 12:05:00' in out, out               # winter time, +1
+    code, out = b.run('TIME', extra=['--rtc', '2026-11-23 11:05:00', '--pl'])
+    assert '12:05:00' in out, out
+    b.bat('T.BAT', ['@ECHO OFF', 'PROMPT $D $T$G', 'ECHO x > NEW.TXT', 'DIR NEW.TXT'])
+    code, out = b.run('T', extra=['--rtc', '2026-11-23 11:05:00'])
+    assert code == 0, (code, out)
+    (b.hak / 'clock.txt').write_bytes(b'rtc=utc\r\nzone=America/New_York\r\n')
+    code, out = b.run('TIME', extra=['--rtc', '2026-11-23 11:05:00'])
+    assert 'Current time is 06:05:00' in out, out
+
+@case
+def clock_local_or_unknown_zone_is_not_converted(b):
+    for text in (b'rtc=local\r\nzone=Europe/Warsaw\r\n', b'rtc=utc\r\nzone=Nowhere/City\r\n', b'garbage'):
+        (b.hak / 'clock.txt').write_bytes(text)
+        code, out = b.run('TIME', extra=['--rtc', '2026-07-01 22:30:15'])
+        assert 'Current time is 22:30:15' in out, (text, out)
 
 
 if only: cases = [f for f in cases if any(part in f.__name__ for part in only)]

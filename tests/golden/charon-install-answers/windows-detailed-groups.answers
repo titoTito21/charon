@@ -1,0 +1,16 @@
+result=written
+set-reload=ok applied=12
+asked=hostname,user,password,edition,bypass,localonly,privacy,wreaders,nobitlocker,clockutc,profile
+wtimezone=Central European Standard Time
+w_bootmenu=tile
+w_hibernate=off
+fast_startup=off
+w_punct=200
+w_layout=laptop
+w_modifier=extended,capslock
+w_nvda_stats=yes
+w_update=3
+w_display_off=1
+w_lid=0
+w_features=wsl
+keys-left=0

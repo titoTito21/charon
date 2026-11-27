@@ -6,9 +6,10 @@ Windows voice (System.Speech) and print it, are English unless -Language pl is
 given or Windows is Polish, and have -DryRun (read-only queries, prints the
 plan, changes nothing, writes no log).
 
-STATUS: both were only syntax-checked and run with -DryRun, without
-administrator rights, on a Windows 11 build 26300 computer. Neither was run for
-real, and nothing was tried on a freshly installed Windows.
+STATUS: Charon-WindowsProfile.ps1: Slim was run for real in r405; the script
+profiles and ServerDesktop in r409 (see the results file named below). ReviOS
+and AtlasOS were never run to the end. Charon-MakeRoom.ps1: syntax and -DryRun
+only.
 
 Charon-WindowsProfile.ps1 (after Windows is installed, at first logon)
 ----------------------------------------------------------------------
@@ -33,11 +34,27 @@ Charon-WindowsProfile.ps1 (after Windows is installed, at first logon)
                     - the AME CLI may wait for a key before its own restart.
                     Default options keep Defender, mitigations, Windows Update
                     and Edge; -PlaybookOptions "a b c" replaces them.
-  -Profile Script   downloads a zip or .ps1 (https only) to
-                    %ProgramData%\Charon\profile-script and runs it. Default:
-                    Win11Debloat's release zip (checked against its SHA256SUMS)
-                    with "-RunDefaults -Silent". Other scripts: -ScriptUrl,
-                    -ScriptArguments, -ScriptEntry.
+  r409: the script profiles. Each downloads ONE pinned release of its tool to
+  %ProgramData%\Charon\profile-script, checks Charon's own SHA-256 of that file
+  (a different file is refused aloud, nothing changed) and runs it:
+  -Profile Script          Win11Debloat 2026.10.30, "-RunDefaults -Silent"
+  -Profile DebloatLite     Win11Debloat, "-RunDefaultsLite -Silent" (no app removed)
+  -Profile NoAI            Win11Debloat, "-Silent -DisableCopilot -DisableRecall
+                           -DisableClickToDo -DisableAISvcAutoStart -DisableEdgeAI
+                           -DisableNotepadAI -DisablePaintAI"
+  -Profile WinUtil         WinUtil 26.11.13, headless, "-Preset Standard"
+  -Profile WinUtilMinimal  WinUtil 26.11.13, headless, "-Preset Minimal"
+                    By hand only: -ScriptUrl/-ScriptArguments/-ScriptEntry run
+                    another zip or .ps1 (hash logged, not checked).
+  -Profile ServerDesktop   Charon's own code, Windows Server only (refused
+                    elsewhere): audio services on, Server Manager not opened at
+                    sign-in, no shutdown reason question.
+  Results of the real runs: tests\charon-r409-windows-profiles-results.txt.
+Screen readers (r409): NVDA is guarded like Narrator (program, eSpeak NG data,
+its Accessibility\ATs registration, its tokens on the sign-in and after-sign-in
+lists, configuration file) and the reader that was running before the profile
+is started again if the tool stopped it. Messages are spoken through NVDA when
+it runs (nvdaControllerClient.dll beside the script), else by a Windows voice.
 Narrator: before and after every profile the Narrator hotkey
 (Win+Ctrl+Enter) is switched on, "narrator" is put back into the logon and user
 Accessibility Configuration values if it was there before (always with

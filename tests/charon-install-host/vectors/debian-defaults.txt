@@ -1,0 +1,8 @@
+# Debian, express mode, Enter at every question (the password must be typed).
+lang=en
+flow=debian
+mode=quick
+keys=ENTER ENTER "test" ENTER "test" ENTER
+keys=ENTER ENTER
+keys=ENTER
+put diskmode=whole

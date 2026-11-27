@@ -1,0 +1,15 @@
+CHARON grid 31 100 15 0 1 systemd-boot
+G00 40*87|40*0000|  systemd-boot version: 257.13-1~deb13u1
+G01 45*87|45*0000|          loaded image: \EFI\BOOT\BOOTX64.EFI
+G02 60*87|60*0000| loader partition UUID: 6F1C3A52-5D47-4C11-9A8E-0C4A5B1E7D01
+G03 27*87|27*0000|          architecture: x64
+G04 28*87|28*0000|    UEFI specification: 2.70
+G05 30*87|30*0000|       firmware vendor: EDK II
+G06 28*87|28*0000|      firmware version: 1.00
+G07 28*87|28*0000|        OS indications: 0x41
+G08 40*87|40*0000|           secure boot: no (unsupported)
+G09 26*87|26*0000|                  shim: no
+G0a 26*87|26*0000|                   TPM: no
+G0b 46*87|46*0000|          console mode: 2/2 (100x31 @1280x800)
+G0d 52*87|52*0000|─── Press any key to continue, ESC or q to quit. ───
+CHARON grid end

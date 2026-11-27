@@ -1085,12 +1085,58 @@ static void TestDesktop()
 	}
 }
 
+// r410 (user point 6h): Setup's product-key page is announced with its fields; a screen built by hand, so
+// it runs without fonts and frames.
+static void TestProductKey()
+{
+	static Screen s;
+	ClearScreen(&s);
+	strcpy(s.title, "Windows 98 Setup");
+	s.dialog = { 10, 10, 400, 300 };
+	uint16_t at = 1;
+	auto put = [&](const char* text) { uint16_t o = at; strcpy(s.pool + at, text); at = (uint16_t)(at + strlen(text) + 1); return o; };
+	s.items[0] = {};
+	s.items[0].role = kRoleText;
+	s.items[0].text = put("Type the Product Key, located on your Certificate of Authenticity.");
+	const char* typed[5] = { "ABCDE", "FG", "", "", "" };
+	for (int i = 0; i < 5; i++) {
+		Element& e = s.items[1 + i];
+		e = {};
+		e.role = kRoleEdit;
+		e.text = typed[i][0] ? put(typed[i]) : 0;
+		e.position = (uint8_t)(i + 1);
+		e.count = 5;
+	}
+	s.count = 6;
+	s.poolUsed = at;
+	s.focus = 2;
+	char out[2000];
+	SpeakAll(s, kSpeakPolish, out, sizeof(out));
+	Check(strstr(out, "Instalator prosi teraz o klucz produktu: p\xC3\xB3l 5, w ka\xC5\xBC" "dym 5 znak\xC3\xB3w.") != nullptr, "product key page, Polish", out);
+	{   // r410 (r410a-me3): a wizard going to the key page is a page change (SpeakChange), not SpeakAll
+		static Screen before;
+		ClearScreen(&before);
+		strcpy(before.title, s.title);
+		before.dialog = s.dialog;
+		before.pageHash = s.pageHash + 1;
+		SpeakChange(before, s, kSpeakPolish, out, sizeof(out));
+		Check(strstr(out, "Instalator prosi teraz o klucz produktu: p\xC3\xB3l 5, w ka\xC5\xBC" "dym 5 znak\xC3\xB3w.") != nullptr, "product key page reached by a page change, Polish", out);
+	}
+	SpeakElement(s, 2, 0, out, sizeof(out));
+	Check(strcmp(out, "edit, FG, key field 2 of 5, characters typed: 2 of 5") == 0, "product key field 2, English", out);
+	s.items[0].text = put("Type the name of the folder.");
+	SpeakAll(s, 0, out, sizeof(out));
+	Check(strstr(out, "product key") == nullptr && strstr(out, "key field") == nullptr, "a row of fields without a key is not a key page", out);
+}
+
 int main(int argc, char** argv)
 {
+	TestProductKey();
 	if (argc < 3) {
 		printf("usage: CharonWinReadTests FONT_DIR FRAME_DIR [--dump] [--time]\n");
+		printf("product key page (no fonts needed): %d checks, %d failed\n", gChecks, gFailures);
 		printf("SKIP: fonts and frames are not part of the source tree\n");
-		return 0;
+		return gFailures ? 1 : 0;
 	}
 	gFrameDir = argv[2];
 	for (int i = 3; i < argc; i++) {

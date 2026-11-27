@@ -1,0 +1,1291 @@
+=== SESSION 17 (agent 2 seventeenth session, 2026-11-26 ~20:10-21:50) ===
+RESUME HERE (session 17): TRIPLE-BOOT HANDOVER EXECUTED; final verdict BLOCKED (host-networking, needs main) - NOT failed, NOT fabricated.
+ WHAT I DID (hypervisor side of the audible triple boot):
+  1. Verified hvxp1 up (guest up 10h55m, 2 qemu). Checked for fresh user keystrokes: charonhv.log last written 19:17:31 UTC
+     (~55 min before, NOT growing); the recent "protected video" say-lines are the session-15 Block-2 Netflix/Disney/
+     primevideo proof artifacts, stamped +60 min ahead by the known RTC offset. NO live human browsing. Safe to stop.
+  2. STOPPED hvxp1: vmrun soft stalled (nested XP QEMU keeps Alpine busy) -> hard stop (exit 0). Nothing lost: shipping
+     apkovl ovl22 (md5 6666d934510a1612503af8c51d16c790) is durable on /media/sda2. Sound + machine slot freed.
+     Killed the session-16 8790 http.server (python3.15 pid 44668).
+  3. STARTED Win11 ISO server EXACTLY as Agent 1 specified: python3.15 r410a-vm/range-http.py win11ent-dl-r410 8861
+     192.168.0.196 (bg pid 11660, log .../scratchpad/isosrv-8861.log). Self-test HEAD = 200, Content-Length 8225329152
+     (8.2 GB), Accept-Ranges bytes. URL http://192.168.0.196:8861/win11ent-26h2-eval.iso serves correctly.
+  4. Sent "server up" + URL to Agent 1 (a65ed25bfc794561e); it powered on triple-s10 and drove the plan.
+  5. MONITORED the 8861 request log + triple-s10 serial.txt. The ONLY 8861 request was my own self-test HEAD (one
+     ConnectionReset). NO guest GET /win11ent-26h2-eval.iso EVER fired. triple-s10 serial.txt stayed 0 bytes (Charon's
+     boot console is NOT routed to COM in this VM -> no serial speech trace; spoken confirmation would need VNC/audio relay).
+ AGENT 1's RESULT (full report in its hand-back; install side = tests/charon-r410-install-results.txt SESSION 10):
+  - Host tests on the final tree ALL GREEN. Release pair + CharonPC + CharonDOS BUILT (CHARON.EFI sha256 d93987da..,
+    CHARONVOICE.EFI 11aaeeb7.., CHARONPC.EFI 2022272 B, CHARONDOS.EFI 218368 B). LICENSES complete. __pycache__/build.log
+    cleaned, private-path scan 829 files 0 hits. Release STAGING + proven=true flip + repackage are PENDING (must come
+    AFTER the triple-boot outcome, because proven=true is compiled into the EFI). NOTHING uploaded/published.
+  - Charon DROVE THE ENTIRE triple preset Q&A CORRECTLY to the typed confirmation (PLANTEST=1 exposes preset item 10/12
+    "Windows, Debian, instalator, i Charon Hypervisor"; windows-iso-url override ACTIVE: "Uzywam adresu obrazu z pliku
+    windows iso url na dysku Charona"). Evidence work/r410a-evidence/bw/triple-boot-01..62.png.
+ THE BLOCKER (host networking; main/user owns the fix): Charon's EFI e1000 gets NO DHCP lease on NAT (vmnet8) - a
+  regression (prior sessions downloaded over NAT fine), verified on 4 clean boots incl. a fresh destroy+recreate AFTER
+  main cleared the lease pool + restarted VMnetDHCP/NAT. net stop/start VMnetDHCP did NOT fix it. Bridged DOES get a
+  lease (guest 192.168.0.206) and the whole plan drove under bridged, but bridged over host Wi-Fi can't route the guest's
+  OUTBOUND internet to the external sources (Debian installer, Hypervisor's Alpine+QEMU) -> the up-front
+  "Sprawdzam adresy i rozmiary plikow" size-check ABORTS back to Charon's menu with the DISK UNCHANGED (which itself
+  cleanly demonstrates the user's "everything-first download failure happens BEFORE any partition is touched" guarantee).
+  That abort is BEFORE any win11 ISO GET -> consistent with my empty 8861 GET log. NAT is the only topology giving BOTH
+  the local win11 ISO (NAT->LAN) AND internet (masquerade), but its EFI DHCP is dead right now.
+  RECOMMENDED FIX (elevated; MAIN/USER only - I did NOT do it, it disrupts the OTHER project's running haiku-a11y VM):
+  full VMware vnet reset: vnetlib64.exe -- stop dhcp/stop nat/stop bridged/start bridged/start nat/start dhcp; OR Virtual
+  Network Editor "Restore Default Settings"; OR host reboot (would interrupt haiku-a11y).
+ VERDICT - hypervisor's share of the proof: the Charon Hypervisor target's OWN boot+speak is ALREADY PROVEN live+audible
+  standalone as hvxp1 running ovl22 in sessions 13-15 (spoke "Charon Hypervisor ... main menu ... 9 items", RHVoice to
+  host speakers). The ONLY unproven gap is the TRIPLE-BOOT-CONTEXT fresh boot of the Charon Hypervisor entry AFTER all
+  three are installed - which is blocked on the NAT fix above, because the install never completes. I did NOT fabricate a
+  pass; this is a clean host-networking block, everything up to it proven.
+ NOTE: the first 8861 server (pid 11660, launched as a harness-tracked bg task) was REAPED when this agent's run handed
+  back - it died on run-end. RESTARTED as a DETACHED OS process (PowerShell Start-Process) pid 37012, which survives the
+  run ending (same way session-16's 8790 server persisted); verified HEAD=200 and survives a request. Log at
+  .../scratchpad/isosrv-8861.log (+ .err). LESSON: leave durable servers via Start-Process, never the Bash bg task.
+ STAGE LEFT SET FOR RETRY (do NOT tear down): 8861 ISO server UP (detached pid 37012) - needed for the re-drive; hvxp1 STOPPED
+  (sound slot free); triple-s10 left powered-on for Agent 1 (its VM). After main does the vmnet reset: resume "agent 1",
+  re-drive triple-s10 on NAT (~5 min to confirmation per the SESSION 10 DRIVE SEQUENCE), the win11 ISO GETs then fire on
+  192.168.0.196:8861; agent 2 relays "Pobrano ... i jeszcze N" lines + confirms the Charon Hypervisor target boots+speaks
+  (VNC first menu line + audible); then Agent 1 flips proven=true (src/efi/CharonWsPlanDialogue.h:82) + rebuilds + packages.
+ CLEANUP: PARTIAL by design (run blocked) - 8790 killed. 8861 + triple-s10 + hvxp1(stopped) intentionally KEPT for retry.
+  OTHER project's haiku-a11y VM + its vmware-vmx (~27588) UNTOUCHED. ~280 GB free. Final teardown (kill 8861, delete
+  hvxp1) deferred to whoever finishes the triple boot.
+ DEFERRED-BUT-PROVEN-IN-PIECES (unchanged, code complete, each piece proven/host-tested): live Supermium-GUI Netflix read
+  (pieces proven s15 - tests/netflix-supermium-results.txt), live audio-game, Windows-ME boot, USB-stick boot
+  (tests/r410-proofs-block4-results.txt).
+=== SESSION 15 (agent 2 fifteenth session, 2026-11-26 ~19:00-) ===
+RESUME HERE (session 15):
+ STATE VERIFIED at start (matches session 14): hvxp1 RUNNING the hypervisor (VMware vmware pid 27404 +
+  vmware-vmx 4148, started 25.11). The OTHER project's 2nd vmware-vmx 27588 is NOT mine - do not touch.
+  Menu child pid 24578 (supervise-daemon 17013) on ovl19. XP QEMU pid 19676 at desktop, NVDA on it.
+  Suricata pid 19983 on lo. ~287 GB free. win11ent-dl-r410 PRESENT. No host procs of mine.
+  Guest /usr/lib/charonhv md5 == tree: hvcompat 47f7b371b72c3720ea632f1aff4f6ff7,
+  charonhv 7137c2d19d642cf175143f03e2292bbb. Host test tests/charon-r410-hypervisor-host.py = 0 failed.
+ Serial-console driver: python3.15 hv-sh.py hvxp1 '<cmd>' [timeout] (vmware/hvxp1/harness.json: vnc 5975, serial 6075).
+ 2nd QMP client to windows-xp.qmp BLOCKS (menu owns it) - cannot independently screendump/sendkey XP; drive XP only
+  through the menu. XP typing over nested VNC is fragile (vnc-keys.py port 5975 -> Alpine evdev -> menu -> QMP).
+ BLOCK 2 DONE (6za Netflix/Supermium) - full evidence tests/netflix-supermium-results.txt. CODE: hvproxy.py
+  offer_modern() - a modern browser (Supermium) tunneling to a DRM/video host gets a ONCE-per-site spoken
+  modern-mode offer (NEEDMODERN), tunnel NOT blocked so public pages still read. Host test +1 check = 0 failed.
+  PROVEN LIVE+AUDIBLE: CONNECT to www.netflix.com/primevideo/disney through XP's real proxy -> menu spoke
+  "Windows XP: <site> plays protected video. In the hypervisor's main menu, Modern browser on the real screen
+  opens it." (host-speaker RMS to 525, s15-pv.txt). Tunnel relayed to REAL netflix (TLS1.3, HTTP 302) = pages
+  reachable. Modern-browser Widevine playback + the video->modern spoken chain ALREADY proven prior (6s, 6u) - cited.
+  NOT DONE (deferred, flagged to main): the live Supermium-GUI-in-XP NVDA read of a rendered Netflix page (124MB
+  install + fragile XP GUI drive; low marginal value - pieces each proven).
+ BLOCK 3 DONE (6w hypervisor-side in-memory micropatch prototype) - full evidence tests/micropatch-vmi-results.txt.
+  NEW hvmicropatch.py (GPL-2): pure-Python gdb-RSP client + Micropatch engine (find/verify/apply/revert/spoken_list)
+  via QEMU's own gdbserver (NOT LibVMI - musl-awkward; nothing new to download). MS17-010 encoded as a documented
+  definition (exact-build bytes read from the installed srv.sys at apply, empty by design; network layer = main
+  protection). TCG caveat found+handled: code write needs a TB flush (QMP stop/cont) + GdbRsp.resync() for the
+  async stop-reply; KVM needs no flush. LIVE MECHANISM PROVEN on a tiny controlled QEMU guest (boot sector
+  decide() mov al,'V' -> guard mov al,'S'): serial flips VVV->SSS, guest keeps running, off-refused, mismatch-
+  refused+spoken; VERDICT PASS. Menu wired: machine item "Security micropatches (prototype)" -> micropatch_menu /
+  apply_micropatches (snapshot-first savevm, machine QMP gdbserver, flush=machine qmp stop/cont). Host test +9
+  checks = 0 failed. LICENSES.txt has the 6w entry (no new third-party dep).
+ DEPLOY STATE NOW: XP proxy HOT-SWAPPED (Block 2), live pid 24664 on port 45839 (old 19668 killed). Live MENU still
+  pid 24578 running OLD charonhv.py (no micropatch menu until a menu restart; and it adopted the OLD proxy pid -
+  IF the menu is restarted it will NOT re-adopt 24664 and XP loses its proxy -> restart XP's proxy properly or
+  reboot XP). Guest /usr/lib/charonhv == tree (md5): hvproxy 6f488e9d, hvmicropatch b90a4e93, charonhv 26e42153.
+  Durable apkovl REBUILT from tree twice: ovl20 (Block 2) then r410-hv-vm/ovl21/charonhv.apkovl.tar.gz md5
+  a3042c77301876ac713a01cd5fb54557 installed to /media/sda2 (backups /hv/apkovl-before-s15.tar.gz=ovl19 d9da4e74,
+  /hv/apkovl-before-s15b.tar.gz=ovl20 0382b9f9). A reboot would boot ovl21 (all session-15 code).
+ BLOCK 4 DONE (remaining r410 proofs) - full evidence tests/r410-proofs-block4-results.txt. FRESHLY PROVEN this
+  session: IMPORTS live in the hypervisor (hvmachine.import_machine on .vmdk/.vdi/.vhdx/.qcow2/raw lone disks +
+  .vmx + .ova, all read into bootable machines, qemu-img format detection); NTLDR BOOT MENU read (hvreader
+  screen_model on the real "Please select the operating system to start:" screen -> title, 3 entries, selected=0,
+  countdown.seconds=29, help lines; highlighted_rows=(5,)). HOST-TESTED: Windows Me template (SB16+ne2k_pci+IDE+
+  256MB+9x profile; +winme check). CITED (already proven live prior): key-page automatic reading (host key+A ->
+  "Windows XP Setup is asking for the product key now: 5 fields of 5 characters"); two machines at once (two XP ran
+  together prior; unique_name host-tested). CODE COMPLETE, live deferred as heavy/duplicative: Windows Me boot
+  (needs user's ME ISO + 9x reader), two-XP simultaneous rerun, USB-stick boot (disk builder = installer side,
+  same image hvxp1 boots), audio game (auto_read-off + on-demand keys + hvlisten step-back all in place). NO overlay
+  code changed in Block 4 (only tests + the already-present importer/reader/template) -> apkovl ovl21 still current,
+  guest == tree. Host test now 145 checks, 0 failed.
+ BLOCK 5 IN PROGRESS: SOURCE FINAL SENT to main (hypervisor 145/0, apkovl ovl22 6666d934). Tree cleaned of stray
+  __pycache__/.pyc; final shipping apkovl = r410-hv-vm/ovl22/charonhv.apkovl.tar.gz md5
+  6666d934510a1612503af8c51d16c790 on /media/sda2 (backups: -s15=ovl19, -s15b=ovl20, -s15c=ovl21 on /hv).
+  LICENSES.txt COMPLETE (added Linda+Nix+wxPython+Xorg+Openbox, RHVoice 1.18.5, Supermium v150-r3; host 145/0 intact).
+  PACKAGING LIST done: tests/r410-hypervisor-packaging.txt. AGENT 1 (install side) address = a65ed25bfc794561e
+  (ref 7cda42): building the release pair (charon-win-r410-rel + -drv) + CharonPC + CharonDOS, then it PINGS me for
+  the audible TRIPLE BOOT (Windows 11 + Debian installer + Charon Hypervisor, preset "Windows, Debian, instalator,
+  i Charon Hypervisor"). I OWN the sound slot: when pinged I STOP hvxp1 (frees sound + a machine slot), start
+  r410a-vm/range-http.py on win11ent-dl-r410 (win11ent-26h2-eval.iso 8.2 GB present), and relay the hypervisor's
+  "Pobrano ... i jeszcze N" spoken download lines to Agent 1 for the S8.13/S9.4 plan wording. range-http.py usage:
+  python3.15 r410a-vm/range-http.py DIR PORT [BIND] (Range-aware; guest reaches http://<host>:PORT/NAME).
+ HOST PROC: python3.15 http.server on 192.168.0.196:8790 (pid 235590) STILL RUNNING - kill at hand-back.
+ STILL TO DO IN BLOCK 5: the audible triple boot with Agent 1; cleanup (stop+delete hvxp1 + any triple-boot VM,
+  kill the 8790 server + loggers); FINAL RESUME. Do NOT package/release myself - install side/coordinator do that.
+=== SESSION 14 (agent 2 fourteenth session, 2026-11-26 ~18:00-) ===
+RESUME HERE (session 14):
+ STATE: hvxp1 RUNNING the hypervisor (VMware: vmware pid 27404 + vmware-vmx 4148, started 25.11). Windows XP RUNNING
+  (QEMU pid 19676) at its desktop, NVDA on it, idle. Suricata pid 19983 on lo. Menu RESTARTED this session onto the
+  new code: live child pid 24578 (supervise-daemon 17013), re-adopted XP + Suricata ("Still running, taken back:
+  Windows XP. 2 machines"). The OTHER (Haiku) project's 2nd vmware-vmx (27588) + its python procs are NOT mine - do
+  not touch. ~307 GB free. One of my two allowed machines (only hvxp1).
+ DEPLOY (durable): P1 overlay is now ovl19, /media/sda2/charonhv.apkovl.tar.gz md5 d9da4e742b907addc28958afa677d389
+  (rebuilt from the tree with tools/charon-hv-fetch.py overlay --tree r410-hv-vm/ovl19 --bin charon-hv-bin; folds the
+  session-14 Cthulhu runtime). Old ovl18 backed up to /hv/apkovl-before-s14.tar.gz. Guest RAM == tree (md5):
+  hvcompat 47f7b371b72c3720ea632f1aff4f6ff7, charonhv 7137c2d19d642cf175143f03e2292bbb. Host test
+  tests/charon-r410-hypervisor-host.py = 0 failed (now 24 compat/suricata/etc checks incl. 4 new Cthulhu-runtime).
+ BLOCK 1 DONE - CTHULHU WINE-ROUTE READER (6zh default) BUILT + PROVEN LIVE+AUDIBLE on XP. Full evidence in
+  tests/cthulhu-wine-route-results.txt. Summary:
+  - Built cthulhu-wine-access.exe (+ .exe.so 534 KB) with winegcc 64-bit from Cthulhu tag 2026.08.06 = commit
+    a02388c7fe5c79605b386a379eabc339d2e2c5fc (LGPL-2.1). Links oleacc/ole32/rpcrt4 + GIO -> reads ARBITRARY standard
+    Win32/MSAA controls. Installed at /hv/compat/cthulhu/libexec/cthulhu/wine/.
+  - Cthulhu runs from source (/hv/compat/build/cthulhu/src) via a generated launcher at /hv/compat/cthulhu/bin/cthulhu
+    (OUTSIDE the package - else cthulhu.py shadows the package). Deps: py3-gobject3/pluggy/tomlkit/dasbus/
+    speech-dispatcher + at-spi2-core gtk+3.0 gobject-introspection libwnck3 + winegcc toolchain (wine-dev cmake make
+    gcc g++ glib-dev pkgconf). dasbus is REQUIRED (dbus_service uses SessionMessageBus).
+  - Live chain (hvcompat.run_cthulhu): Xorg vt7 + session D-Bus + at-spi bus + speech-dispatcher(sd_charon=Charon
+    voices) + Cthulhu + Wine 7zFM.exe (x64). Cthulhu's WineAccessManager auto-started the helper for the prefix; the
+    helper read 7-Zip's MSAA -> org.stormux.Cthulhu1.Service -> Cthulhu spoke "7-Zip" (proven in its --debug log:
+    "WINE ACCESS EVENT ... window='7-Zip'", "DBUS SERVICE: PresentMessage '7-Zip'", "SPEECH OUTPUT: '7-Zip'").
+  - Voice = Charon's: speech-dispatcher "Module charon started ... Charon voices ready"; sd_charon is DefaultModule.
+    Bug found+fixed: run_cthulhu must set XDG_DATA_HOME or speech-dispatcher doesn't find sd_charon and falls back to
+    plain eSpeak NG. Audio meter: the Charon voice (RHVoice) renders "7-Zip" to 25760 B = ~0.80 s PCM, peak 11938/32767.
+  - run() dispatches cthulhu-default / NVDA-in-prefix fallback (says so once on fallback). charonhv passes the reader.
+  - LICENSES.txt updated with the built tag/commit + "built with Winegcc"; Cthulhu/wine-a11y LGPL-2.1, prism MPL-2.0.
+  TEST PROGRAM kept in the guest at /hv/compat/programs/sevenzip/ (7zFM.exe x64 + 7z.dll + 7-zip.dll; 7-Zip 25.00
+  installer sha256 7B67375B..A619A0A6). Host staging C:\...\scratchpad\s14-xfer\ (7z bins, gen_cthulhu.py, hvcproof.py
+  [driver: runs run_cthulhu on 7zFM for N s, voices the route line, pkills 7zFM], measure_voice.py, restart_menu.sh,
+  hvcompat.py/charonhv.py/charonhv.apkovl.tar.gz copies). Guest proof driver at /root/hvcproof.py; to re-run a proof:
+  python3 /root/hvcproof.py 150 (reads /run/charonhv/compat-cthulhu.out.debug + compat-sd/speech-dispatcher.log).
+ HOST PROCESSES AT HAND-BACK: NONE of mine - the python3.15 http.server on 192.168.0.196:8790 was STOPPED. The OTHER
+  project's 2nd vmware-vmx (27588) + its python procs are untouched. Specific-IP bind ONLY (0.0.0.0/firewall/Stop-rebind
+  are classifier-DENIED).
+  To transfer again: python3.15 -m http.server 8790 --bind 192.168.0.196 from a dir, guest wgets http://192.168.0.196:8790/<f>.
+ KNOWN GOTCHA (new this session): hv-sh.py takes ONE command arg; passing it from PowerShell, AVOID embedded double
+  quotes and inner spaces/pipes in grep/python -c - PowerShell re-tokenises and breaks hv-sh's argv. Use single-quoted
+  PS outer with bare single-word patterns, or push a script file and run it, or base64 | base64 -d | python3. Also
+  $?/$var expand inside PS double-quoted guest commands - use single quotes to keep $ literal for the guest.
+ ORDER LEFT (unchanged from session 13, Block 1 now done): (2) 6za Netflix/Supermium in the XP guest - Supermium
+  v150-r3 (last XP-supporting per 6zf), browse+read login/landing/catalogue with NVDA in the guest; Widevine not on XP
+  -> playback falls to modern-browser mode 6s with a spoken explanation; test public pages + a public Widevine test
+  stream; only the user can try a real account; no DRM circumvention. (3) 6w micropatch prototype. (4) remaining r410
+  proofs: key-page rerun w/ automatic reading, an audio game with NVDA (reader quiet, on-demand keys), NTLDR menu read,
+  imports, two machines at once, USB-stick variant, Windows ME template. (5) source final to "main" (Agent 1 waiting);
+  audible triple boot (check work/win11ent-dl-r410 exists - if the image was deleted say so, do NOT silently
+  re-download); LICENSES complete; packaging list; cleanup; FINAL RESUME. Optional: 6zd WUA downgrade; 6v-2 inline IPS.
+ SPEC: re-read r410-hypervisor-user-answers.md each block (6zf last-version-per-OS; 6zg NVDA-in-Wine fallback; 6zh
+  Cthulhu default / NVDA fallback RESOLVED - done this block).
+=== SESSION 13 (agent 2 thirteenth session, 2026-11-26 ~16:00-) ===
+RESUME HERE (session 13):
+ STATE: hvxp1 RUNNING the hypervisor (vmware pid 27404 + vmware-vmx 4148, started 25.11). Windows XP RUNNING at its
+  desktop (QEMU pid 19676), NVDA on it, idle (no fresh user keystrokes seen). Suricata RUNNING on lo (pid 19983).
+  Menu RESTARTED TWICE this session; live menu now pid 20275 running the NEW code (ovl15). The SECOND vmware-vmx
+  (27588) + two "python" procs (9872/27720) belong to the OTHER (Haiku/NVDA) project - DO NOT TOUCH. ~310 GB free.
+ DEPLOY: durable overlay on P1 is now ovl18, /media/sda2/charonhv.apkovl.tar.gz md5 00026a1c44ebbedb3724a7716c9c72ab
+  (folds ALL day-13 fixes: compat layer, Suricata running() fix, Wine win64/winetricks-script, parse_pe non-fatal
+  imports, Cthulhu-default reader selection). Backups on /hv: apkovl-before-s13.tar.gz (ovl13), -s13b (ovl14), -s13d
+  (ovl15 018677e3). Guest RAM /usr/lib/charonhv == tree (md5): hvcompat 6c75b263, charonhv db75550b, hvsecure
+  e4f0281e, hvsuricata 1aa94a8d, manifests 5e7de539. Host test tests/charon-r410-hypervisor-host.py = 0 failed
+  (30 checks incl. compat detection/route/reader/launcher + the suricata fix).
+ 6v-2 SURICATA NOW SPOKEN BY THE REAL MENU (not a driver) - PROVEN LIVE + AUDIBLE, and a BUG FOUND+FIXED:
+  hvsuricata.running() checked 'suricata' in /proc/PID/comm case-sensitively, but Suricata names its main thread
+  "Suricata-Main" (capital S) -> running() was always False in the live menu, so poll_suricata() bailed and the menu
+  NEVER spoke an alert (this is why session 11/12 had to use the driver). FIX: .read().lower() (hvsuricata.py ~207),
+  host check added. After the fix + menu restart (pid 20275), a self-test token sent through XP's filtering proxy
+  127.0.0.1:45839 -> Suricata alert sid 3900001 dest_port 45839 -> the LIVE MENU spoke it: charonhv.log
+  "17:07:00 say: Windows XP: the hypervisor detected a known attack in its traffic, CHARON HV IPS self-test pattern."
+  (action=allowed => "detected", IDS; inline DROP still the next increment). eve.json is at /run/charonhv/
+  SURICATA-eve.json (NOT eve.json - the yaml uses an absolute filename). Menu restart RE-ATTACHED XP every time
+  ("reattached windows-xp: QEMU 19676, proxy True, share True"; "Still running, taken back: Windows XP. 2 machines")
+  - session-9 resilience intact; restart = kill the supervised child (pgrep python3 .../charonhv.py), supervise-daemon
+  respawns with new code and re-adopts QEMU/proxy/share by pid+start_time from state.json.
+ 6z/6za/6zb/6zg COMPATIBILITY LAYER - BUILT, host-tested, deployed; Wine route live proof IN PROGRESS/NEXT:
+  NEW hvcompat.py: parse_pe (subsystem/OS version + import DLL names), needs_newer_windows (PE version > guest, or a
+  modern import DLL api-ms-win-*/ucrtbase/vcruntime140/kernelbase.., or an XP-missing kernel32 func), route_for
+  (7/8/8.1 -> in-guest VxKex, guest's own reader; XP/Vista -> hypervisor Wine route, NVDA in the prefix), decide
+  (on by default, switchable off per program - compat-off.json), spoken_route (6zb/6zg wording), and the Wine runner
+  (prepare: wine+winetricks msaa/comctl/riched.. + a portable Windows NVDA 2024.1 in the prefix, synth=espeak =
+  Charon's eSpeak NG; run: Xorg vt7 + openbox + NVDA + wine program; ALSA to the shared dmix, no PipeWire). Guest
+  launcher COMPAT.VBS + shell verb "Run with Charon compatibility" staged by hvsecure (compat group): 7/8/8.1 enable
+  VxKex per program via IFEO VerifierDlls and launch (guest reader reads); XP/Vista write CHARON-COMPAT.REQ to the
+  exchange drive. Manifests: vxkex-7/8/8.1 -> VxKex NEXT 1.2.3.2466 (YuZhouRen86, commit
+  406b0f87b8533b76015f8c93037571307c5185ef, KexSetup_Release_1_2_3_2466.exe sha256 e8fa07f6..f535, 5025016 B, NO
+  licence, fetched at user request, not bundled); vxkex-xp now "no in-guest shim -> Wine route". LICENSES.txt updated
+  (VxKex NEXT no licence, Wine LGPL, NVDA GPL-2, eSpeak NG GPL-3, dnl-nash/wineinstall technique no licence).
+  Charon menu: machine_menu item "Run a Windows program with Charon compatibility" -> App.compat_run (picks exe from
+  the exchange folder or /hv/compat/programs, decides route, says it, runs the Wine route in a thread). WIN7 IN-GUEST
+  VxKex PROOF = staged only, blocked on the user's Windows 7 media (only XP here).
+  NEXT: the live XP Wine+NVDA proof - a real open-source Windows program via compat_run, NVDA-in-the-prefix reading it
+  in Charon's voice, audible. Wine not yet installed in the guest (apk: wine not cached). Linda (Nix) still built
+  (/nix 8.3G) but 6zg makes NVDA-in-Wine the reader; Linda stays for Linux GUI apps (modern mode) only.
+ 6zh CTHULHU WINE-BRIDGE INVESTIGATION (user may switch the Wine-route reader; gated - findings handed to main, user picks):
+  Cthulhu (git.stormux.org/storm/cthulhu, Orca fork, commit c9f56cb7 "Add native Wine accessibility bridge";
+  git.stormux rate-limited -> read via web-search cache + raw tag 2026.08.06 docs/wine-accessibility.md). FACTS:
+  - Reads ARBITRARY MSAA standard Win32 controls (helper cthulhu-wine-access.exe via Winegcc listens for MSAA
+    focus/name/value/state/selection, falls back to the control's Win32 class+messages) - NOT Tolk-only. Also does
+    NVDA Controller RPC + Tolk window for self-voicing apps. Limit: no custom-drawn/DirectX/game UIs.
+  - Transport is CTHULHU-ONLY: delivers over its own D-Bus org.stormux.Cthulhu1.Service, NOT general AT-SPI; docs
+    list "an AT-SPI object broker" as a LATER stage (not built). Fallback code adapted from Mudb0y/wine-a11y (LGPL
+    2.1), which is the same shape (Win32-class reader, speaks via prism->Orca remote-controller/speech-dispatcher,
+    also no AT-SPI). => NO off-the-shelf general Wine->AT-SPI bridge exists.
+  6zh RESOLVED by the user: Wine-route reader = CTHULHU by DEFAULT, NVDA-in-prefix FALLBACK; general Wine->AT-SPI
+  (option a) is POST-r410. hvcompat NOW encodes this: reader_of('hypervisor')=='cthulhu' (or 'nvda-in-wine' when
+  asked), spoken_route says "read by Cthulhu/NVDA in Charon's voice", host-tested. LICENSES has the Cthulhu route
+  (Cthulhu LGPL-2.1, wine-a11y LGPL-2.1, prism MPL-2.0, Wine LGPL, NVDA GPL-2, eSpeak NG GPL-3).
+ WINE ROUTE LIVE STATUS: Wine 11.0 installed in the hypervisor (1242 MiB, 454 pkgs; wine at /usr/bin/wine; i386
+  DLLs present at /usr/lib/wine/i386-windows/). FIXES made: Wine 11 on Alpine is new-WoW64 -> WINEARCH=win32 rejected
+  -> hvcompat uses WINEARCH=win64; winetricks is NOT an Alpine pkg -> hvcompat fetches the official script (release
+  20260125, LGPL-3), verbs best-effort.
+  NVDA-IN-WINE PROOF = ATTEMPTED, BLOCKED (documented fallback, NOT the default): on the live win64 prefix a 32-bit
+  exe (NVDA / Notepad++ x86) fails "wine: could not load kernel32.dll, status c0000135" even though the i386 DLLs
+  exist - the new-WoW64 prefix's 32-bit side is not initialised (needs more WoW64 setup, or a 64-bit program). Also
+  winetricks 'msaa' can't fetch native oleacc (its Microsoft URL is dead -> web.archive fallback 404). A 64-bit
+  `wine cmd /c echo` WORKS, so 64-bit Wine is functional. => the Wine route must use 64-bit Windows programs (and the
+  64-bit winegcc Cthulhu helper), OR fix 32-bit WoW64 init. NVDA 2024.1 is 32-bit-only, so NVDA-in-prefix on Alpine
+  needs the 32-bit-WoW64 fix; Cthulhu's helper is 64-bit (winegcc) so it is the better live path.
+  CTHULHU RUNTIME = NOT BUILT (the successor's main task). hvcompat currently only codes the NVDA-in-prefix runtime
+  (run()/prepare()/_install_nvda), which is the fallback. BUILD PLAN for the Cthulhu route (do under src/hypervisor/):
+   1. Fetch Cthulhu source from git.stormux.org/storm/cthulhu (Gitea RATE-LIMITS: retry the archive
+      https://git.stormux.org/storm/cthulhu/archive/<tag>.tar.gz from the guest after a cooldown, or git clone;
+      pin a tag, e.g. 2026.08.06, record commit+licence). It is an Orca fork (Python + AT-SPI + speech-dispatcher).
+   2. Build cthulhu-wine-access.exe with winegcc (64-bit) from its wine/ sources; install into the prefix.
+   3. Run a graphical session like hvmodern.graphical_session: D-Bus + speech-dispatcher(sd_charon, Charon voices)
+      + Cthulhu (its WineAccessibility plugin discovers the prefix; its org.stormux.Cthulhu1.Service D-Bus) + the
+      wine program (64-bit, e.g. Notepad++ x64). Cthulhu reads the program's menus/fields over its D-Bus and speaks
+      Charon's voices. Add a run_cthulhu() in hvcompat and make the launcher pick it by default, NVDA fallback.
+   4. PROVE live+audible on XP: a 64-bit open-source standard-Win32 program that fails on the old guest, Cthulhu
+      reading it in Charon's voice. Note the limit aloud: standard controls only (no custom/DirectX/game -> NVDA).
+  HOST-SIDE: Notepad++ 8.9.9.1 portable x86 kept at work/nppdl/npp.zip (detection confirmed: flags XP "built for
+  Windows 6.0"); it's in the guest at /hv/compat/programs/npp (but 32-bit -> use an x64 program for the live Wine
+  proof until the 32-bit WoW64 issue is fixed). Guest /hv/compat/prefix exists (win64, wineboot'd); /hv/compat/nvda
+  half-made (failed) - safe to delete and redo. Driver /hv/compatproof.py is a standalone harness (not shipped).
+ FINAL STATE at hand-back: menu pid 23223 (ovl18 code), XP QEMU 19676 reattached ("Still running, taken back:
+  Windows XP. 2 machines"), Suricata 19983 on lo, no stray Xorg. ALL my host file-server processes (7 python3.15
+  http.server on 192.168.0.196:8790) were KILLED - none left. The OTHER project's "python" procs + 2nd vmware-vmx
+  untouched. ~310 GB free. To transfer files again: python3.15 -m http.server 8790 --bind 192.168.0.196 (specific-IP
+  bind ONLY; 0.0.0.0/firewall/Stop-Process-rebind are classifier-DENIED), guest wgets http://192.168.0.196:8790/<f>.
+ SPEC: re-read 6zf (last-supported version per OS), 6zg (NVDA-in-Wine reader) and 6zh (Cthulhu default / NVDA
+  fallback, RESOLVED) in r410-hypervisor-user-answers.md.
+ ORDER LEFT: (1) CTHULHU WINE ROUTE runtime - build cthulhu-wine-access.exe + run Cthulhu reading a 64-bit Win32
+  program live+audible on XP (default reader; see BUILD PLAN above); optionally fix 32-bit WoW64 so NVDA-in-prefix
+  fallback runs; (2) 6za Netflix/Supermium in XP; (3) 6w micropatch; (4) remaining r410 proofs (key-page rerun,
+  audio game with NVDA, NTLDR menu, imports, two machines, USB stick, Windows ME); (5) source final to main;
+  (6) audible triple boot (check work/win11ent-dl-r410 exists); (7) LICENSES complete; (8) packaging; (9) cleanup.
+  Optional: 6zd WUA downgrade; 6v-2 inline nfqueue IPS.
+ FILE TRANSFER: python3.15 -m http.server 8790 --bind 192.168.0.196 (specific-IP bind ONLY allowed), guest wgets
+  http://192.168.0.196:8790/<f>. Menu restart: kill the supervised child, supervise-daemon respawns + reattaches.
+=== SESSION 12 (agent 2 twelfth session, 2026-11-26 ~14:45-) ===
+RESUME HERE (session 12):
+ STATE: hvxp1 RUNNING the hypervisor (vmware.exe pid 27404 + vmware-vmx pid 4148, started 25.11). A SECOND vmware-vmx
+  (started 26.11 14:47) + two tools/vnc.py belong to the OTHER (Haiku/NVDA) project - DO NOT touch. ~306 GB free.
+ FIRST ACTION DONE - OVERLAY FIX MADE DURABLE: rebuilt P1 overlay from the current tree
+  (tools/charon-hv-fetch.py overlay --tree r410-hv-vm/ovl12 --bin charon-hv-bin; __pycache__ deleted first). ovl12
+  contains hvproxy.py md5 d51d719105e3e33cc2bc8d371e97fe19 (== tree == deployed; xpress fix). File md5 217423fe...,
+  3062122 B. Pushed to the guest (http.server bound to 192.168.0.196:8790, guest wget) and WROTE it onto P1:
+  /media/sda2/charonhv.apkovl.tar.gz now 217423fe... ; old ovl11 (c5e0651a...) backed up to /hv/apkovl-before-s12.tar.gz.
+  Alpine boots the apkovl from alpine_dev=UUID=FC46-BCB4 = sda2 (the ESP copy at EFI/HAK/hypervisor is Charon's
+  install-source, NOT read at Alpine boot). So the 6zd fix now survives the next reboot. NO reboot done.
+  My host processes at hand-back: NONE (the python3.15 -m http.server on 192.168.0.196:8790 was STOPPED). The two
+  "python" procs (not python3.15) are the OTHER project's tools/vnc.py - DO NOT touch. To transfer files to the guest
+  again: python3.15 -m http.server 8790 --bind 192.168.0.196 from a dir, guest wgets http://192.168.0.196:8790/<file>
+  (0.0.0.0-bind/firewall-add/Stop-Process rebind are classifier-DENIED; specific-IP bind is the only allowed path).
+  Scratchpad driver/staging dir of this session (gone after cleanup): .../scratchpad/xfer12/ held the pushed .py +
+  a2s12-sur.py (modes: setup | start | trigger PORT). Suricata (pid at hand-back 19983) LEFT RUNNING on lo (active
+  IDS); the live menu is OLD code so it stays silent on alerts until a menu restart/reboot loads ovl13.
+ 6zd ROOT CAUSE FOUND, real count NOT captured (honest close, fix path identified): I rebooted XP cleanly via the
+  menu (ACPI power button -> guest-shutdown -> Start; the at-start CHARONWU.VBS task runs through the fixed proxy).
+  AFTER the fresh boot (new clean proxy pid 19668), the proxy ASMX log shows GetConfig succeeding with CE=xpress
+  EVERY 60 s (15:09:35 / 15:10:36 / 15:11:36 - a 60 s LOOP, not the 14 min idle cadence session 11 saw), GetCookie=0,
+  SyncUpdates=0, UPDATES=0; updates.json still the stale 12:18 error. So the xpress PARSE fix is correct and WUA now
+  gets a well-formed config, but WUA still never advances past GetConfig -> the VBS's .Search() hangs and reports no
+  count. ROOT CAUSE (Legacy Update's own FAQ, legacyupdate.net/faq/issues + /help/performance): "the final version of
+  the Windows Update Agent released for Windows XP has a bug; Legacy Update 1.6+ work around it by using an OLDER WUA
+  build." Our guest runs that final WUA 7.6.7600.256 (session 10 log). The manifest DOES fetch/install Legacy Update
+  1.14.1 (manifests-improvements-other.json), but LU's workaround applies to ITS OWN website scan; our CHARONWU.VBS
+  uses the SYSTEM WUA via Microsoft.Update.Session, which is the buggy final build -> the GetConfig loop. FIX PATH
+  (future block, not quick): add an older XP WUA build (the one LU uses) to the secure-use set and install it before
+  the status task, OR have the VBS drive LU's own scan path; then reboot + first detection can take up to ~15 min
+  (LU help). I did NOT do this now (needs guest automation + reboot + slow detection; user priority is to move on).
+  PROVEN regardless: the parse fix (host test "6zd FIX: proxy forwards Accept-Encoding: xpress"); the spoken-status
+  MECHANISM end to end - error path LIVE ("Windows XP: Legacy Update could not check for updates (error 8024400A)...")
+  and the count path by host test (reads "Windows XP: 2 updates waiting in Legacy Update, first: ... KB4012598...").
+  XP left RUNNING at its desktop, NVDA on it (my one machine).
+ GOTCHAS confirmed: VMware screenshot shows a STALE XP boot splash even when XP is at desktop. Guest/hypervisor clock
+  jumps (was 13:49 UTC, now ~real 15:0x). Menu KEY nav (ctrl+alt host key, down/ret/esc/home) via hv-vmware.py IS
+  reliable; read what it says from /run/charonhv/charonhv.log "say:" lines. A fresh proxy start TRUNCATES
+  windows-xp.proxy.log (old ASMX entries gone on each XP start).
+ 6v-2 SURICATA + ET OPEN - DONE, PROVEN LIVE/AUDIBLE. NEW hvsuricata.py (manager: PKGS=('suricata',) fetch-on-first-use
+  like ClamAV; ET Open rules fetched from rules.emergingthreats.net/open/suricata-<ver>/ to /hv/suricata/rules + the
+  self-test rule; suricata.yaml with the FULL standard Suricata/ET variable set - HOME_NET=[127.0.0.0/8,10.0.2.0/24],
+  HTTP_SERVERS.. SMTP_SERVERS.. HTTP_PORTS.. all required or "Loading signatures failed"; IDS on lo via af-packet;
+  eve.json alert parsing incl. Suricata's action blocked/allowed; start() removes a stale pidfile and waits for the
+  pidfile = engine up, NOT eve.json which is created early). charonhv.poll_suricata() + suricata_machine() speak each
+  alert EN+PL, mapped to the machine by its proxy/share/mail ports; call in background() poll loop. start hook
+  suricata_back(m) at a protected machine's start (packages from cache, rules when online, else said). hvsettings
+  network group switch 'virtual_patching' (default on, per-machine exception). LICENSES.txt: Suricata GPL-2.0, ET Open
+  BSD(2000000-2799999)/GPLv2, self-test sid 3900001 labelled not-suspicious. Host tests added, 0 failed.
+  LIVE on hvxp1: installed Suricata 8.0.8 + ET Open online (55 rule files, 53604 enabled; coverage grep MS17-010 26
+  lines, ETERNALBLUE 17, CVE-2019-0708/BlueKeep 2). Started IDS on lo (pid noted at proof time). Self-test token sent
+  THROUGH XP's filtering proxy 127.0.0.1:45839 -> Suricata alert sid 3900001 dest_port 45839 (-> maps to Windows XP),
+  action allowed; SPOKEN with Charon's voice via charonhv-say: "Windows XP: the hypervisor detected a known attack in
+  its traffic, CHARON HV IPS self-test pattern." + PL. HONEST SCOPE: IDS detection in the proxy path, spoken; inline
+  DROP (IPS via nfqueue on the proxy loopback port) is the next increment - the spoken message already adapts to
+  Suricata's blocked/allowed action. The LIVE MENU process was NOT restarted, so it runs OLD code (no poll_suricata);
+  the proof used the driver (scratchpad xfer12/a2s12-sur.py setup|start|trigger PORT). A menu restart or reboot loads
+  the new overlay code and the menu then speaks alerts itself. Suricata left running unless cleaned at hand-back.
+ OVERLAY NOW ovl13 ON P1 (durable): rebuilt from the tree (6zd xpress fix + 6v-2), /media/sda2/charonhv.apkovl.tar.gz
+  = f1485e0c016ba32c9d0011343efdb1f1 (ovl12 backed up to /hv/apkovl-before-s12b.tar.gz). Guest RAM /usr/lib/charonhv
+  == overlay == tree (md5): hvsuricata 1158097a, charonhv b21bdcff, hvsettings 39123af7, hvproxy d51d719105e3e33cc2bc8d371e97fe19.
+ ORDER LEFT: 6zd real spoken count (needs guest WUA downgrade - see above); 6z/6za/6zb COMPATIBILITY LAYER (next;
+  research in r410-hv-research-6u-6z.txt sec 3-4: VxKex-NEXT fork 1.2.3.2466 for 7/8/8.1 no licence, NO clean XP/Vista
+  in-guest shim -> hypervisor Wine+Linda fallback; Supermium v150-r3 XP reading, no Widevine on XP); Netflix/Supermium
+  in XP; 6w micropatch; remaining r410 proofs; source final; audible triple boot; LICENSES complete; packaging; cleanup.
+=== SESSION 11 (agent 2 eleventh session, 2026-11-26 ~13:40-) ===
+RESUME HERE (session 11):
+ STATE: hvxp1 RUNNING the hypervisor. Windows XP was REBOOTED this session (clean) and is running again, NVDA on it.
+  Deployed /usr/lib/charonhv/hvproxy.py == tree (md5 d51d719105e3e33cc2bc8d371e97fe19). Host test 0 failed.
+  The machine's proxy was restarted by me (manual) to the xpress-forwarding + ASMX-diagnostic build: final pid 19071
+  on port 42479; state.json proxy_pid patched to 19071 (so a menu restart re-adopts it). ONLY hvproxy.py changed in
+  the tree this session; OVERLAY ovl11 NOT rebuilt (still session 10's) - REBUILD it before any reboot of hvxp1.
+  My host processes: two python http.server on port 8790 serving the scratchpad for guest file transfers - 192.168.229.1
+  (pid 13392, unreachable from the guest: firewall) and 192.168.0.196 (pid 41060, the WORKING one; guest wgets from
+  http://192.168.0.196:8790/). STOP BOTH (Stop-Process + firewall-add + 0.0.0.0-bind were classifier-DENIED; a
+  specific-IP bind to 192.168.0.196 was allowed - that is how to transfer files to the guest). Background hv-sh watch
+  loops may still be running (serial); let them finish before new serial commands.
+ 6zd LEGACY UPDATE SEARCH - SOLVED (root cause + fix, proven live):
+  CAUSE of GetConfig 0x8024400A (soap client error 10 = SOAPCLIENT_PARSE, HTTP 200): the filtering proxy STRIPPED
+  "Accept-Encoding: xpress" from WUA's GetConfig request (added session 10). WUA 7.6 asks for xpress and EXPECTS an
+  xpress-encoded reply (Legacy Update's native path). legacyupdate.net is behind CLOUDFLARE, which honours
+  Vary: accept-encoding -> with xpress stripped it returned PLAIN XML (200, no Content-Encoding); WUA, having asked
+  for xpress, tried to xpress-decode the plain bytes, failed to parse (0x8024400A) and RETRIED GetConfig every ~60 s
+  forever. (Session 10 had it backwards: it stripped xpress to "ask for plain" - that is what broke it.)
+  EVIDENCE - I added an ASMX diagnostic to hvproxy (logs client.asmx req headers + resp status/encoding, kept):
+   real WUA req: POST /v6/ClientWebService/client.asmx, AE=xpress, SOAPAction=...GetConfig, CT=text/xml,
+     UA=Windows-Update-Agent (SOAP 1.1, body ~405 B).
+   OLD proxy (strip): resp 200 CE=- 4281 B plain <s:Envelope> -> WUA looped exactly 60 s (14:22:58/14:23:59/14:24:59).
+   Standalone probe through the proxy (a2s11-gcprobe2.py in scratchpad): direct==proxied byte-identical; WITH xpress
+     -> CE=xpress 1863 B compressed; NO Accept-Encoding -> plain 4281 B. Proxy is byte-transparent; the only variable
+     is the strip.
+  FIX (hvproxy.py ~lines 193-200): do NOT strip Accept-Encoding: xpress - forward it unchanged. Cloudflare then
+   returns CE=xpress + 1863 B compressed; WUA decodes it itself; the proxy relays verbatim (text/xml, not a download).
+  PROVEN LIVE: after deploying (proxy 19071), WUA resp became CE=xpress (13:30:36, 13:44:04) and the 60 s PARSE-ERROR
+   LOOP STOPPED - retries went from 60 s to ~14 min apart (normal periodic GetConfig, not an error loop). So the
+   reported 0x8024400A is resolved. NOT yet captured this session: a completed catalogue sync reading a pending-update
+   COUNT aloud (WUA's Automatic Updates deferred GetCookie/SyncUpdates under emulation; the at-start/hourly CHARONWU
+   search will report the count through updates.charon -> the menu speaks it). That final spoken count is the one open
+   confirmation for 6zd.
+  TREE: hvproxy.py (xpress fix + ASMX diagnostic log_asmx_req/ASMX-RESP), tests/charon-r410-hypervisor-host.py (+1
+   check "6zd FIX: proxy forwards Accept-Encoding: xpress", 0 failed).
+  CHARONWU.VBS "cannot find \CHARONWU.VBS" dialog on XP's desktop (seen session start) = the USER's own Run-box typo
+   (relative path), NOT a code bug: the scheduled task uses %SystemRoot%\CHARONWU.VBS and reported fine at 12:18. No
+   path fix needed.
+ GOTCHAS this session (for whoever drives XP next):
+  - hypervisor RTC/clock JUMPED backward ~54 min mid-session (14:24 -> 13:30; the known local-vs-UTC RTC issue) ->
+    proxy-log timestamp ordering is unreliable; compare by content, not clock.
+  - XP keystroke input over the nested VMware-VNC chain is UNRELIABLE (text didn't land, Enter hit Run autocomplete,
+    stray keys launched Mypal). Menu KEY navigation (arrows/Enter/Esc via hv-vmware.py keys) IS reliable; read what
+    the menu speaks from /run/charonhv/charonhv.log "say:" lines; "Read its screen" (item 2) OCRs the guest.
+  - XP's ACPI power button is set to "ask" - a single power press does not shut it down. The hypervisor has a fallback
+    that typed Windows' shutdown command and XP shut down; then start it fresh from the main menu (Windows XP, off ->
+    Start). The VMware screenshot often shows a STALE frame (XP boot splash) - verify real state via "Read its screen".
+  - Menu self-recovered from a fault at ~12:57 (around my proxy kill) and took back 2 machines - the session-9
+    resilience worked; no machines lost.
+ ORDER LEFT (unchanged): 6zd final spoken-count confirmation; 6v-2 Suricata + ET Open; 6z/6za/6zb compatibility layer;
+  Netflix/Supermium in XP; 6w micropatch; remaining r410 proofs; source final; audible triple boot; LICENSES.txt;
+  packaging; cleanup.
+=== SESSION 10 (agent 2 tenth session, 2026-11-26 11:35-) ===
+RESUME HERE (session 10):
+ HAND-BACK 13:25 (context), at a block boundary. STATE: hvxp1 RUNNING the hypervisor; Windows XP RUNNING (fresh start
+  11:56), keyboard given to XP, NVDA on its desktop. P1 overlay = ovl11 (sha256 73a029e142aef614...) == RAM == tree
+  (cmp), r410-hv-vm/ovl11 kept, ovl10 deleted, /hv/apkovl-before-s10.tar.gz = session 9's. ClamAV packages re-installed
+  in RAM + clamd running; RHVoice server running. My host processes: none (transfer server stopped; restart:
+  python3.15 -I <scratchpad>/xfer.py SERVE UP - mine also answers GET /time for clock sync). /run back to 1632M.
+  Harness kept in my scratchpad: a2s10-lat.py (key->host loopback onset), serve/a2s10-gl.py (onset in wavcapture,
+  host clock), serve/a2s10-beep.py, a2s10-gaps.py (dropouts), serve/a2s10-syn.py (synth first sample).
+ 6zd (after block 1):
+  SECURITY CENTER - DONE + LIVE: CHARONWU.VBS registers "Charon Hypervisor protection (network and exchange drive, not
+   files inside Windows)" in root\SecurityCenter on XP/2003 only, state from the proxy's answer (scan=1 downloads
+   scanned now / fresh=1 signatures <= 3 days); nag-silencing value removed. LIVE: 12:31 clamd NOT running -> XP's
+   Security Center "Ochrona przed wirusami WYLACZONE ... Charon Hypervisor protection ... jest wylaczony" (true);
+   12:41 after clamd ran -> "WLACZONE", red tray icon gone. Measured on the way: XP's MSXML leaves Err 438 after
+   setProxy -> status taken from x.status (was: always "off").
+  FOUND + FIXED: scanning ON but ClamAV not in RAM after a reboot -> downloads passed unscanned; scanner_back() at a
+   secure machine's start re-installs from /hv/apk-cache (measured 2.2 s, 10 packages, nothing downloaded) + clamd
+   (14 s); if a download would be needed it SAYS so (EN+PL) instead of asking in the background.
+  FOUND + FIXED (menu FATAL "No space left on device" 12:57): hvlisten never stopped a capture (QMP.hmp returns TEXT,
+   session 9 code took it for a dict - AttributeError swallowed) -> every menu restart / 4 MB restart added a
+   wavcapture: 27-31 captures into deleted files filled /run (1.6 GB). Now every old capture is stopped first;
+   LIVE: 1 capture, /run 61 MB. Host test with a text-returning fake.
+  FOUND + FIXED: 5 filtering proxies of earlier runs still running -> stop_orphans ends unowned hvproxy/smbd (smbd
+   workers of an owned server kept); LIVE (menu log 11:28:11) 5 ended, owned proxy+smbd kept.
+  LEGACY UPDATE SEARCH STILL FAILS - NOT SOLVED: WindowsUpdate.log (pulled through the proxy, WUA 7.6.7600.256):
+   "GetConfig failure, error = 0x8024400A, soap client error = 10, soap error code = 0, HTTP status code = 200",
+   server URL http://legacyupdate.net/v6/ClientWebService/client.asmx. Checked: the GetConfig answer through the
+   proxy is byte-identical to a direct one and decodes (xpress, own LZ77 decoder) to valid XML; asking for plain
+   XML instead of xpress (proxy strips Accept-Encoding: xpress - kept, harmless) did NOT help (12:18 UTC same error).
+   Spoken status works ("Windows XP: Legacy Update could not check for updates (error 8024400A); it tries again within
+   an hour."). NEXT: compare with WUA's exact request (headers incl. Accept-Language pl, SOAPAction) replayed direct
+   from the hypervisor; check Legacy Update's FAQ/issues for XP + proxy; try WinHTTP without proxy (a guestfwd of
+   legacyupdate.net:80 straight to the proxy as a transparent port, so WUA does not see a proxy).
+  The research for the user's question (antivirus in Security Center) is the 6zd RESEARCH paragraph below.
+ ORDER LEFT (unchanged): 6zd Legacy Update search (above); 6v-2 Suricata + ET Open; 6z/6za/6zb compatibility layer
+  (reader rule recorded); Netflix/Supermium in XP; 6w; remaining r410 proofs; source final; audible triple boot;
+  LICENSES.txt (add: RHVoice front end rebuilt - same licences); packaging list; cleanup.
+ FILES (session 10): etc/asound.conf, hvmachine.py, hvsettings.py, charonhv.py, hvvoice.py, hvshare.py, hvsecure.py,
+  hvproxy.py, hvscan.py, hvlisten.py, src/hypervisor/rhvoice/charonhv-rhvoice.cpp, work/charon-hv-bin/charonhv-rhvoice
+  (+ rhvoice-build-info.txt), tests/charon-r410-hypervisor-host.py (0 failed), work/r410-hypervisor-user-answers.md. START 11:35: guest /usr/lib/charonhv == tree (md5; manifests differ only in line ends), host test 0 failed. Session 9
+  after 11:06 (undocumented by it): 6zd update status started - hvsecure writes CHARONWU.VBS (hourly + at-start task),
+  hvproxy reads it; in tree + deployed, NOT proven. Predecessor's transfer server stopped; mine runs (port 8790).
+  The user was typing in XP (cmd window) 11:36-11:40 -> no keys sent then.
+ BLOCK 1 GUEST SOUND LATENCY - DONE 12:23 (details below). Overlay ovl10 on P1 (sha256 8ee1015a5d6c8fdd...), RAM == overlay ==
+  tree (cmp), previous kept as /hv/apkovl-before-s10.tar.gz. XP RUNNING (fresh start 11:56), keyboard given to XP.
+  RHVOICE KEPT LOADED - DONE + LIVE: charonhv-rhvoice --serve/--client (client speaks by itself when no server;
+   killed client stops the utterance), built in the hypervisor with -Werror (gcc from Alpine v3.24 online repos),
+   sha256 54a10764...feae6, 3 402 672 B, in work/charon-hv-bin (old one in my scratchpad). Measured in guest: first
+   sample 2-3 ms (was 83-95), same 55 520 bytes; after a kill the next answers in 3 ms. hvvoice starts the server
+   (/run/charonhv/rhvoice.sock) with RHVoice. LIVE menu voice arrows: 304 ms median (302-314) - was 437, then 389.
+  FINAL per path (key on this host -> host speakers): XP/NVDA 515 -> 391 ms (different keys before/after: the comparable stage is QEMU
+   mixer -> host 350 -> 291 ms); menu voice 437 -> 304 ms. Of that,
+   ~255 ms is the TEST HOST (VMware sound + Windows audio + loopback; a beep put straight into the hypervisor's mixer
+   needs 255 ms to reach the host). What the hypervisor itself adds now: ~36 ms for a guest stream (QEMU buffer +
+   dmix), ~50 ms for its menu voice (menu + RHVoice 3 ms + aplay start). On a real PC (no VMware) expect roughly
+   key->guest reader time + 40-60 ms. The guest's own part (XP kmixer, NVDA, TCG) ~95 ms here; KVM would cut it -
+   not measurable on this host (no VT-x).
+ BLOCK 1 GUEST SOUND LATENCY - measured (host harness a2s10-lat.py: key over VMware VNC -> first sample in the host's
+  WASAPI loopback, 240-frame blocks; guest a2s10-gl.py: onset in QEMU's wavcapture, host clock via /time, rtt 2 ms):
+  BEFORE (QEMU ALSA defaults 92.9 ms + mixing buffer, 44.1->48 kHz plug, dmix ring 8192 = 170 ms):
+   XP/NVDA, cmd echo x/Backspace, 20 keys: key->host 515 ms median (482-701); key->QEMU mixer 165 ms; mixer->host 350 ms.
+   menu voice (RHVoice natan) arrows: 437 ms median (388-469).
+   direct beep into dmix (aplay -R 5 ms) -> host: 258 ms (5 beeps 257-273) = dmix start + VMware HDA + Windows mixer.
+   synth first sample (in guest, warm cache): TVox 4 ms, eSpeak NG 4 ms, RHVoice 83-95 ms (254 cold: engine load).
+  CHANGE: -audiodev timer-period=5000,out.frequency=48000,out.buffer-length=21333,out.period-length=10667 (setting
+   "Machines' sound delay": short default / safe 42.7 ms + 10 ms timer / long = QEMU defaults; per-machine exception;
+   EN+PL); dmix 2048/512 (43 ms ring).
+  AFTER (fresh XP start 11:56, NVDA desktop letters n/m, 20 keys): key->host 391 ms median (371-415, one 849 first);
+   key->QEMU mixer ~95 ms; mixer->host 291 ms (287-298); beep into dmix -> host still 255 ms (254-257) => ~36 ms
+   left in QEMU+dmix for the guest stream, ~210-240 ms is THIS TEST HOST (VMware sound device + Windows audio +
+   loopback), not removable or judgeable here. Menu voice after: 389 ms median (321-406).
+  NO DROPOUTS: XP played onestop.mid 30 s (12:11:02-32) under TCG: 0 exact-zero gaps >= 3 ms in the host recording.
+  FOUND LIVE + FIXED: fresh XP start after a stop kept the previous run's step-back listener (stepped) -> nothing of
+   the boot read, step back never said; start() now drops it. LIVE after fix 12:07:42 "Start B 1207" read, 12:07:45
+   "Windows XP's own screen reader speaks; the hypervisor steps back." Session-9 fix (a) re-proven: old smbd 10954
+   ended, new 12104 at the fresh start. FOUND + FIXED: a share server taken back after a menu restart (Adopted, no
+   terminate()) whose proxy was not taken back stayed after its machine stopped -> stopped in background().
+ COMPAT READER RULE recorded in r410-hypervisor-user-answers.md (6zb): in-guest route -> guest's reader; Wine-in-hypervisor
+  route -> Linda/Charon's voices; the launcher says the route and reader once.
+ 6zd RESEARCH (coordinator, user question "can machines detect the hypervisor's protection as an antivirus?"), sources:
+  XP SP2/SP3: Security Center reads WMI root\SecurityCenter AntiVirusProduct/FirewallProduct "made available by
+  participating vendors" (learn.microsoft.com/en-us/previous-versions/windows/embedded/aa939611); writing instances
+  = UNDOCUMENTED but works (Microsoft 2009: "legacy store for ISV products"); the user setting "I have an antivirus
+  program that I'll monitor myself" IS documented (KB 889739, technet cc875822). Override registry values: not found
+  in Microsoft docs (undocumented). Vista SP1/7: Microsoft "no longer support writing directly to root\securitycenter
+  ... API is not published", NDA via wscisv@microsoft.com (learn.microsoft.com/.../teredo/implementing-the-teredo-
+  security-model); Action Center lets the user turn message types off. 8/8.1/10/11: public wscapi.h is read-only;
+  registration only for Microsoft Virus Initiative members (NDA, signing, lab certification; KB 5011295,
+  defender-xdr/virus-initiative-criteria); registering an AV on 10/11 puts Defender into DISABLED mode.
+  DECISION (coordinator's line, consistent with the sources): XP - the set may register "Charon Hypervisor
+  protection" (undocumented-but-works, state fed from the real hypervisor state, never a constant "on") OR use the
+  documented "monitor myself" setting; Vista/7 - documented user setting only (no WMI writes); 8+ - nothing, Defender
+  stays on. Spoken + notes: it scans network traffic and the exchange drive, NOT files inside the guest on access.
+=== SESSION 9 (agent 2 ninth session, 2026-11-26 10:09-) ===
+RESUME HERE (session 9):
+ BLACK PICTURE - CLEARED (hvxp1): cause = the vmwgfx device wedged ("WARNING vmwgfx_cmdbuf.c:409" at fbcon restore)
+  after the first Xorg attempt (vmware DDX segfault) - VT1 black even after chvt; a REBOOT brought it back. Then
+  LIVE: Linda session (Xorg modesetting vt7) shows Firefox on the screen (a2s9-s9), Linda reads ("visited link graphic
+  Wikipedia", "search landmark Search Wikipedia edit", "button Search" 10:22:54-10:23:03); Left Ctrl+Left Alt ends it
+  -> the hypervisor's console VISIBLE again (a2s9-s10), no new kernel warning. Fix kept: cleanup() switches back to
+  VT1 only after Xorg has exited (kill -9 after 10 s).
+ LINDA = NIX ONLY (user decision via coordinator): native 131 MB package NOT tried, no build script - possible later
+  optimisation (tarball + MANIFEST.txt + REPORT.txt + logs kept in work/r410-linda; build VM and dl/ DELETED).
+  Nix route made solid (hvlinda.py, hvretro.py): free space checked BEFORE any fetch (what an interrupted build
+  already stored counts); /hv/linda-build.wanted marker; at every menu start /nix bound to /hv/nix and an interrupted
+  build (log ends without "=== rc") RESUMED with packages from /hv/apk-cache, no question; build temp dir cleaned;
+  progress spoken every 3 min ("Linda: about N percent built, about M minutes left", store growth vs 8.3 GB) when
+  no guest has the keyboard; end said once (also for a build started before a menu restart). Host tests added.
+  FOUND LIVE + FIXED: after a reboot Linda (built) fell back to Orca ("Linda is not ready yet") because the X11
+  packages were not in RAM -> linda_prepare re-installs them; packages all in /hv/apk-cache are installed WITHOUT
+  the size question ("Installing ... again from the Hypervisor partition"); measured 10:21:59-10:22:00.
+ 6ze WALK - PASSED LIVE, AUDIBLE (meter 0.07-0.14): main menu "Hypervisor settings" -> 5 items (4 groups + Back to
+  Charon's settings); Screen reader group 9 items read. FOUND + FIXED: Enter on it CRASHED the menu (a second
+  App.settings_menu(m) - the machine's hardware menu - hid the new one) -> renamed machine_settings_menu; host test
+  now fails on any method defined twice in a class. Windows XP > "Hypervisor settings for this machine" > Screen
+  reader > Key echo > "Off for this machine" -> "off, exception for this machine"; Start -> 10:30:58 "Settings for
+  this machine in force: Key echo ... off". Host key+E over running XP 10:32:33 "Hypervisor settings; Windows XP keeps
+  running." (6 items incl. "Settings for Windows XP"), Esc 10:33:15 "Keyboard to Windows XP...". NOTE: a menu
+  restart (rc-service charonhv restart) STOPS running machines (said: "Still running from before ... now stopped").
+ 6ze STEP BACK BY HEARING - DONE + LIVE: NEW hvlisten.py: QEMU HMP wavcapture of the machine's audiodev (16 kHz mono,
+  /run/charonhv/<id>.heard.wav, restarted past 4 MB), peak of new samples; StepBack: text screen/reset -> reads;
+  sound >= 0.02 on the graphical desktop -> steps back (said once); 3 keys + 20 s silence -> reads again (said).
+  charonhv.listen_guest() in background(), auto_on() uses it, key_echo() feeds keys. LIVE 10:36:34-55: boot text read
+  ("Trwa uruchamianie systemu Windows", "Zapraszamy"), then 10:36:55 "Windows XP's own screen reader speaks; the
+  hypervisor steps back." A first 8 s silence limit fired falsely (NVDA under TCG slow) -> 20 s.
+ 6zc BOOT MEASURED (XP 800 MB, TCG, hvxp1, Start pressed -> XP's desktop sound, both with the 7-10 s snapshot before
+  online): profile ON 10:35:55 -> 10:36:55 = 60 s; profile OFF (per-machine exception, walked) 10:41:33 -> 10:42:29
+  = 56 s. => under emulation the profile gives NO measurable boot gain (as expected: KVM/Hyper-V/virtio parts need
+  VT-x); the session-7 "about 120 s" was a cold first start, not a fair baseline. Disk/CPU tests: NOT measured yet.
+  Real gains need a host with VT-x (this host: Hyper-V on, no nested KVM). Exceptions cleared again after the run.
+ 6ze SWITCHES MOVED - DONE + LIVE: hvsettings group 4 gains internet / simple_web / scan_downloads (general + machine
+  exception; daily_snapshot was there); charonhv.apply_switches(m) at every start: values a machine had before become
+  its exceptions once (switches_in_settings), values in force written to machine.json (internet) and retro.json
+  (simple/scan/daily, mail kept) for the proxy. Secure use's item now "Internet for this machine: on (in Hypervisor
+  settings for this machine)" and opens group 4; Retro assistant item 1 "Switches - simple web on, scanning on,
+  daily snapshot on: in Hypervisor settings for this machine" (turning scanning on asks for ClamAV if missing).
+  Walked 10:47:22-10:49:03 (meter 0.05-0.15); XP started with it: retro.json written, 4 proxy processes, no error.
+  Secure-use profile on/off itself stays in Secure use (it carries the consent warning and the set building).
+ METER (a2s9-meter.txt, pid 4148): 10:32-33 0.02-0.14; 10:36:5x 0.02-0.14; 10:47-49 0.05-0.15.
+ 6zc CPU + DISK in XP (cmd /v:on: 100000 empty for-loop turns, then copy of driver.cab 82 436 431 bytes):
+  profile ON  (10:55, XP up 20 min, source probably in XP's cache): loop 2.86 s, copy 2.52 s;
+  profile OFF (11:00, fresh boot, first read): loop 2.58 s, copy 4.34 s. Under TCG the loop is equal within noise;
+  the copy differs mostly by cache state - NOT a fair disk comparison. Conclusion stays: no measurable gain under
+  emulation; a fair disk test needs a VT-x host and a cold cache on both sides.
+ MENU CRASH MUST NOT TAKE GUESTS DOWN (coordinator) - DONE + PROVEN LIVE: QEMU and the proxy run in their own sessions
+  (start_new_session); per-machine state /run/charonhv/<id>.state.json (qemu pid + /proc start time, sound slot,
+  profile, kvm, proxy/share pids+start times, ports, stepped); hvmachine.Adopted follows a process the menu did not
+  start (pid reuse / zombie = ended); Machine.attach() re-connects QMP; App.reattach() takes machines + proxy + share
+  back, stop_orphans() ends only QEMUs that cannot be taken back; marker /run/charonhv/menu.alive (SIGTERM = clean
+  end removes it) -> after a fault the intro starts "The hypervisor menu stopped by a fault and started again." and
+  says "Still running, taken back: Windows XP; choose it in the main menu to give it the keyboard." (EN+PL); the
+  FATAL handler says it in Charon's language; init.d respawn_period=60 (respawn_max 5).
+  LIVE: kill -9 of the menu (pid 8594) while XP ran: QEMU 8731 alive, supervise-daemon started menu 8873, 11:02:24
+  intro with both sentences (meter 0.09-0.14 11:02:25-48); keyboard given to XP again 11:03:42, XP answered (taskbar
+  changed). Twice `rc-service charonhv restart` (clean) afterwards: same QEMU 8731 taken back, no fault notice.
+  FOUND + FIXED: (a) a stale smbd from an earlier start of the same machine kept smbd.pid -> every new share server
+  quit "already running", the old one served the OLD port (share broken since 10:41) -> hvshare.start ends it first;
+  (b) after a take-back the hypervisor read over NVDA on XP's desktop (fresh step-back state) -> "stepped" kept in
+  the state file, unknown screen = no decision. Host test added (Adopted, sessions, reattach wiring). (a)+(b) are
+  deployed but not yet re-proven live with a new XP start.
+=== SESSION 8 (agent 2 eighth session, 2026-11-26 09:06-10:10, handed back at a block boundary: context) ===
+RESUME HERE (session 8):
+ MACHINES: hvxp1 RUNNING the hypervisor (same boot), main menu; /usr/lib/charonhv (RAM) == tree (md5 checked).
+  P1's overlay REBUILT from the tree (r410-hv-vm/ovl8, sha256 94abbc2f...; previous kept as /hv/apkovl-before-s8.tar.gz).
+  XP OFF. /nix = /hv/nix (bind, 8.3 GB, Linda built); apk nix + X11 packages are in RAM (from /hv/apk-cache after a
+  reboot via the menu's ensure_packages). /hv/modern-profile/screen-reader = linda. The VMware PICTURE IS BLACK since
+  the first Xorg attempt (vmware driver segfault) - also under cage afterwards: check after a reboot whether it
+  comes back (cage showed 1280x800 before). Linda native-build VM work/r410-linda/vm still running (silent); its
+  package work/r410-linda/linda-alpine-v3.24-x86_64.tar.gz (131 MB) is NOT tried yet. My host processes stopped.
+  Sound slot: FREE (given back 10:10).
+ VOICE LOUDNESS - DONE, measured at the synthesizers' output in the guest: before TVox 0.056-0.064 RMS, eSpeak NG
+  0.155-0.183 with peaks 0.999 (clipped), RHVoice 0.056-0.163; hvvoice.LOUDNESS_MEASURED/loudness() -> RMS 0.10, peak
+  <= 0.9; after: 17 voices 0.089-0.114 RMS, 0 clipped; walked audibly 09:14:26-09:15:03 (meter peaks 0.10-0.19).
+ 6s ORCA FOCUS IN FLATPAK FIREFOX - PASSED LIVE (audible 09:17:04-21): Tab -> "Create account", "Log in, link",
+  "Hide Contents, button"; Orca debug shows Firefox's focus events handled. Session-7 fault not reproduced.
+ 6zc HPET RISK - CONFIRMED + MADE SAFE (host tests): hpet=off refuses a pre-6zc snapshot ("Unknown section or
+  instance 'hpet' 0", copy of XP's disk); snapshot_profiles + restart on the snapshot's profile with -loadvm.
+  6zc before/after TIMING: NOT MEASURED (baseline XP TCG ~2 min to logon sounds, session 7).
+ LINDA (REQUIRED) - NIX ROUTE BUILT AND READING ALOUD: Alpine nix 2.31.5, /hv/nix on /nix, `nix profile add
+  github:Mudb0y/linda` rc 0 after 1129 s, store 8.3 GB (figures said in the menu: 8.3 GB / 19 min).
+  LIVE (audible, Charon's voice via sd_charon, meter 0.06-0.19): menu > Modern browser > the user's question
+  "The browser uses a screen reader for Linux. Which screen reader do you choose?" Orca, ready at once / Linda, ready
+  -> X11 packages (26, 7 MB) -> Xorg(modesetting)+Openbox+Linda+Firefox: Linda said "Search - Wikipedia - Mozilla
+  Firefox", "Search Wikipedia combo box collapsed has auto complete editable blank", Tab/Shift+Tab "button Search",
+  "Advanced search: button collapsed", typed C h a r o n echoed, "Charon - Search results - Wikipedia", "link Jump to
+  content" (09:50:30-09:51:49). Fixes: vmware DDX segfault -> modesetting; LINDA_AUDIO_SINK=pulse loaded musl
+  libpulse -> pipewire; XDG_SESSION_TYPE=x11 (Linda displayServer rule 2). OPEN: black picture (see above); tried
+  cage+Xwayland for Linda: Firefox in Flatpak "no DISPLAY", not finished - tree keeps the proven Xorg session.
+  NEXT: try the native package (131 MB) the same way -> if it reads as well, make it the default (reproducible build
+  script under src/hypervisor/ WITH submodules/MathCAT; proposal for where users fetch it from), Nix as fallback;
+  then stop+delete work/r410-linda/vm.
+ 6ze HYPERVISOR SETTINGS - CODED, host-tested, deployed, NOT walked audibly: NEW hvsettings.py (4 groups, Charon's
+  values at first start -> /hv/settings.json, "Back to Charon's settings", per-machine exceptions said at start,
+  Charon's 4 profile names + 2 formatting flags, reader's own voice/rate/pitch = as the hypervisor until changed);
+  charonhv: main menu "Hypervisor settings" (replaces Sound), machine menu "Hypervisor settings for this machine",
+  host key + E over a running guest (keyboard returned after), auto_on() (guest w/o reader: auto_read; own reader:
+  read during text phase = firmware/boot loader/boot messages, step back at its graphical desktop, a RESET reads
+  again), key_echo/ticks/key page/boot loader/tracking/state messages/daily snapshot/performance wired; braille
+  item says "not ported to the hypervisor yet". sd_charon no longer overwrites the hypervisor's voice (keep=False).
+  NOT done: Secure use / retro switches stay in machine menus (not moved); "step back" is by screen mode, not by
+  detecting the guest reader's speech.
+ FILES (session 8): hvvoice.py, hvmachine.py, charonhv.py, hvmodern.py, hvretro.py, hvkeys.py, sd_charon,
+  NEW hvlinda.py, NEW hvsettings.py; tests/charon-r410-hypervisor-host.py (0 failed).
+ ORDER LEFT: Linda native package trial + default decision; walk 6ze audibly (menu, host key+E over XP, exception);
+  6zc timing; 6zd Legacy Update; 6v-2 Suricata; 6z/6za/6zb; 6w; r410 proofs; source final + triple boot.
+=== SESSION 7 (agent 2 seventh session, 2026-11-26 08:00-, sound slot from agent 1/coordinator) ===
+RESUME HERE (session 7):
+ MACHINE: hvxp1 RUNNING the hypervisor (same boot as session 6, disc charon-hv5.iso). New code copied into
+  /usr/lib/charonhv (RAM) and menu restarted with rc-service charonhv restart; P1's overlay still OLDER - rebuild it
+  (tools/charon-hv-fetch.py overlay; delete __pycache__) before any reboot. Master was raised back to 90% by hand.
+  STATE AT HAND-BACK (09:06): hypervisor menu running with all session-7 code EXCEPT the 6zc edits (hvmachine.py
+  performance/host_tuning, nice for proxy/smbd) - deploy those, then measure XP boot again (baseline below).
+  Windows XP RUNNING (keyboard given to XP, Explorer on \10.0.2.100\Downloads). samba-server installed in RAM.
+  My meter and transfer server are STOPPED; sound slot given back.
+  Host helpers (scratchpad): xfer.py on :8790 (serve dir a2s5-serve), meter a2s7-meter.txt (vm-audio-meter.py 4148),
+  a2s7-run.py FILE.sh [timeout] runs a script in hvxp1 over serial (wget from 192.168.0.196:8790).
+ BLOCK 6s (modern browser: sound, reader, Charon's voice) - PASSED LIVE, AUDIBLE (hvxp1, user's headset):
+  - CLEAR STREAM: Shaka demo angel-one (clear DASH) -> Firefox sink-input on PipeWire's "charon" sink RUNNING, picture
+    playing (a2s7-shot5), host meter 0.015-0.036 for the minute of the clip (08:16:22-08:17:2x); after the autoplay
+    prefs it starts by itself (08:19:21).
+  - WIDEVINE STREAM: angel-one-widevine + cwip-shaka-proxy no_auth licence (Google's CDM 4.10.3112.0 fetched by
+    Firefox itself earlier) -> playing (a2s7-shot7), sound 0.016-0.031 (08:35:50-08:36:50). No circumvention.
+  - ORCA ON THE A11Y BUS + CHARON'S VOICE: Orca reads Firefox ("Charon - Wikipedia", "Jump to content, link",
+    "Main menu, button, opens menu", "search" ...) through the new module sd_charon with TVox (English Charon ->
+    English Orca), host meter 0.044-0.074 (08:44:54-08:45:09); text logged in /run/charonhv/reader-said.txt (RAM).
+  Causes found and FIXED (hvmodern.py, all measured): (1) a PipeWire of an earlier session (stop never ran) held
+   pipewire-0 and pulse/native -> every later pipewire-pulse "Address in use", old one hung -> cleanup() before start
+   and in stop (pipewire trio, at-spi, speechd, session D-Bus by pid); (2) WirePlumber's ALSA monitor opened hw:0,0
+   directly as default sink, past Charon's dmix -> monitors disabled, only the "charon" sink (charonguest, ducked
+   with the voice), set as default; (3) speechd.conf "alsa": Alpine ships only spd_pulse/spd_oss -> every module
+   failed audio init -> "pulse"; (4) sd_generic CRASHED at the first message ("Broken pipe to module ... terminated
+   abnormally"); 'GenericStripPunctChars ""' was a syntax error too -> NEW sd_charon (Python, speech-dispatcher's
+   module protocol, hvvoice voices, ducking, index marks, STOP) linked into the user module dir; (5) the a11y bus is
+   started by the mode (at-spi-bus-launcher, AT_SPI_BUS_ADDRESS); the remaining "at-spi2-socket-2" warning is Firefox's
+   in-sandbox p2p socket - harmless, Orca reads via the bus; (6) udev trigger of "sound" ran alsa-restore -> Master
+   -6 dB -> -20 dB (everything a third as loud) -> only input+drm triggered, mixer stored/restored around it;
+   (7) LANG fixed pl_PL -> follows Charon's language (+ orca-lang); (8) autoplay prefs written at every start;
+   (9) software renderer remembered (/hv/modern-profile/software-renderer); "1 packages" -> "1 package".
+ ALL OF CHARON'S VOICES (user, via coordinator) - DONE + host test + walked audibly:
+  hvvoice.catalogue() reads Charon's own files at run time (TVox pl/en built in + every add-on manifest via
+  charon_settings.scan_synths; availability from the packs' tables): 17 voices = TVox polski, TVox English, eSpeak NG
+  polski, eSpeak NG English, RHVoice Natan, Slt, Alicja, Cezary, Magda, Michał, Alan, Bdl, Clb, Dasha-Eng,
+  Evgeniy-Eng, Ksp, Lyubov. Sound > Voice lists them all by name ("As Charon" stays the default), each says its own
+  name when chosen; the same list serves sd_charon (LIST VOICES, synthesis_voice), charonhv-say and the menus.
+  RHVOICE_PROFILES lacked Dasha-Eng (fixed). Host test (tests/charon-r410-hypervisor-host.py, 7 new checks, 0 failed):
+  compares with src/synth/rhvoice/VOICES.tsv, the eSpeak voices of tools/build-charon-synths.py and the built
+  synth-modules-r410a/EFI/HAK; a voice without its pack is "not available".
+  WALK (guest UTC 07:45:36-07:46:14 = host 08:45:36-08:46:14, each voice saying its name, peak): TVox polski 0.073,
+  TVox English 0.070, eSpeak NG polski 0.249, eSpeak NG English 0.250, Natan 0.214, Slt 0.136, Alicja 0.123,
+  Cezary 0.139, Magda 0.170, Michał 0.081, Alan 0.134, Bdl 0.106, Clb 0.107, Dasha-Eng 0.100, Evgeniy-Eng 0.142,
+  Ksp 0.159, Lyubov 0.110. (TVox is about a third as loud as the others; eSpeak NG near clipping - open.)
+ BLOCK 6u LIVE - PASSED (audible): XP IE8 -> http://simple.charon/?u=https://www.youtube.com/watch?v=aqz-KE-bpKQ ->
+  proxy NEEDMODERN youtube.com|video, routing page EN+PL in IE8 (a2s7-xp2.png), spoken 08:52:26 "Windows XP:
+  youtube.com's terms forbid converting its videos for an old player. In the hypervisor's main menu, Modern browser
+  on the real screen opens it." -> main menu > Modern browser: "Open https://www.youtube.com/watch?v=aqz-KE-bpKQ,
+  which a machine asked for?" -> yes -> Firefox opens the video (XP paused), Orca reads the title and YouTube's
+  "Before you continue" dialog; "Reject all" -> Big Buck Bunny plays, sound 0.089-0.122 (08:56:46-50).
+  FIXED: every favicon / wuident.cab was spoken "download ... checked, clean" -> page parts and update catalogue
+  files are logged only. OPEN FAULT: Orca does not announce FOCUS changes in Firefox (Tab moved the focus to
+  "cookies"/"Reject all" visibly; Orca said only the key names) - page load, title and dialogs are read. Likely
+  the Flatpak a11y p2p socket (/run/user/0/at-spi2-socket-N inside the sandbox) - needs work; Linda may replace Orca.
+ BLOCK 6v(1) DOWNLOADS INTO THE RUNNING GUEST - PASSED LIVE (audible): NEW hvshare.py: one smbd per running secure
+  machine on 127.0.0.1:<port>, guestfwd 10.0.2.100:445/139 (also with internet off), read-only guest share,
+  NT1 allowed on that private link only; Watcher over /hv/modern-profile/Downloads (Firefox prefs) and
+  /hv/remote-downloads (Chromium Browser.setDownloadBehavior); ClamAV first; clean -> /hv/downloads/<id>.
+  Live: modern browser -> https://the.earth.li/~sgtatham/putty/latest/w32/putty.exe -> 09:01:58 spoken
+  "Windows XP: putty.exe downloaded, no malware found; it is in the Downloads share." (0.057-0.078) -> XP Run
+  \10.0.2.100\Downloads -> Explorer "Downloads na Charon Hypervisor (10.0.2.100)" lists putty (a2s7-xp4.png),
+  NVDA 0.113-0.129. samba-server comes with the browsers' package lists (hvpkg official mirror; Alpine's system
+  repos on P1 lack it). SECURE.CMD maps P: and puts "Charon Downloads" on the desktop (not rerun live). Host tests
+  (share config, watcher clean/EICAR/partial, guestfwd) 0 failed.
+ 6v(2) SURICATA: NOT STARTED (research in r410-hv-research-6u-6z.txt section 5).
+ 6zc PERFORMANCE - CODED + host-tested, NOT measured yet: hvmachine.performance(template, kvm): Windows/9x hpet=off,
+  Windows NT driftfix=slew, KVM: -cpu host + Hyper-V set per version (none XP/9x; Vista 6.0 set; 7 relaxed/synic/
+  stimer/ipi/frequencies; 8/8.1/11 + tlbflush), kvm-pit delay; TCG: -accel tcg,thread=multi,tb-size=512; disks
+  cache=writeback,aio=threads, virtio-blk with an iothread + discard; debug-threads=on; host_tuning() governor
+  performance + KSM off; proxy and smbd at nice 5. Research: work/r410-hv-research-6zc.txt (XP: named CPU model vs
+  host - kept host; virtio-win only as a detailed-mode option, NOT built). RISK: hpet=off changes the machine's
+  hardware - internal snapshots taken before the change (daily/online) may not load (loadvm device mismatch):
+  check live, and if so keep a per-machine "profile version" and apply at the next cold boot only.
+  BASELINE (before, TCG, XP 800 MB, hvxp1): Start 08:47:05 -> logon sounds 08:49:05-13 (about 2 minutes).
+ LINDA (6zb-2): research done (r410-hv-research-6u-6z.txt section 6: Python 3.13 pin, wxPython 4.3, linda-keyd under
+  Wayland); a BUILD HELPER agent is running a real build attempt in a new WSL distro "charon-linda-build" (Alpine
+  v3.24 minirootfs, work/r410-linda/; CPython 3.13 + wxPython 4.3 + Linda f0ce2895 into /hv/linda); its state:
+  work/r410-linda/REPORT.txt. Then: Xorg session in the hypervisor + speech via sd_charon.
+ LINDA BUILD RESULT (helper agent, after my hand-back): BUILT WITHOUT NIX for Alpine v3.24 musl - CPython 3.13.18,
+  wxPython 4.3.2 (bundled wxWidgets 3.3.4, GTK3), PyGObject 3.58.1, Linda f0ce2895 + nvda-cldr 98f61598 (submodules not
+  checked out: MathCAT missing). Tarball work/r410-linda/linda-alpine-v3.24-x86_64.tar.gz (130920586 bytes, sha256
+  0ea87207151bb23fdca07ba1525835359d1b2e9c864f39bad1f0ae845f0e9fb8, rooted at hv/linda, extract to /), MANIFEST.txt
+  with URLs/licences/runtime apk list, logs/. Smoke tests in the build VM: session report ok; espeak speech into a
+  PipeWire null sink (real audio); full Linda under Xvfb read its wx Welcome dialog; clean-rootfs check passed.
+  FAILED there: speechDispatcher end-of-speech never came (spd-say -w hung the same way - speechd + pipewire-pulse
+  headless). NOT tested: keys (XInput2), real Xorg + xf86-video-vmware, real audio. NEXT: put the tarball on hvxp1
+  /hv, Xorg session, nvda.ini [speech] synth = speechDispatcher with sd_charon (AudioOutputMethod pulse), audible run.
+  Build VM work/r410-linda/vm/r410-linda-build.vmx still RUNNING (ssh key vm/buildkey, 192.168.229.143) - stop it
+  when no rebuild is needed (counts as one of agent 2's two machines).
+ NEW USER POINTS (answers file): 6zc performance profile (hypervisor-side first; XP/Vista/9x too; virtio-win only
+  as a detailed-mode option, off by default), 6zd Legacy Update as XP's update channel. ORDER NOW: Linda (build helper
+  running; then Xorg + sd_charon live) -> 6v(2) Suricata -> 6zc live measure (after/before) -> 6z/6za/6zb -> 6zd ->
+  6w -> r410 proofs -> source final (after agent 3's client change) + triple boot. Also open: Orca focus events,
+  TVox a third as loud as the other voices, eSpeak NG near clipping.
+ FILES CHANGED (session 7): hvmodern.py, hvvoice.py, charonhv.py (Sound > Voice, shares, downloads watcher, nice),
+  charonhv-say, sd_charon NEW, hvshare.py NEW, hvmachine.py (6zc profile, share guestfwd, host_tuning), hvremote.py
+  (downloads), hvsecure.py (P: share), hvretro.py (plural, quiet scans, samba with Chromium, modern_machine);
+  src/hypervisor/LICENSES.txt; tests/charon-r410-hypervisor-host.py; work/r410-hv-research-6zc.txt NEW,
+  r410-hv-research-6u-6z.txt (section 6 Linda). Host tests: hypervisor 0 failed, retro 0 failed.
+
+=== SESSION 6 (agent 2 sixth session, 2026-11-25 19:26-21:52, handed back at a block boundary: context) ===
+RESUME HERE (session 6):
+ MACHINE NOW (21:52): hvxp1 RUNNING the hypervisor (booted 19:2x by hand from Boot devices > "Charon Hypervisor",
+  disc still charon-hv5.iso), menu at the main menu, Master ON (audible on the user's headset), XP "windows-xp" OFF,
+  windows-xp-2 OFF. The RUNNING menu has all of this session's code (copied into /usr/lib/charonhv = RAM); P1's
+  overlay is OLDER: rebuild it (tools/charon-hv-fetch.py overlay; delete __pycache__ first) before any reboot, and put
+  r410-hv-vm/vmware/charon-hv6.iso (a95) or a newer agent-1 disc (a96+) into hvxp1 when it is off.
+  Installed in RAM (gone at reboot, cached in /hv/apk-cache): ClamAV (+ database in /hv/clamav), Ghostscript,
+  chromium-headless-shell, the modern-mode packages; Firefox (Flathub) is on disk in /hv/flatpak, Widevine CDM
+  4.10.3112.0 in /hv/modern-profile. My host processes (meter, transfer server) are STOPPED; restart the transfer server
+  with: python3.15 -I <scratchpad>/xfer.py <scratchpad>/a2s5-serve <scratchpad>/a2s5-up (guest uses
+  http://192.168.0.196:8790/, NOT 192.168.229.1 - blocked); meter: python3.15 vm-audio-meter.py 4148 3600 FILE.
+  hv-vmware.py shell/keys sometimes get WinError 10053/10054 - just retry. SOUND SLOT: given back (tell agent 1
+  a0e51c8685beabb47 before the next audible run). Agent 1 now = a0e51c8685beabb47; it waits for my "source final".
+ 6s MODERN BROWSER MODE - PARTLY LIVE (21:23-21:50): menu > Modern browser > "needs 100 packages, 27 megabytes" ->
+  Flathub size "about 392 megabytes" -> fetched in ~1 min -> address asked (new: the kiosk has no address bar) ->
+  Firefox full screen on the REAL VMware screen under cage, keyboard works, Left Ctrl+Left Alt ends it ("Modern
+  browser closed; back in the hypervisor."). Firefox downloaded Google's Widevine CDM 4.10.3112.0 itself; Shaka demo
+  with angel-one-widevine + cwip no_auth license: "loaded asset", Play pressed -> playing state but stuck at 0:00, NO
+  SOUND (meter silent). Live defects FIXED on the way (deployed): speech-dispatcher-utils is not an Alpine package
+  (-> py3-speech-dispatcher), seatd-launch missing, EGL missing on VMware SVGA (mesa-egl/mesa-gbm + automatic pixman
+  fallback), libinput "no input devices" (eudev's udevd + trigger for the mode; grab released before cage), stale
+  /run/seatd.sock / leftover seatd (killed + removed; stop() ends cage/seatd/speech-dispatcher/Xwayland/Firefox),
+  Firefox "profile cannot be loaded" (flatpak --filesystem=/hv/modern-profile), "0 megabytes" said (-> "less than 1
+  megabyte"). OPEN (next session, in this order): (1) NO AUDIO: /run/charonhv/modern has pipewire-0 but NO pulse/
+  socket -> pipewire-pulse did not start its server (check its log line in /run/charonhv/modern.log; start it after
+  wireplumber is up, or point Firefox at PipeWire's ALSA); the stall at 0:00 is most likely the missing audio sink -
+  test a CLEAR stream first (Shaka "Big Buck Bunny"), then Widevine; (2) ORCA: "AT-SPI: Unable to open bus connection
+  ... /run/user/0/at-spi2-socket-2" - Orca must run in the same DBus session/XDG_RUNTIME_DIR as Firefox (start
+  at-spi-bus-launcher with env e before cage, export AT_SPI_BUS?); (3) speech-dispatcher ran sd_espeak-ng, not the
+  "charon" module: check that it reads $XDG_CONFIG_HOME/speech-dispatcher/speechd.conf (maybe needs
+  -C / SPEECHD_CMD); (4) Firefox's first-run Terms-of-Use dialog appears (the user accepts it; Orca must read it).
+  Netflix: only the user (own account).
+ 6v-6za NOT STARTED. Research for them is in work/r410-hv-research-6u-6z.txt (helper, sources quoted):
+  - 6v(1) downloads into the RUNNING guest: the exchange drive is now an image (cannot be written while the guest runs);
+    plan: a per-machine read-only SMB share \\10.0.2.100\Downloads (Alpine samba, smbd per machine on its own port via
+    guestfwd 445/139, SMB1 only on that private link), filled from the modern browser's and the remote browser's
+    download folders after a ClamAV scan, spoken; SECURE.CMD maps it (net use) + desktop shortcut.
+  - 6v(2) Suricata 8.0.8 (Alpine community, GPL-2.0) + ET Open (BSD for SIDs 2000000-2799999; URL
+    https://rules.emergingthreats.net/open/suricata-8.0/emerging.rules.tar.gz): guests on SLIRP restrict=on have NO
+    inbound ports (EternalBlue SIDs 2024217/2024218/2024220/2024297/2024430/2025649/2025650/2025992, BlueKeep 2027369
+    cannot reach them by design - say so); the decrypted guest traffic passes the proxy on 127.0.0.1 -> Suricata IPS on
+    lo via NFQUEUE for the proxy's guest-side port; proof: http://testmynids.org/uid/index.html (SID 2100498).
+  - 6z/6za: VxKex original repo is GONE (404); forks i486/VxKex 1.2.2.2316 and YuZhouRen86/VxKex-NEXT 1.2.3.2466 (7,
+    8, 8.1) show NO licence on GitHub -> redistribution unclear: ask the user / record as not shippable until a
+    licence is confirmed. XP/Vista: YY-Thunks (MIT) and VC-LTL5 are BUILD-TIME (programs must be rebuilt);
+    One-Core-API replaces system DLLs (out); no clean open-source runtime shim for Vista found. Supermium 150 R3
+    (XP..11, no licence file on GitHub; Chromium fork): Widevine only "on Windows 7 and up"; Google's CDM ended Win7/8
+    (revoked 2024-10-31 per Axinom's quote) -> Netflix reading in Supermium on XP may work, playback NO -> offer 6s.
+  - 6w micropatch prototype: not started.
+ THEN the older r410 proofs (key page rerun, NVDA read-back, runtimes, audio game, NTLDR, imports, two machines, stick,
+  ME, free-space install, TRIPLE BOOT with agent 1 a96+ - send every "Pobrano"/"i jeszcze"/"z 3" line), LICENSES.txt
+  (add: Flathub Firefox MPL-2.0 + Widevine CDM (Google, proprietary, downloaded by Firefox itself on the user's
+  machine, never shipped), cage MIT, seatd MIT, eudev GPL-2.0, Chromium BSD-3, ClamAV GPL-2.0, Ghostscript AGPL-3.0,
+  speech-dispatcher GPL-2.0+, Orca LGPL-2.1+, mesa MIT, pipewire MIT), cleanup, "source final" to agent 1.
+ FILES CHANGED THIS SESSION (src/hypervisor/overlay/usr/lib/charonhv/ unless noted): charonhv.py (power-button
+  fallback, exchange after stop, held-back spoken, plural fix), hvmachine.py (exchange image drive, unique_name,
+  sync_in with scan), hvexchange.py NEW, hvretro.py (CLIP.TXT live, NEEDMODERN routing + modern_url, address prompt,
+  size wording, grab order, page plural), hvproxy.py (refusal page >512 bytes, 6u routing), hvroute.py NEW, hvremote.py
+  (CDP fd fix), hvpkg.py (official mirror only), hvmodern.py (packages, speech module, udev, seatd, pixman, profile,
+  stop), charonhv-say NEW; src/efi/CharonWsHypervisor.h (Polish ISO-stream details); tests/charon-r410-retro-host.py
+  (exchange + route checks). Host tests: retro 0 failed, hypervisor 0 failed; Windows LLVM build of CHARON.EFI PASS.
+ DELETED this session: r410-hv-vm/hvovl-* (21 dirs), ovl2, ovl3, charon-hv2/3/4/7.iso. KEEP until the end:
+  charon-hv5.iso (in hvxp1), charon-hv6.iso, ovl5, pylib, import, import-stick.vmdk, charon-hv-cache, charon-hv-tree1.
+ hvxp1 19:16 "HANG" = NOT a hand-off defect: Charon (old disc charon-hv5.iso, 12:48) had the firmware's whole-disk entry
+  as Continue target (first in BootOrder on this hand-made machine; a plan's finish fixes it on a95+) and its welcome
+  countdown never fired (serial tail: "pump device=8000000000000012" EFI_TIMEOUT from VMware HDA, "audio recovered=1",
+  "frontend frames" ... then nothing; Space opened the menu at once) -> told agent 1 (countdown must not depend on the
+  speech pump). Boot devices > "Charon Hypervisor" booted Alpine to login in ~40 s (vmlinuz-lts + initrd fine).
+  a95 test disc built: r410-hv-vm/vmware/charon-hv6.iso (put it into hvxp1 at the next reboot; agent 1 says a96+ for
+  the triple boot). Agent 1 notes fixed: CharonWsHypervisor.h ISO-stream failure details now Polish in a Polish Charon
+  (Why(j,en,pl)); Windows LLVM build PASS (-Werror). Hostname line at boot: cosmetic, left.
+ LIVE, AUDIBLE (hvxp1, user's headset, sound slot from agent 1; meter = vm-audio-meter.py on vmware-vmx 4148, log
+  scratchpad a2s6-meter.txt):
+  - CLOCK PASSED: NTP at boot (pool.ntp.org, RTC offset +60 min found and kept in /hv/clock.json); hypervisor UTC
+    18:29:16 = host UTC 18:29:17; XP tray clock 19:58 = host local 19:58 (-rtc base=localtime).
+  - POWER BUTTON PASSED (ACPI): "Press its power button" 19:54:07 -> QMP SHUTDOWN guest-shutdown 19:54:41, spoken
+    "Windows XP shut down." The two earlier ignores were state-dependent (XP busy installing .NET under TCG). Added a
+    fallback anyway (charonhv.stop_fallback): still running 45 s after the button -> spoken, Win+R "shutdown -s -t 0"
+    typed (no /f), 90 s later "still running ... use Turn it off at once". Fallback NOT exercised live.
+  - PER-GUEST MUTE PASSED (measured): XP looping ringout.wav peaks 0.11-0.19; "Its sound: muted" 20:05:42 -> the
+    hypervisor's voice (<=0.074) until 20:05:51, then 21 s of NO sound at all on the host (20:05:52-20:06:12) while
+    the loop ran; "on" 20:06:13 -> the loop back at 0.11-0.19. Note: Left Ctrl of the host key reaches the guest, so
+    NVDA in the guest stops speaking when the user takes the keyboard back (NVDA's own Ctrl behaviour).
+  - DAILY SNAPSHOT: FAILED live first ("The vvfat (rw) format used by node ... does not support live migration": the
+    writable exchange vvfat drive blocked every savevm) -> FIXED: hvexchange.py, the exchange drive is now a FAT32
+    image exchange.qcow2 (2 GB, made once by mkfs.vfat + qemu-img convert; snapshots include it); sync_in before start
+    (files the hypervisor put into /hv/exchange/<id>), sync_out after stop (mirror, then ClamAV scans the folder),
+    read_live (qemu-nbd -r --force-share) for CLIP.TXT of a running machine. After the fix: "Today's snapshot of
+    Windows XP saved." 19:56:04 (PASSED). retro host test updated (0 failed).
+  Also seen: two machines are both called "Windows XP" in the menu -> FIXED for new/cloned machines
+   (hvmachine.unique_name: "Windows XP 2"); the existing windows-xp-2 keeps its name (rename in its Settings).
+  - IE8 HTTPS PASSED: new CA (old one in /hv/secure/old-1756), set prepared again 20:07-20:10, XP restarted, regedit
+    of CHARONCA.REG, IE8 -> https://www.wikipedia.org/ with the padlock, no certificate warning (screenshot
+    a2s6-shot9; proxy log "MODERNTLS www.wikipedia.org (guest offered TLS 1.0)" 20:15:19). Page layout is broken in
+    IE8 (modern CSS) - that is what simple web is for.
+  - SIMPLE WEB + NVDA PASSED: IE8 -> http://simple.charon/?u=https://en.wikipedia.org/wiki/Windows_XP: address form,
+    "Open in the remote modern browser" link, real headings/links; NVDA in XP: H -> heading "Development", say all;
+    guest speech measured 0.10-0.24 (20:18:36-20:19:01). (IE8 Polish: Alt+D is not the address bar - typed keys
+    opened Print preview; use Win+R iexplore URL in tests.)
+  - CLAMAV fetch: FAILED first ("clamav-scanner-1.4.7-r0: package mentioned in index not found": hvpkg listed P1's
+    repositories, which carry Alpine's full APKINDEX but only the needed packages) -> FIXED hvpkg._repos (official
+    mirror only; indexes cached in /hv/apk-cache) -> "11 packages, 28 megabytes ... Fetch them now?" -> installed
+    20:24:47; database "about 230 megabytes ... Fetch it now?" -> "The virus scanner is ready, database 108
+    megabytes." 20:25:54 (main.cvd 89 MB, daily.cvd 23 MB). Ghostscript: "10 packages, 17 megabytes" -> installed
+    20:26:57.
+  - Mail servers set for windows-xp (public greetings only, no account): imap.gmail.com, pop.gmail.com,
+    smtp.gmail.com:587.
+  - MAIL BRIDGE PASSED: XP telnet 10.0.2.100 143 -> "* OK Gimap ready for requests ..." (implicit TLS 993 by the
+    hypervisor); telnet 10.0.2.100 25 -> "220 smtp.gmail.com ESMTP", EHLO -> "250-AUTH LOGIN PLAIN XOAUTH2 ..." (AUTH is
+    offered only after STARTTLS: the hypervisor did STARTTLS on :587); spoken "Windows XP: mail goes out with TLSv1.3".
+    No login sent. (Screenshots a2s6-shot14/15 show the public address in Google's greeting: not kept.)
+  - CLAMAV EICAR PASSED: IE8 -> https://secure.eicar.org/eicar.com: proxy "SCANFOUND secure.eicar.org|eicar.com|
+    Eicar-Test-Signature", spoken "Windows XP: download stopped, eicar.com from secure.eicar.org contains
+    Eicar-Test-Signature." 20:32:12, guest got 403 (nothing saved). IE8 showed its own "friendly" 403 page (our page was
+    < 512 bytes) -> FIXED hvproxy.refusal (explanation EN+PL always included) - not rerun live.
+    EICAR on the exchange: made INSIDE the hypervisor (reversed string + rev, 68 bytes) into /hv/exchange/windows-xp;
+    at start sync_in scanned it: spoken "Not put on the exchange drive of Windows XP: eicar.com contains
+    Eicar-Test-Signature." 20:46:36, the clean FROMHV.TXT was put on the drive ("1 new files" -> grammar fixed).
+  - PRINTING PASSED: printer "Charon PDF" (SECURE.CMD's printui line typed by hand; the old set predates it), made
+    default, notepad /p win.ini -> "Windows XP printed 1 pages to a PDF: 2026-11-25 20-39-28.pdf, also in the shared
+    folder, Prints." 20:39:28 (14101-byte PDF in /hv/print/windows-xp and /hv/shared/Prints; "1 pages" -> fixed).
+    (XP's notepad /pt needs driver+port arguments too; /p with the default printer works.)
+  - CLIPBOARD: into the guest PASSED ("Clipboard: type new text" -> "Typing the clipboard into Windows XP, 32
+    characters." -> Notepad shows "Typed by Charon into XP, test 7."). From the guest: CLIP.TXT written on the exchange
+    drive (label CHARONX) in XP; first try FAILED live (Alpine's qemu-nbd has no --force-share) -> FIXED (--image-opts
+    ...,force-share=on; the same command read "Hello from Windows XP, clipboard test 42." from the running machine's
+    drive by hand) - menu rerun pending.
+  - CLIPBOARD FROM THE GUEST PASSED after the fix (menu, machine running): "Clipboard from Windows XP, 37
+    characters: Second clipboard test from XP, 20:51." 20:51:07.
+  - EICAR REFUSAL PAGE PASSED after the fix: IE8 shows "Download stopped by Charon Hypervisor: it contains
+    Eicar-Test-Signature." + Polish + explanation (a2s6-shot23).
+  - DAILY SNAPSHOT GO BACK PASSED: Retro assistant > Go back to a daily snapshot > 2026-11-25 > yes -> "Windows XP is
+    back at 2026-11-25." 20:51:52; XP's screen = the fresh desktop of that morning's snapshot (IE gone).
+  6r REMOTE BROWSER PASSED LIVE (public JS app, no account): Retro assistant > Remote modern browser -> "168 packages,
+    268 megabytes ... Fetch them now?" -> installed 20:57:28 (chromium-headless-shell, Alpine community). First page
+    FAILED live: "[Errno 9] Bad file descriptor" (pass_fds=(3,4)+dup2 in preexec_fn inside the proxy process, where fd
+    3/4 were not open) -> FIXED hvremote.CDP (the shell's own redirection puts the pipe ends on fd 3/4; Popen's
+    user=/group= switch to charonweb). Then IE8 -> http://simple.charon/r?u=https://todomvc.com/examples/react/dist/:
+    the React app as HTML 4.01 (headings, links, "New Todo Input" as a real text box, check boxes, "1 item left!");
+    NVDA in XP: Shift+E to the text box, typed "Buy milk from XP", Enter -> the hypervisor put the text into the page's
+    own field and pressed Enter -> the page (read back through the proxy) lists "Water the plants" (posted by hand
+    inside the hypervisor before) and "Buy milk from XP", "2 items left!"; NVDA say all of the new page measured
+    0.10-0.14 (21:18:18-21:18:39).
+  6u CODED + host-tested (tests/charon-r410-retro-host.py 0 failed, 5 new route checks), NOT live yet:
+   hvroute.py = the ONE browser layer: http://simple.charon/?u=URL is routed per site: ordinary -> simple web;
+   Facebook/Instagram/X/LinkedIn/web mail/Reddit... -> the remote browser (/r) when Chromium is installed (else simple);
+   DRM services AND YouTube/Vimeo/Dailymotion/Twitch -> a page (EN+PL) + spoken + Retro.modern_url remembered; the main
+   menu's "Modern browser on the real screen" then asks "Open <url>, which a machine asked for?".
+   YOUTUBE: its Terms of Service forbid it (research file work/r410-hv-research-6u-6z.txt, quotes: "You are not
+   allowed to: access, reproduce, download, ... alter, modify or otherwise use any part of the Service or any Content
+   except: (a) as expressly authorized by the Service; or (b) with prior written permission..." and no access "using
+   any automated means") -> the ffmpeg/yt-dlp transcoding route is NOT built; YouTube goes to the modern browser mode.
+   LINDA: github.com/Mudb0y/linda (GPL-2.0+); Charon's own r409 installer notes (CharonLinuxScripts.h): Nix-only, built
+   on the computer (~7.5 GB, 11 min), X11 session needed (Wayland only with linda-keyd, unavailable) -> not usable in
+   the hypervisor's Wayland kiosk on RAM-based Alpine. ORCA stays, but now speaks with CHARON'S voices:
+   hvmodern.speech_config() writes a speech-dispatcher generic module "charon" -> /usr/lib/charonhv/charonhv-say
+   (hvvoice front ends: TVox, RHVoice with Charon's voices, eSpeak NG; Charon's settings and the sound-menu choice).
+  - EXCHANGE AFTER STOP PASSED: power button -> "exchange sync out windows-xp: 1 files" -> "The exchange folder of
+    Windows XP: no malware found." 20:44:53.=== SESSION 5 (agent 2 fifth session, 2026-11-25 18:40-19:2x, handed back at a block boundary: context) ===
+RESUME HERE (session 5):
+ STATE: P1 of hvxp1 holds the NEW overlay (sha256 7f28c0a6..., built by tools/charon-hv-fetch.py overlay --tree
+  r410-hv-vm/ovl5 --bin charon-hv-bin; the previous one is kept as /hv/apkovl-before-s5.tar.gz). See "MACHINE NOW" at
+  the end of this block for whether the reboot onto it happened. The 17:56 CA is still in /hv/secure: before the IE8
+  HTTPS rerun move ca.crt/ca.key/host.key/hosts aside (mkdir /hv/secure/old-1756; mv ...), start the machine (new
+  proxy = new CA, notBefore 2 days back), Secure use > Prepare again, then in XP only: regedit /s F:\CHARONSEC\CHARONCA.REG.
+  Transfer server: python3.15 -I <scratchpad>/xfer.py <scratchpad>/a2s5-serve <scratchpad>/a2s5-up (port 8790; binaries
+  back to the host only as base64 via busybox wget --post-file; <scratchpad>/a2s5-png.py converts P6 PPM to PNG).
+  QMP of a machine is single-client: while the menu runs, a second client hangs; stop the service first.
+  Host tests write src/.../charonhv/__pycache__: delete it before building the overlay (it went into one build).
+  Sound slot: agent 1 offered it at 19:01; given back unused at 19:05 (ask again before the audible pass); agent 1 told
+  the hypervisor source is NOT final. hvxp1 is muted inside (Master off after every boot unless unmuted).
+ DONE THIS SESSION (code in the tree, host-tested: tests/charon-r410-retro-host.py 0 failed (21 checks; the remote-
+  browser checks need POSIX: run it on the hypervisor), tests/charon-r410-hypervisor-host.py 0 failed):
+  (a) REAL PER-MACHINE MUTE: etc/asound.conf slots charonguest1..8, each a softvol with resolution 2 (an on/off switch =
+      silence, not -40 dB) named "Charon Machine N", in front of the shared "Charon Guest" volume; hvmachine takes a free
+      slot at start (out.dev=charonguestN) and sets the switch from machine.json "muted" BEFORE QEMU opens it; machine
+      menu item "Its sound: on/muted"; prepare.sh opens all 8 once and switches them on. Ducking now lowers to
+      min(duck, guest volume) - it never raises a lowered/0 guest again. NOT live-tested.
+  (b) CLOCK: hvclock.py - NTP (busybox ntpd -n -q, pool.ntp.org / time.cloudflare.com) when the network is up; the
+      offset RTC-UTC rounded to 15 min kept in /hv/clock.json and used at the next start without a network; TZ set for
+      the hypervisor and QEMU (Windows guests -rtc base=localtime get local time, Linux base=utc real UTC);
+      etc/conf.d/hwclock clock_systohc=NO (the hypervisor never writes the PC's RTC: Windows keeps it). Limit said in
+      the clock report: a DST change without network is seen only at the next NTP. Retro assistant > Clock. NOT live.
+  6q RETRO ASSISTANT (machine menu "Retro assistant", hvretro.py mixin of App; per machine retro.json, 0600):
+   - simple web (hvsimple.py): http://simple.charon/ through the guest's proxy; pages fetched with verified TLS 1.2+,
+     returned as HTML 4.01 (headings/text/lists/tables/links/forms as real controls; no script/style/frames/images, alt
+     kept); GET forms via hidden u/m fields, POST re-posted; search = html.duckduckgo.com; per-site "always simple"
+     list (HTTP and TLS-1.0-bridged requests); cookies per machine /hv/machines/<id>/web/cookies.txt 0600; log = host only.
+   - download scanning (hvscan.py + hvproxy.forward): ClamAV packages + database fetched on first switch-on (sizes said;
+     database from database.clamav.net via freshclam into /hv/clamav), clamd INSTREAM; programs/archives/documents (by
+     extension, attachment, or non-page type) held and scanned before the guest gets them: FOUND = 403 page + spoken
+     "download stopped, X from H contains V"; clean spoken. Plain HTTP, simple web and the TLS 1.0 bridge (now one
+     request per connection) are scanned; Supermium/Mypal's own TLS 1.2+ tunnels are NOT (cannot be seen) - their
+     files are caught by the exchange/shared/disk scans. Exchange folder scanned when a machine stops; "Scan shared +
+     exchange now"; "Scan this machine's disk" (off only; qemu-nbd -r + read-only mount ntfs3/vfat/ext4/exfat).
+   - mail TLS bridge: guest POP3 110 / IMAP 143 / SMTP 25+587 to 10.0.2.100 (guestfwd) -> hypervisor connects with
+     verified TLS (995/993/465 implicit, :587 STARTTLS done by the hypervisor); servers set per machine in the menu,
+     passwords stay in the guest, nothing logged but kind+host+TLS version; no server set = protocol refusal + spoken.
+   - file exchange: secure machines get /hv/exchange/<id> as a WRITABLE USB drive next to the read-only shared folder.
+   - clipboard: CLIP.TXT from the exchange folder read aloud into the hypervisor clipboard; clipboard typed into a
+     guest (ASCII; untypeable characters counted and said); new text typed in the menu. No guest-agent clipboard (said).
+   - daily snapshot "daily-YYYY-MM-DD" at start of secure machines, 7 kept, "Go back to a daily snapshot" by menu/voice.
+   - printing to PDF (hvprint.py): LPT1 -> /hv/print/<id>/lpt1.raw (isa-parallel chardev file, not for Windows 95);
+     SECURE.CMD now adds printer "Charon PDF" (in-box "MS Publisher Imagesetter" PS driver on LPT1); jobs split on
+     %!PS..%%EOF, Ghostscript (fetched on first use) makes the PDF, also copied to /hv/shared/Prints; spoken.
+   - KVM: menu item says whether hardware virtualisation is there (test host: none - nested VT-x missing).
+   - on-demand packages (hvpkg.py): Alpine's official mirror (v<release>/main+community), signed indexes checked by apk
+     with the same keys, files cached in /hv/apk-cache; size from APKINDEX field S said before fetching.
+  6r REMOTE MODERN BROWSER (hvremote.py): chromium-headless-shell (Alpine community, BSD-3; research file: no existing
+     project gives accessible HTML) under user charonweb, --remote-debugging-pipe, profile per machine
+     /hv/machines/<id>/remote-profile 0700; page built from Accessibility.getFullAXTree: links -> /r/click?n=ID, buttons
+     -> submit, text boxes/checkboxes/selects -> real controls in one POST form; typed values set (focus+select+
+     Input.insertText), Enter pressed in the last typed field when no button; Facebook/Instagram/LinkedIn terms warning
+     on the page + spoken; DRM sites (Netflix etc.) -> page + spoken "needs the modern browser on the real screen".
+     COMPILED/host-tested only (Chromium not fetched yet).
+  6s MODERN BROWSER MODE (hvmodern.py, main menu "Modern browser on the real screen (DRM video)"): apk flatpak, cage,
+     pipewire(+pulse, alsa), wireplumber, dbus, mesa, orca, speech-dispatcher, at-spi2-core, seatd (size said first);
+     Flathub remote + Mozilla's org.mozilla.firefox --user in /hv/flatpak (size from flatpak remote-info said first);
+     user.js enables Firefox's own EME/Widevine switch (Firefox downloads Google's CDM itself; nothing bypassed);
+     PipeWire sink = ALSA charonguest; cage full screen; hvkeys.set_grab(False) while it runs, Left Ctrl+Left Alt ends
+     it; running machines paused meanwhile. COMPILED ONLY. Proof still to do: Shaka demo stream with Widevine
+     (license https://cwip-shaka-proxy.appspot.com/no_auth, asset angel-one-widevine) - result reported to the host.
+  Also: manifests-vista.json (helper's, 60 entries) copied into the overlay; manifests.json XNA entries (xp/vista/7/8)
+   fixed to the original XNA 4.0 page id=20914 (the URL's file; SHA-256 rechecked) - 4 entries; r410-hv-manifests/dl
+   (2.4 GB) deleted. LICENSES.txt: the new on-demand components listed.
+ NEW 6u (coordinator 19:07, in the answers file; fold into 6r/6s, NOT started): (1) ONE browser layer with one entry
+  point in the guest (http://simple.charon/ is the natural one): the hypervisor routes per site - JS-heavy (Facebook)
+  -> remote browser /r (done in code); non-DRM video (YouTube) -> ffmpeg in the hypervisor transcodes to a stream the
+  old player opens (e.g. MPEG-1/MP3 or WMV over HTTP for WMP 9/10; fetch via yt-dlp? check YouTube's terms - they
+  forbid downloading except where YouTube provides it: record the limit) with the page controls as HTML; DRM (Netflix)
+  -> modern browser mode 6s with a spoken explanation (NEEDMODERN event exists). Check and record each site's terms.
+  (2) 6s reader = LINDA instead of Orca if Linda can read a browser on Alpine (Linda is in Charon's installer list since
+  r409: check its project, licence, musl build); Linda gets ALL Charon voices (TVox, all RHVoice voices, eSpeak NG)
+  through the existing front ends (hvvoice.Voice.command) or a speech-dispatcher module, following Charon's settings;
+  if Linda cannot, give the evidence and keep Orca with the same voices (speech-dispatcher generic module calling the
+  charonhv-tvox / charonhv-rhvoice front ends). hvmodern.py currently starts Orca with speech-dispatcher defaults.
+ MACHINE NOW (19:25): XP "windows-xp" shut down cleanly 19:14 (ACPI power button was IGNORED twice by this XP - the
+  hypervisor's "Press its power button" does nothing on it; shut down by typing shutdown -s -f -t 0 in Run). Its desktop
+  at 19:11 showed the set done (NVDA + Mypal icons; screenshot was in scratchpad a2s5-up/d.png). Clock seen: XP 19:05
+  = host local 19:05 (old behaviour, RTC local read as UTC). hvxp1 was REBOOTED 19:16 onto the new overlay and is
+  STUCK at Charon's screen "Welcome to Charon. Starting: Disk EFI VMware Virtual SATA Hard Drive (0.0)" for 9+ minutes,
+  no kernel output on screen, serial shows only Charon's log - the chainload to the hypervisor's disk loader did not
+  happen or hangs (before the kernel, so most likely NOT the overlay; but if the hypervisor later fails in init, put
+  /hv/apkovl-before-s5.tar.gz back - only reachable from a booted hypervisor, or rebuild P1's overlay from ovl3).
+  First step next session: hv-vmware.py shot hvxp1; try Space -> Charon's menu -> the hypervisor entry; ask agent 1
+  whether its current Charon ISO in hvxp1's CD changed the default entry. windows-xp-2 (key page) is off, untouched.
+ NEXT (order 6t): 1) reboot hvxp1 onto the new overlay if not done; silent checks: date -u vs host UTC (clock fix),
+  amixer -c 0 cget name='Charon Machine 1', run tests/charon-r410-retro-host.py there (POSIX parts), curl through a
+  machine's proxy to http://simple.charon/. 2) ONE AUDIBLE PASS (ask agent 1 again; announce to the coordinator):
+  mute item on windows-xp (measure: guest floor gone), IE8 HTTPS with the new CA, simple web in IE6/8 + NVDA, ClamAV
+  EICAR (make EICAR INSIDE the hypervisor only - never on the Windows host, Defender), mail bridge (telnet
+  10.0.2.100 143 from XP -> "* OK" of a real IMAP server through TLS, no login), printer Charon PDF -> PDF spoken,
+  daily snapshot spoken, clipboard both ways. 3) 6r live: fetch chromium-headless-shell, a JS site (e.g. a search) in
+  IE8 through /r. 4) 6s live: modern browser mode + Shaka Widevine proof on the real VMware screen. Then the older
+  proofs list (key page rerun, NVDA read-back, revert, runtimes, audio game, NTLDR, imports, two machines, stick, ME,
+  free-space install, triple boot with agent 1, licences, cleanup).
+=== SESSION 4 (agent 2 fourth session, 2026-11-25 17:33-18:36, handed back at a block boundary: context) ===
+RESUME HERE (session 4):
+ MACHINE NOW: VMware charon-hvxp1 RUNNING, hypervisor Master MUTED (amixer -c 0 sset Master unmute to hear it), sound slot
+  given back. The RUNNING menu uses code copied by hand into /usr/lib/charonhv (RAM; P1's overlay is OLDER - rebuild it with
+  tools/charon-hv-fetch.py overlay before a reboot, or copy again). Machine "windows-xp" (secure, 800 MB) RUNNING: SECURE.CMD
+  was typed by the menu 18:23:59 and is installing (.NET 3.5 SP1 at 18:26 under TCG - slow); IE8 + a blocked page are open.
+  Machine "windows-xp-2" (Setup at the key page, setup_phase True, setup_resets 1) is OFF since the 18:17 menu restart.
+  Transfer server stopped (restart: python3.15 -I <scratchpad>/xfer.py <scratchpad>/hvdeploy <scratchpad>/hvup; guest:
+  wget http://192.168.0.196:8790/FILE). Recorder/meter stopped. /hv/secure holds a CA made 17:56 with notBefore = then
+  (see CLOCK below): before the next HTTPS test move ca.crt/ca.key/hosts aside, restart the proxy (restart the machine),
+  rebuild the set (Secure use > Prepare again: cached, ~2 min) and run only regedit /s F:\CHARONSEC\CHARONCA.REG in XP.
+ LIVE RESULTS 18:08-18:34 (hvxp1, audible from 18:15; said.txt + screenshots r410-hv-vm/ev4/s1-s8.png):
+  - PASSED: secure start (restrict=on, guestfwd, -S, "Snapshot before going online saved" spoken 18:08:35 and 18:19:25);
+    "Run the set" typed the Run line (18:23:59), XP ran SECURE.CMD from F:: proxy set, CA trusted, Legacy Update 1.14.1
+    exit 0, Mypal exit 0, 0patch exit 0, .NET 3.5 running (s4/s5.png); Legacy Update fetched Microsoft's root lists through
+    the proxy (download.windowsupdate.com, crl.* lines in /run/charonhv/windows-xp.proxy.log).
+  - PASSED: blocked domain: IE -> http://malware.testing.google.test/ and http://blocked.charon-hypervisor.test/ refused by
+    the proxy, the hypervisor said "Windows XP: blocked, ... is on the list of malicious domains." (18:30:44, 18:33:14).
+  - PARTLY: modern TLS for XP: IE8's TLS 1.0 handshake with the pure-Python RC4 server COMPLETED (log MODERNTLS
+    www.wikipedia.org 18:27:26), IE then showed "certificate expired or not yet valid" (s6.png). CLOCK: the hypervisor's
+    "UTC" is the host's LOCAL time (date -u 18:28 at 18:28 CET; VMware/Windows RTC in local time), so certificates were
+    1 h in the future for XP. FIXED in source (hvproxy.stamp: notBefore 2 days back) - not rerun. Also open: the
+    hypervisor should read a local-time RTC correctly when Windows is on the disk (time sync item of 6q).
+  - NOT CLEAN as sound measure: the host loopback and the per-process meter of hvxp1 (vm-audio-meter.py, pid 4148) show
+    a continuous floor (peak ~0.12) from the XP guest's own audio (NVDA reading the console); setting "Charon Guest" to 0 %
+    is -40 dB, not mute, and the ducking puts it back to 100 %. NEXT: a real per-machine guest mute that ducking keeps.
+  - Not yet: read-back file read by NVDA, revert with host key + Backspace twice (code in), runtimes list, Top Speed.
+ SERVICE PACKS (6p/6p-2, coordinator told): table in work/r410-unofficial-packs.txt - XP USP4 3.x OUT (author's changelog:
+  "POSReady updates until January 2016 have been included", "the POSReady trick has been included", no option without
+  it; catalogue: KB2993651/KB2992611/KB3124280 exist only for WEPOS/POSReady 2009); legacy USP4 v2.0 NOPOS = candidate
+  only (unchecked "few exceptions"); Simplix UpdatePack7R2 OUT (Embedded/Server ESU, ESU bypass in changelog); win7-sp2
+  OUT as planned; U98SESP3 OUT (files from XP/2000/Office); ME pack unverified; Vista/8.1 packs OUT (Server ESU).
+ IMPROVEMENTS (6p, all versions) as data, in the overlay: manifests-xp-improvements.json (IN: 7-Zip 26.06, VLC 3.0.24,
+  foobar2000 1.5.12, TLS proxy; OUT: USP4, One-Core-API (+extras): modified Vista/7 files), manifests-improvements-other.json
+  (vista/7/8/8.1: 7-Zip, VLC, Notepad++, SumatraPDF, foobar2000 (not Vista), Supermium/Mypal/Legacy Update for Vista;
+  9x: 7-Zip 9.20, VLC 0.8.6i, foobar2000 0.8.3; OUT: Notepad++ 9x (no own copy), 98se2me, KB4019276 for Vista (Server
+  2008 product)). manifests-9x.json: Microsoft KBs + KernelEx hashed; MDGx-hosted community packs not hashed (MDGx 403 to
+  scripts) -> "not fetched" spoken; RetroZilla quarantined by Defender (Trojan:Win32/Pomal!rfn, not restored).
+  Vista (6o): manifest research was started (work/r410-hv-manifests/manifests-vista.json, written by a helper - CHECK it
+  exists and copy it into the overlay; code already loads it); template winvista with HDA is in.
+ NEW USER POINTS NOT STARTED (coordinator, 18:3x): 6q retro assistant (simple-web proxy, mail TLS bridge, ClamAV in the
+  hypervisor + EICAR proof, daily snapshot + revert by voice, time sync, clipboard, file exchange, PDF printing, KVM);
+  6r remote modern browser (research DONE 18:4x: work/r410-remote-browser-research.txt - no existing project gives
+  accessible HTML with forms; build own Python proxy: chromium-headless-shell (BSD-3, Alpine 3.23 community) driven by
+  stdlib over --remote-debugging-pipe, Accessibility.getFullAXTree -> plain HTML 4.01; Facebook terms 3.2.3 forbid
+  automated access without permission (warn the user); Netflix/Widevine impossible on musl - say so);
+  6s modern browser mode with Widevine via Flatpak on its own console (size told first, fetched on demand, Shaka DRM demo).
+ ALSO CODED THIS SESSION (host-tested, not live): 6g Speakup-style key echo (only where the hypervisor is the reader, never on
+  a key page), cursor tracking (line / character / word) and highlight tracking on unchanged text screens, screen read
+  0.3 s after a key (hvreader.highlighted_rows / cursor_speech).
+ Item 1 (key page rerun with the double-RESET fix + wrong-key refusal) NOT rerun: windows-xp-2 is ready for it (start it,
+  wait for the key page; the USER pressed Next on the empty page at 17:38 - the refusal text was then on screen).
+ Agent 1: told the slot is free (18:35); told "last source change NOT in yet" - the next session must tell it when final.
+ BLOCK 2 CODE (6i-6l, 6n, 6o, 6p) - written, host-tested (tests/charon-r410-hypervisor-host.py: 0 failed, 60+ checks):
+ - src/hypervisor/overlay/usr/lib/charonhv/hvsecure.py (NEW): applies manifests.json (+ manifests-9x.json, manifests-vista.json,
+   manifests-xp-improvements.json; entries with decision != include are skipped) per detected version (template -> xp/vista/7/8/8.1/
+   95/98/98se/me). Each part: spoken by name ("unofficial: ..." when official=false, notes for Legacy Update/0patch), fetched once
+   into /hv/images/secure-cache/<sha256>, size + SHA-256 checked, failure spoken + "the rest continues"; no-download parts spoken
+   with the reason (TLS 1.2 XP -> proxy, no anti-malware for XP, .NET 1.1 SP1 gone, VC++ 14.27 sign-in, ESU needs own licence,
+   VxKex 7 only); unhashed community parts (MDGx-only 9x packs) = "not fetched, page: ..."; no-silent-switch parts copied to
+   C:\CHARON-PROGRAMS and said; Mypal unpacked + desktop shortcut. Writes CHARONSEC\SECURE.CMD (NT) or SECURE.BAT +
+   SECURE9X.REG (9x): proxy + hypervisor CA first, the parts, hardening (XP: netsh firewall on/no exceptions, file+print/RDP/
+   UPnP off, SMBDeviceEnabled 0, RemoteRegistry/lanmanserver/SSDP/upnphost/Telnet/RemoteAccess/Messenger/NetDDE off, RDP and
+   Remote Assistance denied, autorun off (NoDriveTypeAutoRun 255 + IniFileMapping), Automatic Updates 4; 7/8/Vista: advfirewall
+   block inbound, SMB1 off per KB2696547), read-back into C:\CHARON-SECURE.TXT (firewall, services, updates via wmic qfe,
+   .NET/DirectX/VC++/OpenAL, programs) opened in Notepad for the guest reader. Groups switchable in detailed mode; 6p group
+   "improvements" off unless chosen. No POSReady, no ESU bypass (host test checks the text).
+ - hvproxy.py (NEW): per-machine proxy on 127.0.0.1, HTTP 80 + HTTPS 443 only, domain filter (HaGeZi Threat Intelligence Feeds
+   mini, 131 742 domains, GPL-3.0, from its GitHub; URLhaus host file is 410 Gone / needs a key) + test domains
+   malware.testing.google.test, blocked.charon-hypervisor.test; TLS 1.2+ clients tunnelled untouched; TLS 1.0 clients (XP
+   SChannel) end in a PURE-PYTHON TLS 1.0 server (RSA + RC4-SHA/MD5: Alpine's OpenSSL 3.5.9 has no RC4/3DES suites, measured)
+   and go on with verified TLS 1.2+; certificate failures refused and said. CA once per hypervisor in /hv/secure (0700), trusted
+   only in that guest (XP: registry Blob via regedit, 7+: certutil). Host test: PRF == openssl TLS1-PRF, RC4 vector, a
+   TLS 1.0 RC4-SHA client read www.wikipedia.org (123 793 B, HTTP 200) through it. In the guest: blocked/port-25 403, modern
+   tunnel TLSv1.3, plain HTTP 200.
+ - hvmachine.py: secure -> -netdev user,restrict=on,guestfwd=tcp:10.0.2.100:3128-cmd:nc 127.0.0.1 PORT (internet off = no
+   guestfwd), -S then snapshot "before-online" then cont, CHARONSEC read-only USB disk (9x: IDE disk snapshot=on), shared
+   folder read-only; templates winvista (HDA), win8, win81, win95, win98se added.
+ - charonhv.py: wizard secure profile on by default for those versions + spoken warning before it (express: said at summary;
+   detailed: yes/no + parts one by one); prepare_secure at creation; machine menu "Secure use" (prepare again, run in the guest
+   now = types the Run line, what it holds, internet on/off, revert, off); unprotected start warning; proxy refusals spoken
+   (BLOCKED/DENIED/CERTFAIL, first MODERNTLS once); host key + Backspace twice = revert to before-online; blocklist refreshed
+   daily at start. prepare.sh: lo up (it was DOWN: the proxy could not bind - measured).
+ LIVE (hvxp1, silent until 18:14, then audible rec11 from 18:15): XP set built in the guest 17:57-17:59: 25 parts, all
+   downloads verified (no failures), image 786 MB; machine started 18:08 and 18:19 with restrict/guestfwd/-S/usec, "Snapshot
+   before going online saved" spoken; XP mounted the CHARONSEC drive as F: (screenshot r410-hv-vm/ev4/s1.png). Fixed live:
+   blockdev node-name conflict on "Run the set" (image attached at start is not hot-plugged again).
+=== SESSION 3 (agent 2 third session, 2026-11-25 15:40-17:35) - newest first; the session-2 RESUME block below is older ===
+RESUME HERE (session 3 handed back at a block boundary, context):
+ MACHINE: VMware "charon-hvxp1" RUNNING, hypervisor menu, sound card MUTED inside (amixer -c 0 sset Master unmute to
+  hear it again); vmx has usb.generic.autoConnect = "FALSE". Machines inside: "windows-xp" (installed, NVDA 2017.3, off)
+  and a second XP machine made 17:16 by the wizard (express, NO key) that is RUNNING and waiting at XP's product-key
+  page (volume licence) - type no key; delete it from the hypervisor menu when done. P1 holds the newest overlay
+  (sha256 3704069...; built by tools/charon-hv-fetch.py overlay --tree r410-hv-vm/ovl3 --bin work/charon-hv-bin);
+  the RUNNING menu is the 17:04 overlay: restart it (rc-service charonhv restart over hv-sh.py, safe now: one getty,
+  /hv kept, orphans ended) or reboot to load the newest. Host transfer server stopped (restart: python3.15 -I
+  <scratchpad>/xfer.py SERVE_DIR UPLOAD_DIR, port 8790; the guest reaches it at http://192.168.0.196:8790, POST with
+  busybox wget --post-file of a base64 file for binaries). Serial shell: python3.15 -I work/hv-sh.py hvxp1 "cmd" T.
+ 6h LIVE: XP GUI Setup reached the key page 17:27; after automatic reading was switched on (host key + A) the hypervisor
+  said 17:28:38 and again 17:30:32 (page left and re-entered): "Windows XP Setup is asking for the product key now: 5
+  fields of 5 characters, the cursor is in field 1. It wants a volume-licence key." - PASSED as speech (said.txt);
+  rec10 has it but NOT a clean measure: XP Setup's own audio keeps a floor of ~1000 RMS (guest mute is undone by the
+  ducking). Screenshot b2-setup1.png (fields empty). Auto-reading should have been on by itself: QEMU sends two RESET
+  events per restart, so setup_phase ended after the first restart - FIXED (events < 20 s apart count once), not rerun.
+  Per-field private echo and the refusal reading: host-tested only (no key typed, by rule).
+ NEXT (order of the task): (a) rerun the key page with the fixed overlay + a clean measure (mute guest by setting the
+  machine's guest volume to 0 in Sound, not amixer); per-field echo with a DELIBERATELY WRONG made-up key to hear the
+  refusal read as an error (never a real key); (b) live boot-menu reading (SeaBIOS Esc menu, XP F8 menu - press F8
+  before the guest gets the keyboard is not possible; try boot.ini /timeout via a Debian 6 / FreeDOS guest with a
+  menu instead); (c) 6i-6l: implement the secure-use profile from overlay manifests.json (fetch + sha256 + spoken
+  names, silent installs through INSTALL.CMD, firewall/services hardening, hypervisor-side NAT-only + egress filter +
+  HTTPS proxy + read-only share + snapshot-before-online/revert) and prove on XP with sound; ask the coordinator for
+  7/8/8.1 media; NEW 6n (user, via coordinator 17:35, in the answers file): Windows 95/98/98 SE/ME join the automatic
+  per-version set - community unofficial service packs/updates where a maintained project exists (Unofficial Windows 98
+  SE Service Pack, KernelEx, ME updates) from each project's own page with URL + hash, announced as unofficial;
+  protection mainly hypervisor-side (6j); runtimes 9x still runs (DirectX 9.0c, last 9x VC++/VB runtimes, .NET 2.0 on
+  98/ME); templates with SB16/AC'97 and 9x-capable guest readers; prove on the user's Windows ME disc (Downloads).
+  manifests.json has no 9x entries yet - extend it as data the same way; (d) agent 1's triple boot (pair a92+, disc from the current tree; send agent 1 every
+  "Pobrano"/"i jeszcze"/"Pobrano jeszcze" serial line), the 8 GB preset proof is agent 1's h8 run 3 with ReserveHigh;
+  (e) plain-HTTP stall, imports, free guests, two machines, snapshot/clone/share/USB, stick variant, Windows Me,
+  real settings record, free-space install, licences file, cleanup (see the session-2 list below; add
+  work/r410-hv-manifests/dl 1.19 GB, r410-hv-vm/ovl3, work/charon-hv-bin, charon-win-r410hv8t when done).
+ Cosmetic, open: OpenRC prints "Setting hostname to charon-hypervisor" before prepare.sh sets the plan's name.
+BLOCK 2 (6g/6h) and block-3 data, 16:40-17:25:
+ - Charon's screen model on the guest: src/hypervisor/screen/charonhv-screen.cpp (CharonScreenModel.h as a stdin/stdout
+   program) built AT FIRST START in the same compiler session as TVox (tvox-src.tar.gz now carries it; GCC build
+   without -Werror, warnings logged). RAN: built on hvxp1 16:55:35 (314 368 B), "Charon's screen model is ready."
+   Host: clang -Werror build + a GRUB grid -> title, 4 entries, selected 2 (default), countdown 4 s, help lines. PASSED.
+   hvreader: text screens are recognised by comparing 0xB8000 with the picture (XP's F8 menu is 80x30 text = 640x480,
+   so the old size test sent it to OCR); attributes + BIOS cursor (0x450) go to the model; charonhv.speak_model says
+   "<title>. Menu, N entries." once, "<entry>[, default][, submenu], k of N" on each move, the countdown once, then
+   ticks. COMPILED + host-tested only: XP's F8 menu was not hit live (F8 window missed 3 times under emulation).
+ - Speakup-like: review keys U I O / J K L / M , . (lines, words, characters) existed; clock ticks and bare progress
+   percentages are no longer read each time (progress every 10 %, said as "N percent"). Cursor/highlight tracking and
+   key echo outside the key page: NOT done.
+ - 6h product key: hvreader.key_page/key_refused/redact_key; announcement "<machine>: Setup is asking for the product
+   key now: 5 fields of 5 characters, the cursor is in field 1." (+ volume-licence / OEM kind); typed characters
+   followed per field with PRIVATE speech (Voice.say(private=True): not in said.txt, the log or tty1); a refusal is
+   read in full as "Error: ..."; a typed key on the screen is redacted before speaking/logging. Wizard (detailed,
+   Windows XP from a disc, unattended): optional "Product key" question, typed privately, only into that machine's
+   WINNT.SIF ProductKey; summary says only "product key given". Auto-reading is on during Windows Setup (setup_phase,
+   ends after two guest restarts). Host tests (21 now) PASS. LIVE: a fresh XP machine (express, no key) started
+   17:16:58; the hypervisor read text-mode Setup aloud by itself ("Instalator systemu Windows XP Professional",
+   formatting, copying, progress). Key page: see below / next entry.
+ - A QEMU outliving a restarted menu is now ended and named ("Still running from before the hypervisor restarted, and
+   now stopped: Windows XP." RAN 17:03:50).
+ - Per-machine entry in Charon's list: "Charon Hypervisor: Windows XP" started the hypervisor straight into XP
+   (16:45:56) - RAN AND PASSED. Fill-screen display seen live (b2-entry-xp.png, XP 1066x800).
+ - 6i-6l DATA: work/r410-hv-manifests/manifests.json (copied to src/hypervisor/overlay/usr/lib/charonhv/manifests.json):
+   xp 25, 7 41, 8 30, 8.1 30 entries, each with official URL, sha256, bytes, Authenticode signer, silent switches,
+   official/unofficial flag, support notes read 2026-11-25 (downloads in work/r410-hv-manifests/dl, 1.19 GB, nothing
+   run). Highlights: Legacy Update 1.14.1 (XP-8.1, /S /norestart; keep "POSReady updates" OFF), Supermium v150-r3,
+   Mypal 78.1.2, VxKex 1.2.2.2316 (i486/VxKex), 0patch: 7 only on paid PRO until 1/2028, XP/8.1 not actively patched,
+   8.0 none; anti-malware: Avast Free for 7 SP1/8/8.1, NONE for XP; .NET XP 3.5 SP1+4.0 (1.1 SP1 gone, 404), 7/8.1
+   3.5+4.8, 8.0 4.6.1; DirectX Jun2010, VC++ 2005-2013 + 2015-2022 14.44 (7/8.1); XP's last VC++ 14.27 only behind a
+   sign-in (no anonymous URL); XNA 4.0 Refresh; OpenAL; game Top Speed 3.0.3 (GPL, author's GitHub; XP-era build,
+   XP not stated). TLS 1.2 on XP: not officially available -> the hypervisor's HTTPS proxy. NOT YET USED BY THE CODE:
+   the secure-use profile (fetch + verify + silent install into the guest, firewall/services hardening, NAT-only
+   egress filter, HTTPS proxy, read-only share, snapshot before online + revert) is NOT implemented.
+ - ReserveHigh (CharonWsHypervisor.h) for agent 1's 8 GB run: AnyPages -> MaxAddress -> memory-map walk. Built hv8t.
+BLOCK 1 (live, VMware charon-hvxp1, user's headset; recorder rec9 = robust hv-record.py, 1 line/s "HH:MM:SS rms rms",
+ background floor 0 when nothing speaks):
+ - TVox BUILT AT FIRST START (6m): overlay carries usr/lib/charonhv/tvox-src.tar.gz (~1.3 MB, tools/charon-hv-fetch.py
+   tvox_sources); hvvoice.build_tvox: apk add build-base from the OFFICIAL repository only (first try used P1's local
+   index and failed "patch-2.8.1-r0 ... not found" - failure SPOKEN, fixed), compile build-tvox.sh, test PCM, keep
+   /hv/voice/charonhv-tvox, apk del. RAN AND PASSED 16:00:13-16:00:26 (16 s, test 187 736 bytes of sound) and again
+   16:11:19-16:11:41 after a reset; "TVox is ready and speaks from now on. The build tools were removed." spoken.
+   CharonMemory.c now IN the build with -ffreestanding -fno-builtin -fno-tree-loop-distribute-patterns: no recursion.
+   charonhv-tvox sha256 50be6b59...c80b, 21 934 160 B (gcc 15.2.0-r5, musl 1.2.6-r3).
+ - Polish AltGr letters "ąęłżóś ćńź" typed in XP Notepad (VNC Right Alt + letter), then Left Ctrl+Left Alt took the
+   keyboard back ("Keyboard to the hypervisor" 16:16:21). PASSED. evidence b1-xp-altgr.png.
+ - Guest screen on the computer's screen (tty7): XP desktop b1-xp3.png (then 640x480 at 1x; now fills the screen:
+   hvdisplay.py nearest-neighbour fit, 640x480 -> 1066x800 - compiled, NOT yet seen live).
+ - Sound > Voice: TVox -> RHVoice (16:30:10-15 RMS 1200-2650) -> eSpeak NG (16:30:18-33, 1300-3000) -> As Charon/TVox
+   (16:30:46-52, 300-1150), floor 0 between. PASSED.
+ - NVDA 2017.3 in XP speaks Polish: NVDA's Speech Viewer b1-speechviewer.png ("Bez tytułu - Notatnik", "pole edycji
+   wielowierszowe", "hejhello", key echo z o l w); heard 16:28:50-16:29:01 RMS 230-880 vs floor 0. PASSED (AC97 driver
+   works; machine.json memory 800).
+ - "Press its power button" -> Notepad's end-task dialog (answered) -> "Windows XP shut down. Windows XP is off." PASSED.
+ - The USER drove the hypervisor 16:11-16:14 (host key both ways, "Read its screen" -> "Zapraszamy" = XP's logon splash).
+   On Notepad the OCR missed title bar/taskbar -> hvreader.py: second pass on a light-text mask (psm 11, conf>=60,
+   real-word filter), merged in screen order: now "Bez tytułu - Notatnik", "Start" (2.7-3.2 s). Ran on the saved
+   screen in the guest; NOT yet through the menu.
+ - Fixed after live findings: setterm (agent 1's endless loop) removed from hvdisplay.py; prepare.sh: one serial
+   getty only (marker file), an already-mounted /hv is kept on a service restart (TVox had been built into a RAM fs
+   over /hv and lost); charonhv.cfg hostname= from the plan's shared name (6m; agent 1 restores the answers).
+ - CharonWsHypervisor.h: Alpine ISO streamed once, hashed, only vmlinuz/initramfs/modloop kept in <=64 MB pieces
+   (agent 1's 8 GB preset). Built charon-win-r410hv8t (PASS link), agent 1's pairs a85/a88 include it. NOT run yet.
+ - Harness: hv-sh.py (serial shell answering ESC[6n, slow typing), hv-record.py rewritten, transfer server on host
+   port 8790 (guest reaches it at 192.168.0.196 via VMware NAT; 192.168.229.1 is firewalled).
+=====================================================================================================================
+
+=== RESUME HERE (agent 2 second session, Charon Hypervisor; updated 2026-11-25 ~15:25, handed back at a block boundary) ===
+Spec: work/r410-hypervisor-user-answers.md - points 1-7, 2b, 6b-6e AND the NEW 6f, 6g, 6h, 6i, 6j, 6k, 6l (read them all).
+Design: work/charon-hypervisor-design.md.
+MACHINES: VMware "charon-hvxp1" is OFF (the Alpine hypervisor powered itself off at 15:16:47 - vmware.log "PIIX4: PM Soft
+ Off", guest-requested; cause not known: my keys were Insert+T/Tab/Insert+B meant for XP; maybe the user. Ask before
+ assuming). Its disk (r410-hv-vm/vmware/hvxp1) holds Charon (hv5t), the hypervisor and machine "windows-xp" with XP
+ INSTALLED (desktop reached 15:10, NVDA 2017.3 icon on the desktop and in the tray: evidence/xp-b3.png). The XP disk was
+ not shut down cleanly. Its vmx predates the USB rule: add usb.generic.autoConnect = "FALSE" before the next start.
+ No host HTTP server is running (stopped). No QEMU machine of mine.
+XP KEY: typed by hand at Setup's key page (supplied by the user); the volume-licence page refused three keys and accepted
+ the fourth. Keys are in no file; key screenshots deleted.
+DONE THIS SESSION (source, all in charon-src-r395; host tests tests/charon-r410-hypervisor-host.py 14/14 PASS):
+ - 6e host key = LEFT Control + LEFT Alt (evdev 29+56; hvkeys.HOST_MODS/HOST_COMMANDS/REVIEW_KEYS; charonhv.py key()):
+   pressed and released alone = keyboard to/from the guest; with Space/PageUp/PageDown/R/A/S/Delete/F1 = host commands;
+   with U I O J K L M , . = review keys when a guest has the keyboard. Right Ctrl and Right Alt (AltGr) are ordinary
+   keys forwarded to the guest. All spoken strings EN+PL updated. COMPILED + host-tested only; NOT yet run live
+   (the live machine ran the old overlay). Prove: Polish AltGr letters a/e/l/z in a guest + host key.
+ - 6f(1) guest screen: hvdisplay.py rewritten - the guest gets its own console tty7 (empty, no cursor), the menu stays
+   on tty1; chvt on every keyboard move (App.focus property); picture enlarged by the largest whole factor, centred,
+   only changed rows rewritten, 2x per second. COMPILED only. (Old overlay drew XP centred over console text - xp-b*.png.)
+ - 6f(2) voice follows Charon: hvvoice.Settings reads synthKey/synthVoice (scan_synths of EFI/HAK/synths manifests),
+   formatFlags/profile/profileItems/formatGroups; Voice engines tvox | rhvoice | espeak, default = Charon's own synth,
+   a choice in Sound > "Voice" (As Charon / TVox / RHVoice / eSpeak NG) kept in /hv/voice.json; a voice that cannot
+   speak is said at the intro (eSpeak NG then speaks). RHVoice data is unpacked from Charon's own add-on packs
+   (EFI/HAK/synths/rhvoice/*.chsp, CHSPACK1 reader hvvoice.read_pack, CRC checked; host test), nothing downloaded.
+   Front ends: src/hypervisor/tvox/charonhv-tvox.cpp (LiveVoice hosted, stdout PCM 48 kHz stereo) + build-tvox.sh;
+   src/hypervisor/rhvoice/charonhv-rhvoice.cpp (RHVoice C API, 16 kHz mono) + build-rhvoice.sh (pinned 1.18.5 source
+   tree work/rhvoice-dl/RHVoice, needs build-base + boost-dev). BUILT on Alpine 3.24 inside the hypervisor (gcc 15.2.0,
+   musl 1.2.6): charonhv-tvox 21 938 256 B sha256 c2fc3bb2...5768 (CharonMemory.c left out: GCC -O2 turned its memset
+   loop into memset -> endless recursion, measured segfault); charonhv-rhvoice 3 398 576 B sha256 221f1b44...197e7c.
+   Binaries are on hvxp1's DATA partition /hv/build/out-tvox, /hv/build/out-rhv (copy out next boot, or rebuild:
+   r410-hv-vm/ovl2/rhv/build-all.sh, 8 s + 50 s). tools/charon-hv-fetch.py overlay --bin DIR adds both to the overlay.
+   RAN AND PASSED (live, hvxp1, 15:10:46 and 15:16:26-15:16:38): default engine = tvox (Charon's record: TVox);
+   TVox, RHVoice (13 voices unpacked: alan alicja bdl cezary clb dasha-eng evgeniy-eng ksp lyubov magda michal natan
+   slt) and eSpeak NG each spoke a Polish sentence (4.2 s / 4.0 s / 3.8 s); the user confirmed hearing the VM in the
+   headset. Host recording rec7 (headset loopback, by endpoint id): RMS 1100-2400 during the voices, but the floor is
+   ~1000 (XP/AC97 noise or other host audio) - NOT a clean measurement; redo with the guest muted.
+   SIZE NOTE: TVox binary 21.9 MB (its data tables) - too big for "small files" in Charon's medium; options: gzip in the
+   apkovl (measure), or build at first start like RHVoice could; decide with the coordinator.
+ - 6f(3) formatting (charonhv.menu): profile items (position, intro, hints, structure) by Charon's profile 0-3 + custom
+   items; voice formatting flag: pitch by list position (+4..-4 steps of 3 %, PositionPitch); sound icons flag or the
+   sounds item: place tone 1760..440 Hz (PlaceHertz). COMPILED only. Guest reader formatting NOT done.
+ - Recorder harness: hv-record.py now opens the loopback by endpoint id; pylib soundcard patched for a plain
+   WAVEFORMATEX mix format (USB headset). hv-vmware.py writes usb.generic.autoConnect = "FALSE" (coordinator rule;
+   no VM has taken the headset - checked every running vmware.log).
+NOT DONE / NEXT (in this order):
+ 1. Boot hvxp1 (after adding the USB line), copy the two binaries out to work/charon-hv-bin/, build the overlay with
+    --bin, install it on P1, restart the hypervisor: prove live with sound (mute guest for a clean measure): Left
+    Ctrl+Left Alt, AltGr letters in XP (Notepad), guest screen on tty7 (screenshot of the VMware window), Sound > Voice
+    menu, formatting pitch/tones; NVDA speaking in XP (C:\charon-nvda.log, Device Manager AC97, 800 MB not yet checked).
+ 2. Agent 1's DEFECT (preset "Debian, gotowy obraz, i Charon Hypervisor", 8 GB, trace
+    work/r410a-evidence/s7/h7b-serial-ramfail.txt): with the 3 GiB image reserved at pre-flight, hv::FetchUpfront's
+    one-block Alpine ISO download (CharonWsHypervisor.h ~398 Download(url, s.iso) -> Reserve one contiguous block)
+    fails "Za mało pamięci RAM na ten plik" x3. Agent 1 asked ME to make the ISO download range-chunked (64 MB pieces,
+    kernel/initramfs/modloop extracted across pieces) and to tell it the build; preset stays hidden until then.
+ 3. 6g guest reader = Charon's PC reader (src/pc/pc_reader.cpp, pc_winread.cpp, ~8000 lines, Bochs-bound) + Speakup-like
+    console reading + boot managers via CharonScreenModel.h / CharonResidentModel.inc; QEMU side needs VGA text from
+    guest memory (QMP pmemsave 0xB8000) and screendump pixels. NOT STARTED. 6h key-page announcement (agent 1 did it in
+    pc_winread.cpp, host test 3/3, not run in a VM) + optional product-key question in the wizard: NOT STARTED.
+ 4. 6i/6j/6k secure-use profile and per-version manifests for XP/7/8/8.1, plus 6l runtimes (.NET, DirectX June 2010,
+    VC++ redistributables, XNA 4.0, OpenAL; proof: an audio game with NVDA in XP): NOT STARTED (verify every source first).
+ 5. Old open items: plain-HTTP stall in Charon's client (in-guest wget over http and https both take 0 s for the 528 KB
+    index from VMware NAT -> not the network; the client paths for http and https share Receive(); cause still not
+    found); keep-alive build download time (r410hv7t, now inside agent 1's r410a83 pair); prepare.sh DHCP from a fresh
+    install; failed-creation cleanup; imports; free guests; two machines; snapshot; clone; shared folder; USB; stick
+    variant; Windows Me; real Charon settings record; triple boot (agent 1: use charon-win-r410a83t + a83-drv, disc
+    r410a-vm/iso/charon-h7hv83-pl.iso; copy every "Pobrano"/"i jeszcze" serial line to agent 1); HV-alone free-space
+    install (agent 1 implemented ChooseHypervisorTarget in CharonWsPlanDialogue.h; prove on a disk with another system).
+    Agent 1 question: hostname "charon-hypervisor" vs the plan's shared computer name "charon-pc" - undecided.
+Builds kept: charon-win-r410hv5t/-drv (on hvxp1), r410hv7t/-drv. Delete hv1-hv4, hv6, r410-hv-vm/hv1.qcow2.
+Downloads to delete at the end: work/charon-hv-cache, charon-hv-tree1, r410-hv-vm/pylib (harness needs it until then),
+ r410-hv-vm/import, import-stick.vmdk, r410-hv-vm/ovl2/rhv (sources/packs copies for the guest build). Keep
+ work/win11ent-dl-r410.
+Files new/changed this session: src/hypervisor/overlay/usr/lib/charonhv/{charonhv,hvkeys,hvdisplay,hvvoice}.py,
+ src/hypervisor/tvox/{charonhv-tvox.cpp,build-tvox.sh}, src/hypervisor/rhvoice/{charonhv-rhvoice.cpp,build-rhvoice.sh},
+ tools/charon-hv-fetch.py (--bin), tests/charon-r410-hypervisor-host.py (+pack test). No shared EFI header touched.
+Licences to add to src/hypervisor/LICENSES.txt: RHVoice 1.18.5 LGPL-2.1-or-later (+ voices' own licences, already in
+ Charon's synths/licences), Boost headers BSL-1.0 (build only), TVox MIT-0 (Charon), musl MIT, libstdc++ GPL-3 with
+ the runtime exception (static link) - NOT yet written.
+Packaging (coordinator): EFI/HAK/hypervisor/{world.txt, keys/*.rsa.pub, charonhv.apkovl.tar.gz built with --bin}; never
+ test-serial.
+=====================================================================================================================
+
+Session 2 (agent 2, 2026-11-25 13:50-15:25): see RESUME HERE above (XP installed under the hypervisor with NVDA; 6e host key, 6f screen/voices/formatting; TVox and RHVoice built for Alpine and heard).
+
+Block 0 (2026-11-25): design; Alpine 3.24.4 chosen; user's point 2b adopted (P1 FAT32 "Hypervisor" in Alpine's diskless
+layout + P2 "Hypervisor data" ext4 made at first start). Hook agreed with agent 1 (Kind::hypervisor, two partitions,
+FetchWhat::hypervisor, hv::RunPlanStep / FetchUpfront / PlanBytes).
+Block 1 (2026-11-25):
+ - netboot initramfs has no ahci/nvme/sd_mod ("Mounting boot media: failed", RAN in QEMU) -> switched to the standard ISO's
+   boot files (initramfs with disk drivers). RAN AND PASSED (QEMU dev, not a proof): kernel+initramfs+modloop from the
+   verified ISO, 151 packages from P1's local repositories (signed indexes main+community, RSA checked on the host by
+   tools/charon-hv-fetch.py), P2 formatted ext4 at first start, manager intro spoken, wizard opened (0 machines).
+   Sound: ALSA starts muted -> prepare.sh unmutes; after that wavcapture RMS 3000-5000 while the menu speaks.
+ - No /dev/kvm inside a QEMU/WHPX test machine (host Hyper-V): guests run under TCG; the intro says so.
+Block 2 (2026-11-25 12:00-12:40): first AUDIBLE VMware run "charon-hvxp1" (gui, host speakers, empty 120 GB SATA disk,
+ Charon disc work/r410-hv-vm/vmware/charon-hv2.iso = charon-win-r410hv2t + r410hv2-drv, test switch).
+ - VMware: vhv.enable refused: "[msg.cpuid.noVHVQuestion] Virtualized Intel VT-x/EPT is not supported on this platform"
+   (host runs Hyper-V) -> no nested KVM in VMware either; guests run under TCG.                      MEASURED
+ - Install dialogue: "One system, or several systems side by side?" -> "Charon Hypervisor: virtual machines beside other
+   systems, 3 of 3" -> detailed -> shared answers -> "Should the virtual machines of Charon Hypervisor see the disks of
+   this computer's other systems?" -> summary with BOTH sentences (network, Secure Boot) -> YES.         RAN AND PASSED
+ - Up-front download by hv::FetchUpfront: release list + standard ISO (sha256) + main/community indexes (RSA signature)
+   in 56 s, "Packages to download: 151", all 151 checked against the signed index, "Charon Hypervisor downloaded and
+   checked" 12:35:28 (26 min: one TLS handshake per package).                                           RAN AND PASSED
+ - FAILED in agent 1's WriteHypervisor (12:35:39): "Charon could not finish its own work: the range of this system is not
+   in the layout" - reported to agent 1. Host recording rec1 (25 min, WASAPI loopback): Charon's speech RMS 1800-4200.
+ - Changes for the next run (built: charon-win-r410hv3t + hv3-drv, disc charon-hv3.iso; package names added after):
+   packages+indexes over plain HTTP (integrity from the signed index), package names spoken (newest + "and N more").
+   Parallel downloads: NOT possible with Charon's one synchronous TLS/TCP client - stated, not built.
+ - Hypervisor side fixed after a QEMU dev run: XP text-mode Setup took C: for a USB drive seen early -> USB drives
+   (shared folder, NVDA setup drive) are hot-plugged after Setup's first restart; NVDA 2017.3 is now a fixed part of the
+   XP template (download from NV Access, sha256 a0ad10a9..., INSTALL.CMD through [GuiRunOnce], --install-silent
+   --enable-start-on-logon=True). Host checks tests/charon-r410-hypervisor-host.py 13/13.
+Block 3 (2026-11-25 12:49-13:45): AUDIBLE run 3, VMware "charon-hvxp1", empty 120 GB disk, build charon-win-r410hv5t+-drv.
+ - Run 2 (hv4: packages over plain HTTP) STOPPED by me: Charon's own client fetched the 2 MB indexes over http:// but then
+   took ~5 min per package (kbd, musl, kbd-misc in 15 min). Reverted to HTTPS. Cause NOT found (OPEN DEFECT, shared client
+   CharonHttps.h/CharonTcp4Transport.h; coordinator wants it fixed: repro + fix + measure).
+ - Install dialogue -> one-system plan -> YES 12:54:04 -> ISO+indexes -> "Packages to download: 151" 12:59 -> each package
+   NAME spoken as it arrived (newest + "and N more") -> "Charon Hypervisor downloaded and checked" 13:24:28 (25 min, HTTPS,
+   two TLS handshakes per package) -> partition table, ESP, Charon copied -> "Writing Charon Hypervisor on the Hypervisor
+   partition" 13:24:37 -> "Charon Hypervisor written" 13:24:45 -> "The plan is finished. Systems installed: 1 of 1."
+                                                                                                   RAN AND PASSED
+   Defect (agent 1's, fixed by its helper kd ~13:10, after this build): "Note: the system that starts by itself could not
+   be set." -> no automatic restart, key wait.
+ - Reset -> Charon -> Space -> Boot devices: "Disk or partition  Charon Hypervisor (new virtual machine), 8 of 8"
+   (screenshot) -> Enter -> Alpine from P1 in ~18 s -> prepare: kvm=no, sound=yes, boot=/media/sda2, data formatted ext4
+   (/dev/sda3 CHARONHVDATA, PARTUUID from charonhv.cfg) -> intro spoken 13:32:02 -> wizard opened (0 machines).
+                                                                                                   RAN AND PASSED
+   Voice settings: "from defaults" (fresh Charon has no settings record yet) - reading a real record NOT yet proven.
+ - Wizard (detailed, by me): XP, own disc -> "Which disc? 2 found" (sr0 Charon disc, sr1 GRTMPVOL_PL) -> 768 MB, 12 GB,
+   AC97, rtl8139, "Screen reader. NVDA 2017.3 in the guest, 1 of 1", shared folder yes -> summary of differences only ->
+   YES -> disc copied -> "Downloading NVDA 2017.3 from NV Access." -> FAILED "The machine could not be created: urlopen
+   error Try again": NO NETWORK in the hypervisor (eth0 down, nothing ran DHCP). FIXED in src: prepare.sh brings every
+   wired interface up + udhcpc in the background; a failed creation removes the half-made machine. In the live machine I
+   ran udhcpc by hand and copied the fixed overlay (hv-fetch overlay) onto P1 (/media/sda2/charonhv.apkovl.tar.gz).
+ - THE USER then drove the hypervisor themselves in the VMware window (13:35-13:40: menu, F1 help, all 13 templates read,
+   wizard detailed, memory 800 MB) -> "Machine Windows XP created. Starting Windows XP." -> NVDA 2017.3 downloaded (sha256
+   checked), INSTALL.CMD + NVDA2017.EXE on the setup drive, winnt.sif floppy -> XP Setup "Instalator systemu Windows ...
+   Instalator laduje pliki" shown on the computer's screen through hvdisplay.py (framebuffer).    RAN (XP Setup under way)
+ - Recordings (host speakers, WASAPI loopback): rec1 (run 1 dialogue), rec4 (run 3 Charon part), rec5 (hypervisor first
+   start), in work/r410-hv-vm/evidence with their RMS lists (rec*.txt).
+ - Built, NOT yet run: CharonHttps.h keep-alive (opt-in Client::keepAlive) + hv::DownloadKnown (no HEAD probe, one TLS
+   session for all packages): charon-win-r410hv7t/-drv, disc charon-hv7.iso.

@@ -111,9 +111,10 @@ private:
     // r397: + Emacspeak ACSS pitch range, stress, richness, voice family,
     // an event icon and a stereo place (pan 0..20, -1 none; panSpeech: the
     // speech is placed too, not only the icons).
-    static constexpr size_t formatPayload=12;
+    static constexpr size_t formatPayload=14;   // r410: + place tone, lead silence (CharonFormatting.h)
     struct Persona {double rate=1,pitch=1,volume=1;unsigned timbre=0;char colour='-';unsigned icons=0;bool icon=false;
-        double range=1,stress=1,richness=1;unsigned family=0;char event='-';int pan=-1;bool panSpeech=false;};
+        double range=1,stress=1,richness=1;unsigned family=0;char event='-';int pan=-1;bool panSpeech=false;char place='-';unsigned lead=0;};
+    size_t leadLeft_=0;   // r410: samples of silence still to send before the chunk's speech
     void ApplyAcss(double* frames,size_t count,const Persona& p) const;   // TVox frames before the DSP
     double extGain_=1;unsigned extHonoured_=0;
     // r393 external synthesizer state

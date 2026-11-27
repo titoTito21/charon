@@ -76,6 +76,7 @@ function Speak([string]$TextPl, [string]$TextEn) {
     $text = if ($IsPolish) { $TextPl } else { $TextEn }
     Write-Log $text
     if ($NoSpeech -or $DryRun) { return }
+    if (Speak-ThroughNvda "Charon: $text") { return }   # r409: once NVDA runs it says the messages itself; no second voice
     try {
         if (-not $script:Synth) {
             Add-Type -AssemblyName System.Speech -ErrorAction Stop
@@ -86,11 +87,57 @@ function Speak([string]$TextPl, [string]$TextEn) {
         $script:Synth.Speak("Charon: $text")
     } catch { }
 }
+# r409: a message handed to the running NVDA (its controller client, nvdaControllerClient.dll in NVDA's folder).
+# False when NVDA is not running or has no such library: the caller then uses a Windows voice.
+function Speak-ThroughNvda([string]$Text) {
+    if (-not (Get-Process -Name nvda -ErrorAction SilentlyContinue)) { return $false }
+    try {
+        if (-not ('Charon.NvdaClient' -as [type])) {
+            # The library comes with Charon (NV Access's nvdaControllerClient.dll, x64, LGPL 2.1), beside this script;
+            # an installed NVDA does not ship it. Looked for in NVDA's own folder as well, in case a later NVDA does.
+            $dll = $null
+            foreach ($candidate in @((Join-Path $PSScriptRoot 'nvdaControllerClient.dll'), (Join-Path $env:ProgramData 'Charon
+vdaControllerClient.dll'))) {
+                if (-not $dll -and [IntPtr]::Size -eq 8 -and (Test-Path -LiteralPath $candidate)) { $dll = Get-Item -LiteralPath $candidate }
+            }
+            foreach ($root in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+                if ($dll) { break }
+                if (-not $root -or -not (Test-Path -LiteralPath (Join-Path $root 'NVDA'))) { continue }
+                $dll = Get-ChildItem -LiteralPath (Join-Path $root 'NVDA') -Recurse -Filter 'nvdaControllerClient*.dll' -ErrorAction SilentlyContinue |
+                    Where-Object { $_.FullName -notmatch '(?i)arm64' -and (([IntPtr]::Size -eq 8) -eq ($_.FullName -notmatch '(?i)x86|32')) } | Select-Object -First 1
+                if ($dll) { break }
+            }
+            if (-not $dll) { return $false }
+            $path = $dll.FullName.Replace('\', '\\')
+            Add-Type -Namespace Charon -Name NvdaClient -MemberDefinition @"
+[DllImport("$path", CharSet = CharSet.Unicode)] public static extern int nvdaController_testIfRunning();
+[DllImport("$path", CharSet = CharSet.Unicode)] public static extern int nvdaController_speakText(string text);
+"@
+        }
+        if ([Charon.NvdaClient]::nvdaController_testIfRunning() -ne 0) { return $false }
+        return ([Charon.NvdaClient]::nvdaController_speakText($Text) -eq 0)
+    } catch { return $false }
+}
+# r409: before a download: the network may still be coming up at the first sign-in (Wi-Fi joins only then).
+# Waits up to five minutes and says so; the download itself is then tried three times as before.
+$script:NetworkSeen = $false
+function Wait-Network {
+    if ($script:NetworkSeen) { return }
+    for ($i = 0; $i -lt 30; $i++) {
+        try { Invoke-WebRequest -Uri 'http://www.msftconnecttest.com/connecttest.txt' -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop | Out-Null; $script:NetworkSeen = $true; return }
+        catch {
+            if ($i % 6 -eq 0) { Speak ('Czekam na połączenie z siecią, zostało do {0} minut.' -f (5 - [int]($i / 6))) ('Waiting for the network connection, up to {0} minutes left.' -f (5 - [int]($i / 6))) }
+            Start-Sleep -Seconds 10
+        }
+    }
+    Speak 'Nie ma połączenia z siecią; pobieranie może się nie udać.' 'There is no network connection; the download may fail.'
+}
 function Test-Sha256([string]$Path, [string]$Expected) {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash -eq $Expected.ToUpperInvariant()
 }
 function Get-Download([string]$Url, [string]$Expected, [string]$Target) {
     if ($DryRun) { Write-Log "dry run: would download $Url"; return $false }
+    Wait-Network   # r409
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.ServicePointManager]::SecurityProtocol
     for ($try = 1; $try -le 3; $try++) {
         try {
@@ -221,6 +268,157 @@ function Get-AtToken([string]$Match, [string]$Default) {
     } catch { }
     return $Default
 }
+# ---- r409: the voice Charon itself speaks with, for NVDA ------------------------------------------
+# Charon writes \charon\voice.conf (here: $Source\voice.conf): CHARON_SYNTH (rhvoice, espeak, tvox),
+# CHARON_VOICE (RHVoice's name in lower case: natan, magda, slt ...), CHARON_RATE and CHARON_PITCH
+# (5..20, 10 = normal), CHARON_PUNCTUATION (none, some, most, all).
+#   rhvoice  NVDA gets RHVoice: the engine add-on and the add-on of the voice (it holds the language
+#            data too), both from github.com/RHVoice, unpacked into NVDA's add-on folder, and RHVoice
+#            becomes NVDA's synthesizer with that voice. A voice that has no NVDA add-on (Dasha,
+#            Evgeniy and Lyubov among the English ones) is replaced by the first voice of the same
+#            language that has one; when nothing can be fetched, NVDA keeps its own synthesizer.
+#            All of it is said and logged.
+#   espeak   NVDA uses eSpeak NG, which it brings itself.
+#   other    NVDA's synthesizer is left alone.
+# Rate, pitch and punctuation go into NVDA's configuration in every case. The same files are copied
+# to NVDA's configuration for the sign-in screen (systemConfig), so it speaks there with the same voice.
+# Narrator has no RHVoice of its own kind: it could only use RHVoice's SAPI 5 voice, whose installer
+# has no documented silent mode; Narrator keeps its Windows voice (said in the log).
+# Sha256: Charon's own SHA-256 of each file as downloaded on 2026-11-23 (the engine's equals the digest
+# GitHub publishes); the addresses are those of src/synth/rhvoice/VOICES.tsv.
+$RhvoiceEngine = @{ Url = 'https://github.com/RHVoice/RHVoice/releases/download/1.18.2/RHVoice-1.18.201.nvda-addon'
+                    Sha256 = 'f15a127a15b0bdd531d0cb95072ce8750b1399652917f8d192bed05eaf3ca7b9'; Folder = 'RHVoice' }
+$RhvoiceVoices = @(      # in the order of VOICES.tsv: the first of a language is that language's stand-in
+    @{ Id = 'natan';  Name = 'Natan';  Language = 'pl'; Sha256 = 'ff914efd47e15c79f8117e094d2aa2115a99d42d2a3c62734f37c1ad38efbf16'; Url = 'https://github.com/RHVoice/natan-pol/releases/download/4.12/RHVoice-voice-Polish-Natan-4.12.1021.12.nvda-addon' },
+    @{ Id = 'slt';    Name = 'Slt';    Language = 'en'; Sha256 = 'cf1b0c975d3ae8167f9d046c9edcd785624ae82e5dd2ad4e79eee4d99c60193c'; Url = 'https://github.com/RHVoice/slt-eng/releases/download/4.1/RHVoice-voice-English-Slt-4.1.2017.12.nvda-addon' },
+    @{ Id = 'alicja'; Name = 'Alicja'; Language = 'pl'; Sha256 = '21c5a3555a3899355d0522f4995b436ab0dd5090aefddf519309d1c9d1475354'; Url = 'https://github.com/RHVoice/alicja-pol/releases/download/v4.1/RHVoice-voice-Polish-Alicja-4.1.1021.12.nvda-addon' },
+    @{ Id = 'cezary'; Name = 'Cezary'; Language = 'pl'; Sha256 = 'd095dd161ee6d48923ba2fece0da9a2eb7e347e71a4ef55ac3fc51ed1fa59273'; Url = 'https://github.com/RHVoice/cezary-pol/releases/download/4.1/RHVoice-voice-Polish-Cezary-4.1.1021.12.nvda-addon' },
+    @{ Id = 'magda';  Name = 'Magda';  Language = 'pl'; Sha256 = '40cef37a07cc4f31fa2cfb0ee02fa52538aac4c90a45d4ff0d2a169e149d1f65'; Url = 'https://github.com/RHVoice/magda-pol/releases/download/rev46/RHVoice-voice-Polish-Magda-4.46.1021.12.nvda-addon' },
+    @{ Id = 'michal'; Name = 'Michal'; Language = 'pl'; Sha256 = '61b3be8cb69a64b46065892c422b6b24942c862421e383ab978c7ccce3b04857'; Url = 'https://github.com/RHVoice/michal-pol/releases/download/4.2/RHVoice-voice-Polish-Michal-4.2.1021.12.nvda-addon' },
+    @{ Id = 'alan';   Name = 'Alan';   Language = 'en'; Sha256 = '88862641227e33836fd9bbaa9a449a01e8787e93a0451ffbb25597bd1ac562d1'; Url = 'https://github.com/RHVoice/alan-eng/releases/download/4.0/RHVoice-voice-English-Alan-4.0.2017.12.nvda-addon' },
+    @{ Id = 'bdl';    Name = 'Bdl';    Language = 'en'; Sha256 = '240169948fc675a73e0e027e61124019da735fab4ebf102bef3417b751ae2809'; Url = 'https://github.com/RHVoice/bdl-eng/releases/download/4.1/RHVoice-voice-English-Bdl-4.1.2017.12.nvda-addon' },
+    @{ Id = 'clb';    Name = 'Clb';    Language = 'en'; Sha256 = 'da547e4b55656ac2da6ba96a17e4696c03b48296918015917c27a8e49c053c6f'; Url = 'https://github.com/RHVoice/clb-eng/releases/download/4.0/RHVoice-voice-English-Clb-4.0.2017.12.nvda-addon' },
+    @{ Id = 'ksp';    Name = 'Ksp';    Language = 'en'; Sha256 = '008f993417c41c1924a7cc8fca4a6c2d885b11a431070a72b81c91e2e91c8cfb'; Url = 'https://github.com/RHVoice/ksp-eng/releases/download/4.5/RHVoice-voice-English-Ksp-4.5.2017.12.nvda-addon' }
+)
+$RhvoiceNoAddon = @{ 'dasha-eng' = 'en'; 'evgeniy-eng' = 'en'; 'lyubov' = 'en' }    # voices of Charon without an NVDA add-on
+function Read-VoiceConf {
+    $conf = @{}
+    $file = Join-Path $Source 'voice.conf'
+    if (-not (Test-Path -LiteralPath $file)) { return $conf }
+    foreach ($line in Get-Content -LiteralPath $file -Encoding UTF8) { if ($line -match '^(CHARON_[A-Z_]+)=(.*)$') { $conf[$Matches[1]] = $Matches[2].Trim() } }
+    return $conf
+}
+function Expand-NvdaAddon([string]$File, [string]$Folder, [string]$AddonsDir) {
+    # An .nvda-addon file is a zip; an add-on is its content in a folder of the add-on's name.
+    $target = Join-Path $AddonsDir $Folder
+    if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [IO.Compression.ZipFile]::ExtractToDirectory($File, $target)
+    return (Test-Path -LiteralPath (Join-Path $target 'manifest.ini'))
+}
+function Set-NvdaSpeechConfig([string]$IniPath, [string]$Synth, [string]$Voice, [int]$Rate, [int]$Pitch, [int]$SymbolLevel) {
+    # NVDA's configuration is an ini file with nested sections ([speech], [[RHVoice]]). Only the lines
+    # named here are changed; everything else is kept. A missing file gets just these lines (NVDA
+    # fills in the rest with its defaults).
+    $lines = New-Object Collections.Generic.List[string]
+    if (Test-Path -LiteralPath $IniPath) { foreach ($l in [IO.File]::ReadAllLines($IniPath)) { $lines.Add($l) } }
+    $start = -1; for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match '^\[speech\]\s*$') { $start = $i; break } }
+    if ($start -lt 0) { $lines.Add('[speech]'); $start = $lines.Count - 1 }
+    $end = $lines.Count; for ($i = $start + 1; $i -lt $lines.Count; $i++) { if ($lines[$i] -match '^\[[^\[]') { $end = $i; break } }
+    $body = New-Object Collections.Generic.List[string]
+    $skip = $false
+    for ($i = $start + 1; $i -lt $end; $i++) {
+        $l = $lines[$i]
+        if ($l -match '^\s*\[\[(.+)\]\]\s*$') { $skip = ($Synth -and $Matches[1] -eq $Synth) }      # the chosen synthesizer's own subsection is written anew
+        if ($skip) { continue }
+        if ($Synth -and $l -match '^\s*synth\s*=') { continue }
+        if ($l -match '^\s*symbolLevel\s*=') { continue }
+        $body.Add($l)
+    }
+    $head = New-Object Collections.Generic.List[string]
+    if ($Synth) { $head.Add("`tsynth = $Synth") }
+    $head.Add("`tsymbolLevel = $SymbolLevel")
+    $firstSub = -1; for ($i = 0; $i -lt $body.Count; $i++) { if ($body[$i] -match '^\s*\[\[') { $firstSub = $i; break } }
+    if ($firstSub -lt 0) { $firstSub = $body.Count }
+    $new = New-Object Collections.Generic.List[string]
+    for ($i = 0; $i -lt $firstSub; $i++) { $new.Add($body[$i]) }
+    foreach ($l in $head) { $new.Add($l) }
+    for ($i = $firstSub; $i -lt $body.Count; $i++) { $new.Add($body[$i]) }
+    if ($Synth) {
+        $new.Add("`t[[$Synth]]")
+        if ($Voice) { $new.Add("`t`tvoice = $Voice") }
+        $new.Add("`t`trate = $Rate"); $new.Add("`t`tpitch = $Pitch")
+    }
+    $all = New-Object Collections.Generic.List[string]
+    for ($i = 0; $i -le $start; $i++) { $all.Add($lines[$i]) }
+    foreach ($l in $new) { $all.Add($l) }
+    for ($i = $end; $i -lt $lines.Count; $i++) { $all.Add($lines[$i]) }
+    $dir = Split-Path -Parent $IniPath
+    if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    [IO.File]::WriteAllLines($IniPath, $all, (New-Object Text.UTF8Encoding($false)))
+}
+function Set-NvdaVoice([string]$NvdaExe) {
+    $conf = Read-VoiceConf
+    if ($conf.Count -eq 0) { Write-Log 'voice.conf: none; NVDA keeps its own voice'; return }
+    $synth = "$($conf['CHARON_SYNTH'])".ToLowerInvariant(); $voice = "$($conf['CHARON_VOICE'])".ToLowerInvariant()
+    $scale = { param($v) $n = 10; [void][int]::TryParse("$v", [ref]$n); if ($n -lt 5) { $n = 5 }; if ($n -gt 20) { $n = 20 }; [int](50 + ($n - 10) * 5) }     # 5..20 -> 25..100, 10 -> 50 (NVDA's normal)
+    $rate = & $scale $conf['CHARON_RATE']; $pitch = & $scale $conf['CHARON_PITCH']
+    $level = switch ("$($conf['CHARON_PUNCTUATION'])") { 'none' { 0 } 'most' { 200 } 'all' { 300 } default { 100 } }
+    Write-Log "voice.conf: synth '$synth', voice '$voice', rate $rate, pitch $pitch, punctuation level $level"
+    if ($DryRun) { return }
+    $userDir = Join-Path $env:APPDATA 'nvda'
+    $addons = Join-Path $userDir 'addons'
+    $nvdaSynth = ''; $nvdaVoice = ''
+    # NVDA is stopped first: it holds its add-ons' libraries open and writes its configuration when it quits.
+    $wasRunning = [bool](Get-Process -Name nvda -ErrorAction SilentlyContinue)
+    if ($wasRunning) {
+        # NVDA writes its configuration when it quits: it must be gone before the file is changed.
+        try { & $NvdaExe -q | Out-Null } catch { }
+        for ($i = 0; $i -lt 20 -and (Get-Process -Name nvda -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Seconds 1 }
+        Get-Process -Name nvda -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 1
+    }
+    if ($synth -eq 'espeak') { $nvdaSynth = 'espeak' }
+    elseif ($synth -eq 'rhvoice') {
+        $entry = $RhvoiceVoices | Where-Object { $_.Id -eq $voice } | Select-Object -First 1
+        if (-not $entry) {
+            $language = $RhvoiceNoAddon[$voice]; if (-not $language) { $language = $(if ($IsPolish) { 'pl' } else { 'en' }) }
+            $entry = $RhvoiceVoices | Where-Object { $_.Language -eq $language } | Select-Object -First 1
+            Speak "Głos RHVoice $voice nie ma wersji dla NVDA. NVDA będzie mówić głosem $($entry.Name)." "The RHVoice voice $voice has no version for NVDA. NVDA will speak with the voice $($entry.Name)."
+        }
+        $folder = Join-Path $work 'rhvoice'; New-Item -ItemType Directory -Force -Path $folder | Out-Null
+        $engineFile = Join-Path $folder 'engine.zip'; $voiceFile = Join-Path $folder 'voice.zip'
+        $ok = (Get-Download $RhvoiceEngine.Url $RhvoiceEngine.Sha256 $engineFile)
+        if ($ok) {
+            $ok = (Get-Download $entry.Url $entry.Sha256 $voiceFile)
+            if (-not $ok) {     # the chosen voice cannot be fetched: another voice of the same language
+                foreach ($other in ($RhvoiceVoices | Where-Object { $_.Language -eq $entry.Language -and $_.Id -ne $entry.Id })) {
+                    if (Get-Download $other.Url $other.Sha256 $voiceFile) { Speak "Nie udało się pobrać głosu $($entry.Name); NVDA będzie mówić głosem $($other.Name)." "The voice $($entry.Name) could not be downloaded; NVDA will speak with the voice $($other.Name)."; $entry = $other; $ok = $true; break }
+                }
+            }
+        }
+        if ($ok) {
+            try {
+                New-Item -ItemType Directory -Force -Path $addons | Out-Null
+                $voiceFolder = [IO.Path]::GetFileNameWithoutExtension(([uri]$entry.Url).Segments[-1]) -replace '-[0-9.]+$', ''      # RHVoice-voice-Polish-Natan
+                $ok = (Expand-NvdaAddon $engineFile $RhvoiceEngine.Folder $addons) -and (Expand-NvdaAddon $voiceFile $voiceFolder $addons)
+            } catch { Write-Log "unpacking the RHVoice add-ons failed: $($_.Exception.Message)"; $ok = $false }
+        }
+        if ($ok) { $nvdaSynth = 'RHVoice'; $nvdaVoice = $entry.Name; Write-Log "RHVoice for NVDA: engine $($RhvoiceEngine.Url), voice $($entry.Url)" }
+        else { Speak 'Nie udało się zainstalować RHVoice dla NVDA; NVDA będzie mówić swoim domyślnym głosem.' 'RHVoice for NVDA could not be installed; NVDA will speak with its default voice.' }
+        Write-Log 'Narrator: keeps its Windows voice (RHVoice''s SAPI 5 installer has no documented silent mode)'
+    } else { Write-Log "voice.conf: synthesizer '$synth' has no counterpart in NVDA; NVDA keeps its own" }
+    try {
+        Set-NvdaSpeechConfig (Join-Path $userDir 'nvda.ini') $nvdaSynth $nvdaVoice $rate $pitch $level
+        # The sign-in screen and UAC prompts: NVDA reads its configuration there from systemConfig in its own folder.
+        $system = Join-Path (Split-Path -Parent $NvdaExe) 'systemConfig'
+        New-Item -ItemType Directory -Force -Path $system | Out-Null
+        Copy-Item -LiteralPath (Join-Path $userDir 'nvda.ini') -Destination (Join-Path $system 'nvda.ini') -Force
+        if ($nvdaSynth -eq 'RHVoice') { Copy-Item -LiteralPath $addons -Destination $system -Recurse -Force }
+        Write-Log "NVDA configuration: synth '$nvdaSynth', voice '$nvdaVoice', rate $rate, pitch $pitch, symbolLevel $level (user and sign-in screen)"
+    } catch { Write-Log "writing NVDA's configuration failed: $($_.Exception.Message)" }
+    if ($wasRunning) { [void](Start-Nvda $NvdaExe) }
+}
 $nvdaExe = Find-Nvda
 if ('nvda' -in $Chosen -and -not $nvdaExe) {
     Speak 'Instaluję NVDA.' 'Installing NVDA.'
@@ -253,6 +451,8 @@ if ('nvda' -in $Chosen -and -not $nvdaExe) {
     if ($DryRun -or $nvdaExe) { Speak 'NVDA jest zainstalowane. Włącza je Control, Alt, N.' 'NVDA is installed. Control, Alt, N starts it.' }
     else { $failed = $true; Speak 'Nie udało się zainstalować NVDA.' 'NVDA could not be installed.' }
 }
+# r409: Charon's own voice for NVDA (voice.conf), before NVDA is started below.
+if ('nvda' -in $Chosen -and $nvdaExe) { try { Set-NvdaVoice $nvdaExe } catch { Write-Log "setting NVDA's voice failed: $($_.Exception.Message)" } }
 
 # ---- JAWS ----------------------------------------------------------------------
 $jawsExe = Get-ChildItem -Path (Join-Path $env:ProgramFiles 'Freedom Scientific\JAWS') -Filter 'jfw.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1

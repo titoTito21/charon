@@ -97,7 +97,10 @@ static const Member members[]={
     BYTE_MEMBER(progress),BOOL_MEMBER(rememberLast),BYTE_MEMBER(autoSeconds),BYTE_MEMBER(welcome),BYTE_MEMBER(pitch),
     BYTE_MEMBER(readerRate),BYTE_MEMBER(readerPitch),BYTE_MEMBER(readerVolume),BYTE_MEMBER(detail),BYTE_MEMBER(timers),
     BYTE_MEMBER(messageRate),BYTE_MEMBER(messagePitch),BYTE_MEMBER(punctuation),BYTE_MEMBER(capitals),BYTE_MEMBER(screenLanguage),
-    BYTE_MEMBER(readerFlags),BYTE_MEMBER(formatFlags),BYTE_MEMBER(readerExtra),BYTE_MEMBER(synthKey),BYTE_MEMBER(synthVoice)};
+    BYTE_MEMBER(readerFlags),BYTE_MEMBER(formatFlags),BYTE_MEMBER(readerExtra),BYTE_MEMBER(synthKey),BYTE_MEMBER(synthVoice),
+    BYTE_MEMBER(formatGroups),BYTE_MEMBER(profile),   // format D
+    {"profileItems",[](const CharSettings& s) {return int(s.profileItems);},[](CharSettings& s,int v) {s.profileItems=uint16_t(v);}},   // format E
+    BOOL_MEMBER(readerBar),BOOL_MEMBER(absoluteColours)};
 
 static void Print(const CharSettings& value) {
     printf("sequence=%llu\n",(unsigned long long)value.sequence);

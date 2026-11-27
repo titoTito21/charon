@@ -7,7 +7,8 @@ Charon. The user is blind: every profile keeps Narrator, the speech voices
 and the audio services usable, and progress is spoken with System.Speech
 (SAPI) as well as printed, so it is heard even when Narrator is silent.
 
-  Charon-WindowsProfile.ps1 -Profile Slim|ReviOS|AtlasOS|Script|None [-Yes]
+  Charon-WindowsProfile.ps1 -Profile Slim|Script|DebloatLite|NoAI|WinUtil|
+      WinUtilMinimal|ReviOS|AtlasOS|ServerDesktop|None [-Yes]
       [-Language pl|en] [-DryRun] [-Restart] [-LogPath FILE] [-NoSpeech]
       [-ScriptUrl https://...] [-ScriptArguments "..."] [-ScriptEntry NAME.ps1]
       [-PlaybookOptions "opt1 opt2"] [-PlaybookUrl https://...]
@@ -24,9 +25,26 @@ and the audio services usable, and progress is spoken with System.Speech
   ReviOS   downloads the AME CLI (TrustedUninstaller.CLI) and the ReviOS
   AtlasOS  or AtlasOS playbook and runs it. NOT fully unattended, see
            "Limits" below.
-  Script   downloads a zip or .ps1 from -ScriptUrl (https only), unpacks it to
-           %ProgramData%\Charon\profile-script and runs it. Default:
-           Win11Debloat's release zip with "-RunDefaults -Silent".
+  Script         Win11Debloat (Raphire), "-RunDefaults -Silent": its default
+                 settings and its default app removal.
+  DebloatLite    Win11Debloat, "-RunDefaultsLite -Silent": the same settings,
+                 no app is removed.
+  NoAI           Win11Debloat, only its switches that turn the AI features off
+                 (Copilot, Recall, Click to Do, AI service autostart, AI in
+                 Edge, Notepad and Paint).
+  WinUtil        Chris Titus Tech's Windows Utility, headless, "-Preset
+  WinUtilMinimal Standard" or "-Preset Minimal" (its own tweak presets).
+  ServerDesktop  Charon's own code, Windows Server only: sound on, Server
+                 Manager not opened at sign-in, no shutdown reason question.
+           r409: each of the script profiles downloads ONE pinned release
+           (see $ScriptTools: tag in the address, SHA-256 computed by Charon
+           and compared with the publisher's digest) into
+           %ProgramData%\Charon\profile-script; another file is refused, aloud.
+           By hand only: -ScriptUrl (https) with -ScriptArguments/-ScriptEntry
+           runs any other zip or .ps1; its hash is logged, not checked.
+           r409: every profile keeps Narrator AND NVDA (program, service,
+           sign-in registration, voices, audio services) and starts the reader
+           that was speaking again if the tool stopped it.
 
   -DryRun  only read-only queries; prints what would be done. Nothing is
            downloaded, written, removed or started; no log file is written.
@@ -78,7 +96,7 @@ Sources relied on (fetched 2026-11-20):
 param(
     # Note: this parameter deliberately has the name the caller asked for; inside
     # the script it hides PowerShell's own $PROFILE variable, which is not used.
-    [ValidateSet('None', 'Slim', 'ReviOS', 'AtlasOS', 'Script')][string]$Profile = 'None',
+    [ValidateSet('None', 'Slim', 'ReviOS', 'AtlasOS', 'Script', 'DebloatLite', 'NoAI', 'WinUtil', 'WinUtilMinimal', 'ServerDesktop')][string]$Profile = 'None',
     [string]$ScriptUrl = '',
     [string]$ScriptArguments = '',
     [string]$ScriptEntry = '',
@@ -269,9 +287,40 @@ $PlaybookDefaultOptions = @{
     AtlasOS = @('defender-enable', 'mitigations-default', 'auto-updates-default')
     ReviOS  = @('enable-defender', 'enable-hibernate', 'remove-onedrive', 'remove-teams', 'remove-appx-devhome', 'remove-appx-yourphone')
 }
-$DefaultScriptUrl = 'https://github.com/Raphire/Win11Debloat/releases/latest/download/Win11Debloat.zip'
-$DefaultScriptArguments = '-RunDefaults -Silent'
-$DefaultScriptEntry = 'Win11Debloat.ps1'
+# ---- Script profiles (r409) ---------------------------------------------------
+# One pinned release per tool. Sha256 is Charon's own SHA-256 of the file downloaded
+# on 2026-11-23; both equal the digest GitHub publishes for the release asset, and
+# Win11Debloat's equals the SHA256SUMS file of its release. A new release needs a
+# new address AND a new hash here; a file with another hash is refused.
+#   Win11Debloat 2026.10.30: param() of Win11Debloat.ps1 has every switch used below.
+#   WinUtil 26.11.13: param([string]$Config, [ValidateSet("Standard","Minimal","Advanced","")]
+#     [string]$Preset, [switch]$Offline); "Headless runs never build a window".
+$ScriptTools = @{
+    Win11Debloat = @{ Url = 'https://github.com/Raphire/Win11Debloat/releases/download/2026.10.30/Win11Debloat.zip'
+                      Sha256 = '6830bf501d2740c3317133ac0ecdc2a3ab80ed7f6c83e7f0f20dc66afbf758a7'; Entry = 'Win11Debloat.ps1' }
+    WinUtil      = @{ Url = 'https://github.com/ChrisTitusTech/winutil/releases/download/26.11.13/winutil.ps1'
+                      Sha256 = 'e9d05a59d564b4fbb61fcfa1a594504a0f81e8d27c787119e72a99b57ddbe66d'; Entry = 'winutil.ps1' }
+}
+# Never passed, whatever the profile: -ForceRemoveEdge (the only browser at the first
+# sign-in), -DisableDriverUpdates (drivers come from Windows Update),
+# -DisableNotifications (screen readers announce through them), WinUtil's Advanced
+# preset (it changes the Start menu and the context menu; not tried with a reader).
+$ScriptPresets = @{
+    Script         = @{ Tool = 'Win11Debloat'; Arguments = '-RunDefaults -Silent' }
+    DebloatLite    = @{ Tool = 'Win11Debloat'; Arguments = '-RunDefaultsLite -Silent' }
+    NoAI           = @{ Tool = 'Win11Debloat'; Arguments = '-Silent -DisableCopilot -DisableRecall -DisableClickToDo -DisableAISvcAutoStart -DisableEdgeAI -DisableNotepadAI -DisablePaintAI' }
+    # WinUtil's Standard preset, as a selection file (-Config, a JSON list of its entry names) WITHOUT
+    # WPFTweaksDiskCleanup: that entry runs "cleanmgr.exe /d C: /VERYLOWDISK", which ends with a "Disk
+    # Space Notification" window opened behind the others and waits there for a click (measured r409:
+    # the headless run stood still until OK was pressed), and WITHOUT WPFTweaksDisableExplorerAutoDiscovery:
+    # on a freshly installed Windows it fails ("Cannot find path HKCU:\...\Shell\Bags": the key does not
+    # exist before the user has opened a folder) and makes WinUtil end with code 1 (measured r409). The
+    # other ten entries are the preset's (config/preset.json of 26.11.13).
+    WinUtil        = @{ Tool = 'WinUtil'; Arguments = '-Config "{0}"'; Config = @('WPFTweaksActivity', 'WPFTweaksConsumerFeatures',
+                        'WPFTweaksWPBT', 'WPFTweaksLocation', 'WPFTweaksServices', 'WPFTweaksTelemetry',
+                        'WPFTweaksDeliveryOptimization', 'WPFTweaksDeleteTempFiles', 'WPFTweaksEndTaskOnTaskbar', 'WPFTweaksRestorePoint') }
+    WinUtilMinimal = @{ Tool = 'WinUtil'; Arguments = '-Preset Minimal' }
+}
 
 # ---- Narrator and speech: what is watched and put back -----------------------
 #   Force   the value is always set to this (the Narrator hotkey Win+Ctrl+Enter).
@@ -293,6 +342,14 @@ $WatchedValues = @(
     @{ Id = 'SpeechModelUpdate'; Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Speech'; Name = 'AllowSpeechModelUpdate'; Kind = 'DWord'; Revert = $true }
 )
 $AudioServices = @('AudioEndpointBuilder', 'Audiosrv')
+# r409: NVDA is guarded like Narrator. What is watched: the program (nvda.exe and its
+# eSpeak NG data, the synthesizer that needs no Windows voice), the service that lets
+# it speak on the sign-in screen and at UAC prompts ("nvda", nvda_service.exe), its key
+# under Accessibility\ATs (the name Windows starts it by; the tokens on the two
+# Configuration lists are in $WatchedValues above) and the user's configuration file.
+# A service of this list is put back to the start type it had before the profile.
+$ReaderServices = @('nvda')
+$AtsKey = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Accessibility\ATs'
 
 # =============================================================================
 # Output: text, log, speech
@@ -332,7 +389,45 @@ function Initialize-Speech {
         Write-SpeechNote ('speech: unavailable ({0}); continuing without speech' -f $_.Exception.Message)
     }
 }
+function Speak-ThroughNvda([string]$Text) {
+    # r409: when NVDA is running, the message is handed to NVDA (its controller client,
+    # nvdaControllerClient.dll in NVDA's own folder) and no Windows voice is used: one voice,
+    # the user's reader. Looked up at every message, because NVDA may start or stop meanwhile.
+    if ($NoSpeech -or -not (Get-Process -Name nvda -ErrorAction SilentlyContinue)) { return $false }
+    try {
+        if (-not ('Charon.NvdaClient' -as [type])) {
+            if ($script:NvdaClientMissing) { return $false }
+            # The library comes with Charon (NV Access's nvdaControllerClient.dll, x64, LGPL 2.1), beside this script;
+            # an installed NVDA does not ship it. Looked for in NVDA's own folder as well, in case a later NVDA does.
+            $dll = $null
+            foreach ($candidate in @((Join-Path $PSScriptRoot 'nvdaControllerClient.dll'), (Join-Path $env:ProgramData 'Charon
+vdaControllerClient.dll'))) {
+                if (-not $dll -and [IntPtr]::Size -eq 8 -and (Test-Path -LiteralPath $candidate)) { $dll = Get-Item -LiteralPath $candidate }
+            }
+            foreach ($root in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+                if ($dll) { break }
+                if (-not $root) { continue }
+                $dir = Join-Path $root 'NVDA'
+                if (-not (Test-Path -LiteralPath $dir)) { continue }
+                $dll = Get-ChildItem -LiteralPath $dir -Recurse -Filter 'nvdaControllerClient*.dll' -ErrorAction SilentlyContinue |
+                    Where-Object { $_.FullName -notmatch '(?i)arm64' -and (([IntPtr]::Size -eq 8) -eq ($_.FullName -notmatch '(?i)x86|32')) } | Select-Object -First 1
+                if ($dll) { break }
+            }
+            if (-not $dll) { $script:NvdaClientMissing = $true; Write-SpeechNote 'speech: NVDA runs but has no controller client; using a Windows voice'; return $false }
+            $path = $dll.FullName.Replace('\', '\\')
+            Add-Type -Namespace Charon -Name NvdaClient -MemberDefinition @"
+[DllImport("$path", CharSet = CharSet.Unicode)] public static extern int nvdaController_testIfRunning();
+[DllImport("$path", CharSet = CharSet.Unicode)] public static extern int nvdaController_speakText(string text);
+"@
+        }
+        if ([Charon.NvdaClient]::nvdaController_testIfRunning() -ne 0) { return $false }
+        $spoken = ([Charon.NvdaClient]::nvdaController_speakText($Text) -eq 0)
+        if ($spoken -and -not $script:NvdaSpeechLogged) { $script:NvdaSpeechLogged = $true; Write-SpeechNote 'speech: messages are spoken through NVDA (controller client); no Windows voice is used while NVDA runs' }
+        return $spoken
+    } catch { $script:NvdaClientMissing = $true; Write-SpeechNote ('speech: NVDA controller client failed ({0}); using a Windows voice' -f $_.Exception.Message); return $false }
+}
 function Speak([string]$TextPl, [string]$TextEn) {
+    if (Speak-ThroughNvda $(if ($UsePolish) { $TextPl } else { $TextEn })) { return }
     if (-not $script:Synth) { return }
     try { if ($script:SpeakPolish) { $script:Synth.Speak($TextPl) } else { $script:Synth.Speak($TextEn) } }
     catch { Write-SpeechNote ('speech: failed ({0})' -f $_.Exception.Message) }     # never fail because of speech
@@ -342,7 +437,12 @@ function Fail([string]$TextPl, [string]$TextEn) { if ($UsePolish) { throw $TextP
 function ProfileLabel([bool]$Polish) {
     switch ($ProfileName) {
         'Slim' { if ($Polish) { return 'odchudzony' } else { return 'slim' } }
-        'Script' { if ($Polish) { return 'skrypt' } else { return 'script' } }
+        'Script' { return 'Win11Debloat' }
+        'DebloatLite' { if ($Polish) { return 'Win11Debloat, tylko prywatność' } else { return 'Win11Debloat, privacy only' } }
+        'NoAI' { if ($Polish) { return 'Win11Debloat, bez AI' } else { return 'Win11Debloat, AI off' } }
+        'WinUtil' { if ($Polish) { return 'WinUtil, zestaw Standard' } else { return 'WinUtil, Standard preset' } }
+        'WinUtilMinimal' { if ($Polish) { return 'WinUtil, zestaw Minimal' } else { return 'WinUtil, Minimal preset' } }
+        'ServerDesktop' { if ($Polish) { return 'Windows Server jako stacja robocza' } else { return 'Windows Server as a workstation' } }
         default { return $ProfileName }
     }
 }
@@ -411,7 +511,40 @@ function Get-SpeechState {
         try { $s = Get-Service -Name $name -ErrorAction Stop; $text = '{0}/{1}' -f $s.StartType, $s.Status } catch { }
         $state["Service_$name"] = $text
     }
+    # r409: NVDA.
+    $nvda = Find-Nvda
+    $state['NvdaExe'] = "$nvda"
+    $state['NvdaRunning'] = [bool](Get-Process -Name nvda -ErrorAction SilentlyContinue)
+    $state['NvdaEspeak'] = $false
+    if ($nvda) { $state['NvdaEspeak'] = [bool](Test-Path -LiteralPath (Join-Path (Split-Path -Parent $nvda) 'synthDrivers\espeak-ng-data')) }
+    $state['NvdaAt'] = Get-NvdaAtName
+    $state['NvdaConfig'] = [bool](Test-Path -LiteralPath (Join-Path $env:APPDATA 'nvda\nvda.ini'))
+    foreach ($name in $ReaderServices) {
+        $text = 'missing'
+        try { $s = Get-Service -Name $name -ErrorAction Stop; $text = '{0}/{1}' -f $s.StartType, $s.Status } catch { }
+        $state["Service_$name"] = $text
+    }
     return $state
+}
+function Find-Nvda {
+    # As in Charon-Readers.ps1: NVDA 2026 is in Program Files, older ones in Program Files (x86).
+    foreach ($root in @($env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:ProgramW6432)) {
+        if (-not $root) { continue }
+        $exe = Join-Path $root 'NVDA\nvda.exe'
+        if (Test-Path -LiteralPath $exe) { return $exe }
+    }
+    foreach ($key in 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\NVDA', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\NVDA') {
+        $dir = Get-RegValue $key 'UninstallDirectory'
+        if ($dir -and (Test-Path -LiteralPath (Join-Path $dir 'nvda.exe'))) { return (Join-Path $dir 'nvda.exe') }
+    }
+    return ''
+}
+function Get-NvdaAtName {
+    try {
+        $key = Get-ChildItem -LiteralPath $AtsKey -ErrorAction Stop | Where-Object { $_.PSChildName -match '(?i)nvda' } | Select-Object -First 1
+        if ($key) { return $key.PSChildName }
+    } catch { }
+    return ''
 }
 function Show-SpeechState($State, [string]$Title) {
     Write-Host $Title
@@ -457,6 +590,44 @@ function Protect-Speech($Before) {
         if ("$($service.StartType)" -ne 'Automatic') { Invoke-Change ('set service {0} to Automatic' -f $svc) { Set-Service -Name $svc -StartupType Automatic -ErrorAction Stop } }
         if ("$($service.Status)" -ne 'Running') { Invoke-Change ('start service {0}' -f $svc) { Start-Service -Name $svc -ErrorAction Stop } }
     }
+    # r409: a reader's own service keeps the start type it had before the profile.
+    foreach ($name in $ReaderServices) {
+        if (-not $Before) { continue }
+        $was = "$($Before."Service_$name")"
+        if (-not $was -or $was -eq 'missing') { continue }
+        $service = $null
+        try { $service = Get-Service -Name $name -ErrorAction Stop } catch { continue }     # gone: Compare-SpeechState says so
+        $wasType = $was.Split('/')[0]; $svc = $name
+        if ($wasType -in 'Automatic', 'Manual' -and "$($service.StartType)" -ne $wasType) {
+            Invoke-Change ('set service {0} back to {1}' -f $svc, $wasType) { Set-Service -Name $svc -StartupType $wasType -ErrorAction Stop }
+        }
+        if ($was -like '*/Running' -and "$($service.Status)" -ne 'Running') { Invoke-Change ('start service {0}' -f $svc) { Start-Service -Name $svc -ErrorAction Stop } }
+    }
+}
+function Restore-Readers($Before) {
+    # r409: the reader that was speaking before the profile speaks after it. A tool that
+    # restarts Explorer or stops processes may have taken NVDA or Narrator down.
+    if (-not $Before) { return }
+    if ($Before.NvdaRunning -and -not (Get-Process -Name nvda -ErrorAction SilentlyContinue)) {
+        $exe = Find-Nvda
+        if ($exe) {
+            Invoke-Change 'start NVDA again (it was running before the profile)' {
+                # Not elevated, the way Windows starts it after sign-in (as Charon-Readers.ps1 does).
+                $task = 'CharonStartNVDA'
+                try {
+                    $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/c start "" "{0}"' -f $exe)
+                    $principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
+                    Register-ScheduledTask -TaskName $task -Action $action -Principal $principal -Force | Out-Null
+                    Start-ScheduledTask -TaskName $task
+                    for ($i = 0; $i -lt 20 -and -not (Get-Process -Name nvda -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Seconds 1 }
+                } finally { try { Unregister-ScheduledTask -TaskName $task -Confirm:$false -ErrorAction Stop } catch { } }
+                if (-not (Get-Process -Name nvda -ErrorAction SilentlyContinue)) { Start-Process -FilePath $exe }
+            }
+        }
+    }
+    if ($Before.NarratorRunning -and -not (Get-Process -Name Narrator -ErrorAction SilentlyContinue)) {
+        Invoke-Change 'start Narrator again (it was running before the profile)' { Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\Narrator.exe') }
+    }
 }
 function Compare-SpeechState($Before, $After) {
     # Says aloud when something speech needs has gone. Nothing is repaired here
@@ -466,6 +637,30 @@ function Compare-SpeechState($Before, $After) {
     if ($Before.NarratorQuickStart -and -not $After.NarratorQuickStart) { $lost += 'Microsoft.Windows.NarratorQuickStart' }
     if ([int]$After.OneCoreVoices -lt [int]$Before.OneCoreVoices) { $lost += ('OneCore voices {0} -> {1}' -f $Before.OneCoreVoices, $After.OneCoreVoices) }
     if ([int]$After.SapiVoices -lt [int]$Before.SapiVoices) { $lost += ('SAPI voices {0} -> {1}' -f $Before.SapiVoices, $After.SapiVoices) }
+    # r409: NVDA. Nothing here can be repaired by this script except what Protect-Speech and
+    # Restore-Readers already did; a missing part is said, with the way to put it back.
+    $nvdaLost = @()
+    if ("$($Before.NvdaExe)" -and -not "$($After.NvdaExe)") { $nvdaLost += 'nvda.exe' }
+    if ($Before.NvdaEspeak -and -not $After.NvdaEspeak) { $nvdaLost += 'NVDA eSpeak NG data' }
+    if ("$($Before.NvdaAt)" -and -not "$($After.NvdaAt)") { $nvdaLost += 'NVDA sign-in registration (Accessibility\ATs)' }
+    if ($Before.NvdaConfig -and -not $After.NvdaConfig) { $nvdaLost += 'NVDA configuration (nvda.ini)' }
+    foreach ($name in $ReaderServices) {
+        $was = "$($Before."Service_$name")"; $now = "$($After."Service_$name")"
+        if ($was -and $was -ne 'missing' -and ($now -eq 'missing' -or $now -like 'Disabled/*')) { $nvdaLost += ('service {0}: {1} -> {2}' -f $name, $was, $now) }
+    }
+    if (-not $DryRun) {
+        foreach ($name in $AudioServices) {
+            $now = "$($After."Service_$name")"
+            if ($now -notlike 'Automatic/Running') { $lost += ('audio service {0}: {1}' -f $name, $now) }
+        }
+    }
+    if ($Before.NvdaRunning -and -not $After.NvdaRunning) { $nvdaLost += 'NVDA is not running' }
+    if ($Before.NarratorRunning -and -not $After.NarratorRunning) { $lost += 'Narrator is not running' }
+    if ($nvdaLost.Count) {
+        $lost += $nvdaLost
+        Note 'NVDA można naprawić, instalując je ponownie: %ProgramData%\Charon\Charon-Readers.ps1 -Readers nvda -First nvda -Yes.' `
+            'NVDA can be repaired by installing it again: %ProgramData%\Charon\Charon-Readers.ps1 -Readers nvda -First nvda -Yes.'
+    }
     if ($lost.Count) {
         $script:Failures++
         Announce ('Uwaga: po profilu brakuje części mowy: {0}. Zajrzyj do dziennika {1}.' -f ($lost -join '; '), $LogPath) `
@@ -567,10 +762,17 @@ function New-WorkFolder([string]$Name) {
 }
 function Wait-Internet {
     Assert-NotDryRun
-    # At first logon the network may still be coming up: wait up to two minutes.
-    for ($i = 0; $i -lt 12; $i++) {
-        try { Invoke-WebRequest -Uri 'https://github.com' -Method Head -UseBasicParsing -TimeoutSec 15 -ErrorAction Stop | Out-Null; return }
-        catch { Start-Sleep -Seconds 10 }
+    # At first logon the network may still be coming up (Wi-Fi joins after sign-in: Charon-Network.ps1).
+    # r409: up to five minutes, and it is said: once at the start of the wait and then every minute.
+    for ($i = 0; $i -lt 30; $i++) {
+        try { Invoke-WebRequest -Uri 'https://github.com' -Method Head -UseBasicParsing -TimeoutSec 15 -ErrorAction Stop | Out-Null; if ($i) { Write-Log ('network up after {0} tries' -f ($i + 1)) }; return }
+        catch {
+            if ($i % 6 -eq 0) {
+                Announce ('Charon: czekam na połączenie z internetem, profil musi pobrać pliki. Zostało do {0} minut.' -f (5 - [int]($i / 6))) `
+                    ('Charon: waiting for the internet connection; the profile has to download files. Up to {0} minutes left.' -f (5 - [int]($i / 6)))
+            }
+            Start-Sleep -Seconds 10
+        }
     }
     Fail 'Brak połączenia z internetem; profil wymaga pobrania plików. Nic nie zmieniono.' 'No internet connection; this profile has to download files. Nothing was changed.'
 }
@@ -604,7 +806,7 @@ function Test-SlimTarget([string]$Name) {
 }
 function Invoke-Slim($Before) {
     $script:StepTotal = 9
-    Step 'Zabezpieczam Narratora i dźwięk.' 'Securing Narrator and sound.'
+    Step 'Zabezpieczam czytniki ekranu i dźwięk.' 'Securing the screen readers and sound.'
     Protect-Speech $Before
 
     Step 'Usuwam fabryczne aplikacje z obrazu systemu.' 'Removing factory apps from the system image.'
@@ -663,8 +865,9 @@ function Invoke-Slim($Before) {
     Step 'Wyłączam reklamy i polecane aplikacje.' 'Turning advertising and suggested apps off.'
     foreach ($r in $SlimRegistry) { Set-RegValue $r.Path $r.Name $r.Value 'DWord' -Optional:([bool]$r.Optional) }
 
-    Step 'Przywracam ustawienia Narratora.' 'Restoring the Narrator settings.'
+    Step 'Przywracam ustawienia czytników ekranu.' 'Restoring the screen reader settings.'
     Protect-Speech $Before
+    Restore-Readers $Before
 
     Step 'Sprawdzam mowę i dźwięk.' 'Checking speech and sound.'
     $after = Get-SpeechState
@@ -772,7 +975,7 @@ function Invoke-Playbook($Before) {
     if ($PlaybookUrl) { Assert-Https $PlaybookUrl; $pbUrl = $PlaybookUrl; $pbHash = '' }     # a caller's own URL has no pinned hash
     $options = Get-PlaybookOptionList
 
-    Step 'Zabezpieczam Narratora i dźwięk.' 'Securing Narrator and sound.'
+    Step 'Zabezpieczam czytniki ekranu i dźwięk.' 'Securing the screen readers and sound.'
     Protect-Speech $Before
 
     Step 'Sprawdzam wymagania.' 'Checking the requirements.'
@@ -780,8 +983,11 @@ function Invoke-Playbook($Before) {
     if (-not $PlaybookUrl -and ($PlaybookBuilds[$ProfileName] -notcontains $build)) {
         $script:ExitCode = 2
         $supported = $PlaybookBuilds[$ProfileName] -join ', '
-        Announce "Charon: profil $ProfileName nie obsługuje tej wersji Windows (kompilacja $build; obsługiwane: $supported). Nic nie zmieniono. Windows zostaje taki, jaki jest." `
-            "Charon: the $ProfileName profile does not support this Windows version (build $build; supported: $supported). Nothing was changed. Windows stays as it is."
+        # r409: said in words a person knows, not only build numbers. Nothing was downloaded yet.
+        $namesPl = 'Windows 11 24H2 i 25H2'; $namesEn = 'Windows 11 24H2 and 25H2'
+        if ($ProfileName -eq 'ReviOS') { $namesPl = 'Windows 10 21H2 i 22H2 oraz Windows 11 23H2, 24H2 i 25H2'; $namesEn = 'Windows 10 21H2 and 22H2, and Windows 11 23H2, 24H2 and 25H2' }
+        Announce "Charon: profil $ProfileName działa tylko na: $namesPl. Ten Windows ma kompilację $build (obsługiwane: $supported). Nic nie pobrano i nic nie zmieniono. Windows zostaje taki, jaki jest." `
+            "Charon: the $ProfileName profile works only on: $namesEn. This Windows is build $build (supported: $supported). Nothing was downloaded and nothing was changed. Windows stays as it is."
         return
     }
     if ($DryRun) {
@@ -867,8 +1073,9 @@ function Invoke-Playbook($Before) {
     $code = Start-Tool $cli.FullName $arguments $cli.DirectoryName
     if ($code -ne 0) { $script:Failures++; Announce "Narzędzie AME zakończyło pracę z kodem $code. Szczegóły są w jego własnym oknie i dzienniku." "The AME tool ended with code $code. Details are in its own window and log." }
 
-    Step 'Przywracam ustawienia Narratora.' 'Restoring the Narrator settings.'
+    Step 'Przywracam ustawienia czytników ekranu.' 'Restoring the screen reader settings.'
     Protect-Speech $Before
+    Restore-Readers $Before
     if ($extra.DefenderChanged) { Restore-SecurityToggles $extra.Maps $extra.Samples }
     $after = Get-SpeechState
     Show-SpeechState $after 'after:'
@@ -886,25 +1093,32 @@ function Invoke-ScriptProfile($Before) {
     $script:StepTotal = 6
     $url = $ScriptUrl; $arguments = $ScriptArguments; $entry = $ScriptEntry
     $isDefault = -not $url
+    $expected = ''
     if ($isDefault) {
-        $url = $DefaultScriptUrl
-        # Win11Debloat's documented unattended arguments are the default only for
-        # Win11Debloat; another script gets exactly what -ScriptArguments says.
-        if (-not $ScriptArgumentsGiven) { $arguments = $DefaultScriptArguments }
-        if (-not $entry) { $entry = $DefaultScriptEntry }
+        # r409: the profile names its tool and arguments ($ScriptPresets); the tool's one
+        # pinned release and its hash are in $ScriptTools. -ScriptArguments (by hand)
+        # replaces the arguments; a caller's own -ScriptUrl has no pinned hash.
+        $preset = $ScriptPresets[$ProfileName]
+        if (-not $preset) { $script:ExitCode = 2; Fail "Profil $ProfileName nie ma przypisanego skryptu. Nic nie zmieniono." "The $ProfileName profile has no script assigned. Nothing was changed." }
+        $tool = $ScriptTools[$preset.Tool]
+        $url = $tool.Url; $expected = $tool.Sha256
+        if (-not $ScriptArgumentsGiven) { $arguments = $preset.Arguments }
+        if (-not $entry) { $entry = $tool.Entry }
+        $selection = $preset.Config     # a selection file written beside the script (see $ScriptPresets)
+        Write-Log ('script profile {0}: tool {1}, {2}, arguments: {3}{4}' -f $ProfileName, $preset.Tool, $url, $arguments, $(if ($selection) { '; selection: ' + ($selection -join ', ') } else { '' }))
     }
     Assert-Https $url
 
-    Step 'Zabezpieczam Narratora i dźwięk.' 'Securing Narrator and sound.'
+    Step 'Zabezpieczam czytniki ekranu i dźwięk.' 'Securing the screen readers and sound.'
     Protect-Speech $Before
     $target = Join-Path $CharonData 'profile-script'
     if ($DryRun) {
         Write-Host ('[dry-run] would: download {0}' -f $url)
-        if ($isDefault) { Write-Host '[dry-run] would: compare its SHA-256 with the SHA256SUMS file of the same release (refuse on mismatch)' }
+        if ($isDefault) { Write-Host ('[dry-run] would: compare its SHA-256 with {0} (refuse on mismatch)' -f $expected) }
         else { Write-Host '[dry-run] would: log its SHA-256 (no published hash for a caller''s own URL)' }
         Write-Host ('[dry-run] would: empty and refill {0}' -f $target)
         Write-Host ('[dry-run] would: run powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{0}\{1}" {2}' -f $target, $(if ($entry) { $entry } else { '<the only .ps1>' }), $arguments)
-        Write-Host '[dry-run] would: restore the Narrator settings'
+        Write-Host '[dry-run] would: restore the screen reader settings, start the reader again if the script stopped it'
         return
     }
 
@@ -914,16 +1128,8 @@ function Invoke-ScriptProfile($Before) {
     $leaf = ([uri]$url).Segments[-1]
     $isPs1 = $leaf -like '*.ps1'
     $file = Join-Path $work $(if ($isPs1) { 'script.ps1' } else { 'script.zip' })
-    $expected = ''
-    if ($isDefault) {
-        # Win11Debloat publishes SHA256SUMS beside the zip. If it cannot be read the
-        # hash is only logged, and the log says so.
-        try {
-            $sums = Join-Path $work 'SHA256SUMS'
-            Invoke-WebRequest -Uri ($url.Substring(0, $url.LastIndexOf('/') + 1) + 'SHA256SUMS') -OutFile $sums -UseBasicParsing -ErrorAction Stop
-            foreach ($line in (Get-Content -LiteralPath $sums)) { if ($line -match '^\s*([0-9a-fA-F]{64})\s+\*?(.+?)\s*$' -and $Matches[2] -eq $leaf) { $expected = $Matches[1] } }
-        } catch { Write-Log ('SHA256SUMS not available: {0}' -f $_.Exception.Message) }
-    }
+    # r409: a pinned file whose SHA-256 differs is refused inside Get-Download (said and logged);
+    # nothing has been changed at that point.
     if ($isPs1) { [void](Get-Download $url $file $expected @()) } else { [void](Get-Download $url $file $expected @('zip')) }
 
     Step 'Rozpakowuję skrypt.' 'Unpacking the script.'
@@ -943,15 +1149,75 @@ function Invoke-ScriptProfile($Before) {
     Save-Snapshot $Before @{ Profile = $ProfileName; DefenderChanged = $false }
 
     Step 'Uruchamiam skrypt.' 'Running the script.'
+    if ($isDefault -and $selection -and -not $ScriptArgumentsGiven) {
+        $selectionFile = Join-Path $entryFile.DirectoryName 'charon-selection.json'
+        [IO.File]::WriteAllText($selectionFile, (ConvertTo-Json @($selection)), (New-Object Text.UTF8Encoding($false)))
+        $arguments = $arguments -f $selectionFile
+    }
     $commandLine = '-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $entryFile.FullName
     if ($arguments) { $commandLine = $commandLine + ' ' + $arguments }
     $code = Start-Tool (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') $commandLine $entryFile.DirectoryName
     if ($code -ne 0) { $script:Failures++; Announce "Skrypt zakończył pracę z kodem $code." "The script ended with code $code." }
 
-    Step 'Przywracam ustawienia Narratora.' 'Restoring the Narrator settings.'
+    Step 'Przywracam ustawienia czytników ekranu.' 'Restoring the screen reader settings.'
     Protect-Speech $Before
+    Restore-Readers $Before
 
     Step 'Sprawdzam mowę i dźwięk.' 'Checking speech and sound.'
+    $after = Get-SpeechState
+    Show-SpeechState $after 'after:'
+    Compare-SpeechState $Before $after
+}
+
+# =============================================================================
+# Profile: ServerDesktop (r409, Charon's own code; Windows Server only)
+# =============================================================================
+# A Windows Server installed "with Desktop Experience" is a desktop a blind person
+# can use, except for three defaults, each changed here the way Microsoft documents:
+#  - sound: on older Windows Server the Windows Audio services do not start by
+#    themselves, so nothing speaks; Protect-Speech sets Audiosrv and
+#    AudioEndpointBuilder to Automatic and starts them. (Measured r409: on Windows
+#    Server 2025, build 26100.32230, Standard with Desktop Experience, both are
+#    already Automatic and running after installation, so there this is a check.)
+#  - Server Manager opens at every sign-in and takes the focus: the policy "Do not
+#    display Server Manager automatically at logon" (ServerManager.admx), value
+#    DoNotOpenAtLogon under HKLM\SOFTWARE\Policies\Microsoft\Windows\Server\ServerManager.
+#  - shutting down asks for a reason in a dialogue of its own: the policy "Display
+#    Shutdown Event Tracker" disabled (Reliability), values ShutdownReasonOn = 0 and
+#    ShutdownReasonUI = 0 under HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Reliability.
+# Left alone on purpose: Ctrl+Alt+Delete at sign-in (a security setting), roles and
+# features (Wi-Fi needs the Wireless-Networking feature and a restart: not installed
+# by Charon), Windows Update, Defender, the firewall.
+$ServerDesktopRegistry = @(
+    @{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Server\ServerManager'; Name = 'DoNotOpenAtLogon'; Value = 1 },
+    @{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Reliability'; Name = 'ShutdownReasonOn'; Value = 0 },
+    @{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Reliability'; Name = 'ShutdownReasonUI'; Value = 0 }
+)
+function Test-WindowsServer {
+    # InstallationType: "Client" on Windows 10/11, "Server" (or "Server Core") on Windows Server.
+    return ("$(Get-RegValue 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' 'InstallationType')" -like 'Server*')
+}
+function Invoke-ServerDesktop($Before) {
+    $script:StepTotal = 4
+    if (-not (Test-WindowsServer)) {
+        $script:ExitCode = 2
+        Announce 'Charon: profil stacji roboczej jest tylko dla Windows Server, a to nie jest Windows Server. Nic nie zmieniono.' `
+            'Charon: the workstation profile is for Windows Server only, and this is not Windows Server. Nothing was changed.'
+        return
+    }
+    Step 'Włączam dźwięk i zabezpieczam czytniki ekranu.' 'Turning sound on and securing the screen readers.'
+    Protect-Speech $Before
+
+    Step 'Wyłączam otwieranie Menedżera serwera przy logowaniu.' 'Turning off Server Manager at sign-in.'
+    Set-RegValue $ServerDesktopRegistry[0].Path $ServerDesktopRegistry[0].Name $ServerDesktopRegistry[0].Value
+
+    Step 'Wyłączam pytanie o powód zamknięcia systemu.' 'Turning off the shutdown reason question.'
+    Set-RegValue $ServerDesktopRegistry[1].Path $ServerDesktopRegistry[1].Name $ServerDesktopRegistry[1].Value
+    Set-RegValue $ServerDesktopRegistry[2].Path $ServerDesktopRegistry[2].Name $ServerDesktopRegistry[2].Value
+
+    Step 'Sprawdzam mowę i dźwięk.' 'Checking speech and sound.'
+    Protect-Speech $Before
+    Restore-Readers $Before
     $after = Get-SpeechState
     Show-SpeechState $after 'after:'
     Compare-SpeechState $Before $after
@@ -1011,6 +1277,11 @@ function Invoke-Main {
         'ReviOS' { Invoke-Playbook $before }
         'AtlasOS' { Invoke-Playbook $before }
         'Script' { Invoke-ScriptProfile $before }
+        'DebloatLite' { Invoke-ScriptProfile $before }
+        'NoAI' { Invoke-ScriptProfile $before }
+        'WinUtil' { Invoke-ScriptProfile $before }
+        'WinUtilMinimal' { Invoke-ScriptProfile $before }
+        'ServerDesktop' { Invoke-ServerDesktop $before }
     }
     if ($script:ExitCode -ne 0) { return }
     if ($DryRun) { Write-Host '[dry-run] End of the plan. Nothing was changed.'; return }

@@ -1,0 +1,9 @@
+# r409: Windows, express mode, the profile "Win11Debloat, its defaults" (-Profile Script).
+lang=en
+flow=windows
+mode=quick
+keys=ENTER ENTER "test" ENTER "test" ENTER
+keys=ENTER DOWN DOWN ENTER
+put diskmode=whole
+arg partition=3
+arg esp=0

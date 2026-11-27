@@ -18,6 +18,15 @@
 #include <stddef.h>
 #include <stdint.h>
 
+// ---- the clock (r409) ----------------------------------------------------------
+// A multi-system plan keeps the hardware clock in universal time and writes
+// \EFI\HAK\clock.txt (src/efi/CharonClockZone.h). Both backends pass what the
+// clock says through this function, so DATE, TIME, file times and programs
+// see local time. Without the file (or with rtc=local) nothing changes. The
+// file is read once per run of CharonDOS.
+struct PlatTime;
+void charon_clock_local(PlatTime* time);
+
 // ---- shell entry -------------------------------------------------------------
 // Runs "CHARON ..." (args is the text after the word CHARON). Returns an
 // errorlevel (0 ok). polish selects the message language.

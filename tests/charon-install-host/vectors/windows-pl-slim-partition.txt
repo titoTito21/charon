@@ -1,0 +1,9 @@
+# Windows, Charon speaks Polish, Polish Windows, the slim profile, one partition replaced.
+lang=pl
+flow=windows
+mode=quick
+keys=HOME ENTER ENTER "test" ENTER "test" ENTER
+keys=ENTER DOWN ENTER
+put diskmode=partition
+arg partition=4
+arg esp=1

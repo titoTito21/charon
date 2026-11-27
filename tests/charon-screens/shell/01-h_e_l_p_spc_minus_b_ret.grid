@@ -1,0 +1,33 @@
+CHARON grid 31 100 30 37 1 Program
+G00 14*8f,51*87|65*0000|alias         - Displays, creates, or deletes UEFI Shell aliases.
+G01 14*8f,62*87|76*0000|attrib        - Displays or modifies the attributes of files or directories.
+G02 14*8f,63*87|77*0000|bcfg          - Manages the boot and driver options that are stored in NVRAM.
+G03 14*8f,44*87|58*0000|cd            - Displays or changes the current directory.
+G04 14*8f,85*87|99*0000|cls           - Clears the console output and optionally changes the background and foreground colo
+G05 2*87|2*0000|r.
+G06 14*8f,62*87|76*0000|comp          - Compares the contents of two files on a byte-for-byte basis.
+G07 14*8f,60*87|74*0000|connect       - Binds a driver to a specific device and starts the driver.
+G08 14*8f,62*87|76*0000|cp            - Copies one or more files or directories to another location.
+G09 14*8f,52*87|66*0000|date          - Displays and sets the current date for the system.
+G0a 14*8f,50*87|64*0000|dblk          - Displays one or more blocks from a block device.
+G0b 14*8f,55*87|69*0000|devices       - Displays the list of devices managed by UEFI drivers.
+G0c 14*8f,55*87|69*0000|devtree       - Displays the UEFI Driver Model compliant device tree.
+G0d 14*8f,54*87|68*0000|dh            - Displays the device handles in the UEFI environment.
+G0e 14*8f,61*87|75*0000|disconnect    - Disconnects one or more drivers from the specified devices.
+G0f 14*8f,51*87|65*0000|dmem          - Displays the contents of system or device memory.
+G10 14*8f,29*87|43*0000|dmpstore      - Manages all UEFI variables.
+G11 14*8f,32*87|46*0000|drivers       - Displays the UEFI driver list.
+G12 14*8f,35*87|49*0000|drvcfg        - Invokes the driver configuration.
+G13 14*8f,42*87|56*0000|drvdiag       - Invokes the Driver Diagnostics Protocol.
+G14 14*8f,61*87|75*0000|echo          - Controls script file command echoing or displays a message.
+G15 14*8f,62*87|76*0000|edit          - Provides a full screen text editor for ASCII or UCS-2 files.
+G16 14*8f,53*87|67*0000|eficompress   - Compresses a file using UEFI Compression Algorithm.
+G17 14*8f,57*87|71*0000|efidecompress - Decompresses a file using UEFI Decompression Algorithm.
+G18 14*8f,50*87|64*0000|else          - Identifies the code executed when 'if' is FALSE.
+G19 14*8f,20*87|34*0000|endfor        - Ends a 'for' loop.
+G1a 14*8f,61*87|75*0000|endif         - Ends the block of a script controlled by an 'if' statement.
+G1b 14*8f,45*87|59*0000|exit          - Exits the UEFI Shell or the current script.
+G1c 14*8f,38*87|52*0000|for           - Starts a loop based on 'for' syntax.
+G1d 14*8f,49*87|63*0000|getmtc        - Gets the MTC from BootServices and displays it.
+G1e 37*87|37*0000|Press ENTER to continue or 'Q' break:
+CHARON grid end

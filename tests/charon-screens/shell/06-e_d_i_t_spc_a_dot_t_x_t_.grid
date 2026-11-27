@@ -1,0 +1,4 @@
+CHARON grid 31 100 1 7 1 Program
+G00 4*8f,48*87|52*0000|edit: Invalid File Name or Current-working-directory
+G01 6*8e|6*0000|Shell>
+CHARON grid end

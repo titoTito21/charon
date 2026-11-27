@@ -307,6 +307,27 @@ private:
             rows[y]=bits;
         }
         result.ch=Match(rows,more);
+        // r410: an underline caret under the letter (GRUB's gfxterm in the entry editor: "etparams" for
+        // "setparams", the first letter was lost on every line the caret stood on). A cell that matches no
+        // glyph and has one or two full rows among its last three is read again without them; the letter
+        // counts only when that second reading is exact.
+        if(result.ch==0xfffd) {
+            uint8_t without[16];unsigned full=0;
+            for(size_t y=0;y<16;++y) {without[y]=rows[y];if(y>=13 && rows[y]==0xff) {without[y]=0;++full;}}
+            if(full>=1 && full<=2) {
+                bool blank=true;for(size_t y=0;y<16;++y)if(without[y])blank=false;
+                if(blank)result.ch=u' ';
+                else {
+                    const uint32_t hash=Hash(without);
+                    for(uint32_t probe=0;probe<tableSize;++probe) {
+                        const uint16_t slot=table_[(hash+probe)%tableSize];
+                        if(slot==0xffff)break;
+                        bool same=true;const uint8_t* g=RowsOf(slot);for(unsigned i=0;i<16;++i)if(g[i]!=without[i]) {same=false;break;}
+                        if(same) {result.ch=char16_t(CodeOf(slot));break;}
+                    }
+                }
+            }
+        }
         return result;
     }
     char16_t Match(const uint8_t* rows,bool noisy) const {

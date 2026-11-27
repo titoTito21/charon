@@ -23,7 +23,36 @@ struct Info {
     uint8_t sha[32]={};bool hasSha=false;uint32_t abi=0;uint8_t key=0;
     efi_handle volume=nullptr;   // r400: the volume the manifest was found on (null: Charon's own)
     size_t voices=0;char id[maxVoices][32]={};char16_t voiceName[maxVoices][48]={};char language[maxVoices][8]={};
+    // r410: bit v set = voice v can be used. A voice other than the first of its language needs its own pack
+    // <data>\<id>.chsp; an installation that left packs out (a small EFI partition) still lists the voice in the
+    // manifest. Indexes stay those of the manifest (settings byte 43), so a missing voice is skipped, not renumbered.
+    uint16_t available=0xffff;
+    bool Usable(size_t v) const {return v<voices && ((available>>v)&1);}
+    size_t UsableCount() const {size_t n=0;for(size_t v=0;v<voices;++v)if(Usable(v))++n;return n;}
 };
+// r410: a voice's name for the menu. Manifests name a voice in its own language ("eSpeak NG polski",
+// "eSpeak NG English"); a trailing language word is said in the interface's language instead
+// ("eSpeak NG Polish" in the English interface, "eSpeak NG angielski" in the Polish one).
+inline void VoiceTail(char16_t* out,size_t cap,bool pl);
+inline void VoiceLabel(const Info& info,size_t voice,bool pl,char16_t* out,size_t cap) {
+    const char16_t* name=info.voiceName[voice<info.voices?voice:0];
+    size_t n=0;while(name[n] && n+1<cap) {out[n]=name[n];++n;}out[n]=0;
+    VoiceTail(out,cap,pl);
+}
+// The trailing language word of a name already in `out` (also used for the message after a change of synthesizer).
+inline void VoiceTail(char16_t* out,size_t cap,bool pl) {
+    size_t n=0;while(out[n])++n;
+    struct Word {const char16_t* found;const char16_t* pl;const char16_t* en;};
+    static const Word words[]={{u" polski",u" polski",u" Polish"},{u" Polish",u" polski",u" Polish"},{u" English",u" angielski",u" English"},{u" angielski",u" angielski",u" English"}};
+    for(const auto& w:words) {
+        size_t k=0;while(w.found[k])++k;
+        if(n<=k)continue;
+        bool same=true;for(size_t i=0;i<k && same;++i)same=out[n-k+i]==w.found[i];
+        if(!same)continue;
+        const char16_t* put=pl?w.pl:w.en;size_t at=n-k;
+        while(*put && at+1<cap)out[at++]=*put++;out[at]=0;return;
+    }
+}
 // 1..255, stable for a manifest file name (settings V11 byte 42; 0 = TVox).
 inline uint8_t KeyOf(const char16_t* name) {
     uint32_t h=2166136261u;for(;*name;++name) {char16_t c=*name;if(c>=u'A' && c<=u'Z')c=char16_t(c+32);h=(h^c)*16777619u;}
@@ -68,6 +97,38 @@ inline bool ParseManifest(const char* text,size_t size,Info& m) {
     }
     return m.module[0] && m.voices;
 }
+// r410: which voices of a manifest have their data (see Info::available).
+inline void MarkUsable(efi_file_protocol* root,Info& m) {
+    m.available=0xffff;
+    if(!root || !m.data[0])return;
+    for(size_t v=0;v<m.voices;++v) {
+        bool firstOfLanguage=true;
+        for(size_t o=0;o<v && firstOfLanguage;++o) {size_t k=0;while(m.language[o][k] && m.language[o][k]==m.language[v][k])++k;if(m.language[o][k]==m.language[v][k])firstOfLanguage=false;}
+        if(firstOfLanguage)continue;   // spoken from the language's base pack
+        char16_t path[160];size_t k=0;
+        for(size_t i=0;m.data[i] && k+1<160;++i)path[k++]=m.data[i];
+        if(k+1<160)path[k++]=u'\\';
+        for(size_t i=0;m.id[v][i] && k+1<160;++i)path[k++]=char16_t((unsigned char)m.id[v][i]);
+        for(const char16_t* e=u".chsp";*e && k+1<160;++e)path[k++]=*e;
+        path[k]=0;
+        efi_file_protocol* file=nullptr;
+        if(root->Open(root,&file,path,EFI_FILE_MODE_READ,0)==EFI_SUCCESS && file)file->Close(file);
+        else {
+            // only a manifest whose other voices do come as packs follows this layout (eSpeak NG has no packs at all)
+            m.available=uint16_t(m.available&~(1u<<v));
+        }
+    }
+    // no pack at all: this add-on does not keep voices in packs; every voice stays
+    bool anyPack=false;for(size_t v=0;v<m.voices;++v) {bool first=true;for(size_t o=0;o<v && first;++o) {size_t k=0;while(m.language[o][k] && m.language[o][k]==m.language[v][k])++k;if(m.language[o][k]==m.language[v][k])first=false;}
+        if(!first && ((m.available>>v)&1))anyPack=true;}
+    bool rhvoiceLayout=false;{efi_file_protocol* dir=nullptr;if(root->Open(root,&dir,m.data,EFI_FILE_MODE_READ,0)==EFI_SUCCESS && dir) {
+        alignas(8) uint8_t entry[600];
+        for(unsigned guard=0;guard<64 && !rhvoiceLayout;++guard) {size_t bytes=sizeof(entry);if(dir->Read(dir,&bytes,entry)!=EFI_SUCCESS || !bytes)break;
+            const char16_t* name=reinterpret_cast<const char16_t*>(entry+80);size_t n=0;while(name[n] && n<60)++n;
+            if(n>5 && (name[n-5]==u'.') && (name[n-4]|32)==u'c' && (name[n-3]|32)==u'h' && (name[n-2]|32)==u's' && (name[n-1]|32)==u'p')rhvoiceLayout=true;}
+        dir->Close(dir);}}
+    if(!anyPack && !rhvoiceLayout)m.available=0xffff;
+}
 // The manifests on Charon's volume, at most `maximum`.
 inline size_t Scan(efi_boot_services* boot,efi_file_protocol* root,Info* out,size_t maximum) {
     if(!boot || !root)return 0;
@@ -88,7 +149,7 @@ inline size_t Scan(efi_boot_services* boot,efi_file_protocol* root,Info* out,siz
         char text[4096];size_t size=sizeof(text)-1;
         const bool read=file->Read(file,&size,text)==EFI_SUCCESS;file->Close(file);
         if(!read)continue;text[size]=0;
-        if(ParseManifest(text,size,m)) {m.key=KeyOf(m.manifest);++count;}
+        if(ParseManifest(text,size,m)) {m.key=KeyOf(m.manifest);MarkUsable(root,m);++count;}
     }
     dir->Close(dir);return count;
 }

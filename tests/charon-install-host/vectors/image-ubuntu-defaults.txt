@@ -1,0 +1,7 @@
+# Ready image (ubuntu), express mode, Enter at every question.
+lang=en
+flow=image
+mode=quick
+arg entry=1
+keys=ENTER ENTER "test" ENTER "test" ENTER
+keys=ENTER ENTER

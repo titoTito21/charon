@@ -1,0 +1,5 @@
+# network.conf for an open network; the adapter is not known.
+lang=en
+flow=networkconf
+arg ssid=Biblioteka
+arg open=1

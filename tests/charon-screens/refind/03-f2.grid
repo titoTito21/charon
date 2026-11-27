@@ -1,0 +1,4 @@
+CHARON grid 48 103 0 0 0 rEFInd
+G14 56*00,47*f0|56*0000,47*030e|                                                        Boot Options for EFI\probe\GPROBE.EFI on GRUBTE
+G2f 57*00,45*f0|57*0000,45*030e|                                                         Use arrow keys to move cursor; Enter to boot;
+CHARON grid end

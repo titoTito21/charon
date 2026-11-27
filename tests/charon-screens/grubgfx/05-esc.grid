@@ -1,0 +1,12 @@
+CHARON grid 34 100 0 0 1 GRUB
+G01 33*00,32*87|33*0000,32*0110|                                 GNU GRUB  version 2.12-9+deb13u4
+G04 2*00,95*87|2*0000,95*0110|  ┃ Charon test entry one                                                                       ┃
+G05 3*00,22*f0|3*0000,22*0110|   *Charon test entry two
+G06 2*00,95*87|2*0000,95*0110|  ┃ UEFI firmware settings                                                                      ┃
+G07 2*00,95*87|2*0000,95*0110|  ┃ Probe loader                                                                                ┃
+G08 2*00,95*87|2*0000,95*0110|  ┃ Graphical probe                                                                             ┃
+G09 2*00,95*87|2*0000,95*0110|  ┃ Graphical GRUB menu                                                                         ┃
+G1e 7*00,58*87|7*0000,58*0110|       Use the ↑ and ↓ keys to select which entry is highlighted.
+G1f 7*00,83*87|7*0000,83*0110|       Press enter to boot the selected OS, `e' to edit the commands before booting or `c'
+G20 7*00,19*87|7*0000,19*0110|       for a command-line.
+CHARON grid end

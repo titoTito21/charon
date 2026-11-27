@@ -1,0 +1,7 @@
+# CharonDOS, Windows XP from a ready-made VHD.
+lang=en
+flow=dos
+arg profile=WINXP
+arg reader=nvda-2017.3
+arg medium=DISK.VHD
+arg ready_format=vhd

@@ -218,12 +218,14 @@ def prepare(name,efi,wav=False,grub=None,paused=False):
             body=(b'CHARS00C' if fmt>63 or extra>31 else b'CHARS00B' if synth else b'CHARS00A')+struct.pack('<Q',1)+bytes([0,0,1,0,1,0,10,10,10,1|(1<<2),7<<1,10,10,10,10,10,7,2,14,10,1,1,0,47,fmt,extra,synth,voice])
             assert len(body)==44
             with fs.openbin('EFI/HAK/charon-settings-a.bin','w') as f:f.write(body+struct.pack('<I',zlib.crc32(body)))
+        if os.environ.get('CHARON_SETTINGS_FILE'):   # r410: a ready settings record (work/r410-mkset.cpp)
+            with fs.openbin('EFI/HAK/charon-settings-a.bin','w') as f:f.write(Path(os.environ['CHARON_SETTINGS_FILE']).read_bytes())
         # r361: interface sounds from the current cue pack (welcome, system launch, boot manager loaded).
         for pcm in sorted((base/os.environ.get('CHARON_CUES','charon-cues-48k-r361')).glob('*.pcm')):parts['EFI/HAK/audio/'+pcm.name]=pcm
         # r393: optional synthesizer modules, e.g. CHARON_SYNTHS=work/synth-modules-r393
         # copies its EFI/HAK/synths tree (.tts, .manifest, data packs, licences); default: none.
-        if os.environ.get('CHARON_SYNTHS','synth-modules-r397')!='none':   # r396d: eSpeak NG + RHVoice by default (CHARON_SYNTHS=none: TVox only)
-            synths=(base/os.environ.get('CHARON_SYNTHS','synth-modules-r397')).resolve()/'EFI/HAK/synths'
+        if os.environ.get('CHARON_SYNTHS','synth-modules-r409')!='none':   # r396d: eSpeak NG + RHVoice by default (CHARON_SYNTHS=none: TVox only)
+            synths=(base/os.environ.get('CHARON_SYNTHS','synth-modules-r409')).resolve()/'EFI/HAK/synths'
             assert synths.is_dir(),('CHARON_SYNTHS has no EFI/HAK/synths',synths)
             for p in sorted(synths.rglob('*')):
                 if p.is_file():parts['EFI/HAK/synths/'+p.relative_to(synths).as_posix()]=p
@@ -254,7 +256,7 @@ def prepare(name,efi,wav=False,grub=None,paused=False):
     if paused:command.append('-S')
     command+=['-drive','if=pflash,format=raw,readonly=on,file=firmware-code.fd','-drive','if=pflash,format=raw,file=firmware-vars.fd',
      # r396: Charon's disk boots first even with blank firmware variables (OVMF follows bootindex).
-     '-drive','if=none,id=charondisk,format=raw,file=boot-disk.img']
+     '-drive','if=none,id=charondisk,format=raw,file=boot-disk.img'+(',readonly=on' if os.environ.get('CHARON_BOOT_RO') else '')]   # r410: CHARON_BOOT_RO=1 with CHARON_BOOT_USB=1 = a write-protected stick
     # r401: CHARON_BOOT_USB=1 puts Charon's own disk on USB (Charon started from a stick; the internal disk is only the target)
     command+=['-device','qemu-xhci,id=xhci','-device','usb-storage,bus=xhci.0,drive=charondisk,bootindex=0'] if os.environ.get('CHARON_BOOT_USB') else ['-device','ide-hd,drive=charondisk,bus=ide.0,bootindex=0']
     if grub:
@@ -331,6 +333,7 @@ def prepare(name,efi,wav=False,grub=None,paused=False):
         command+=['-drive',f'if=none,id=stick{i},format=raw,file={Path(img).resolve()}','-device',f'usb-storage,bus=xhci.0,drive=stick{i},removable=on']
     if os.environ.get('CHARON_CDROM') is not None:
         iso=os.environ['CHARON_CDROM'];spec=f',file={Path(iso).resolve()}' if iso else ''
+        if os.environ.get('CHARON_CD_BPS'):spec+=',throttling.bps-read='+os.environ['CHARON_CD_BPS']   # r410: a slow drive (bytes per second), to hold a loader's first screen
         command+=['-drive',f'if=none,id=cd0,media=cdrom,readonly=on{spec}','-device','ide-cd,bus=ide.4,drive=cd0']
     command+=['-audiodev',('wav,id=charon_audio,path=live.wav' if wav else 'dsound,id=charon_audio'),
      # r405: CHARON_USBAUDIO=1 adds a USB sound card (QEMU usb-audio, UAC1) on the xHCI; CHARON_SOUNDCARD=none leaves the machine without a built-in card

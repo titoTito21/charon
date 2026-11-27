@@ -126,6 +126,7 @@ function Enable-FirmwarePrivilege {
     if ([Runtime.InteropServices.Marshal]::GetLastWin32Error() -ne 0) { Fail 'Windows nie przyznał uprawnienia do zmiennych firmware (uruchom jako administrator).' 'Windows did not grant the firmware variable privilege (run as administrator).' }
 }
 function Get-Var([string]$Name) {
+    Enable-FirmwarePrivilege   # r409: before every firmware call (Confirm-SecureBootUEFI switches the privilege off again; see Install-Charon.ps1)
     $e = 0
     foreach ($capacity in 4096, 1048576) {                 # r408: a load option with much optional data is larger than 4 KiB
         $buffer = New-Object byte[] $capacity; $attr = 0
@@ -138,6 +139,7 @@ function Get-Var([string]$Name) {
     Fail "Odczyt zmiennej $Name nie powiódł się (błąd $e)." "Reading variable $Name failed (error $e)."
 }
 function Set-Var([string]$Name, [byte[]]$Data) {
+    Enable-FirmwarePrivilege   # r409
     $size = if ($Data) { $Data.Length } else { 0 }
     if (-not [CharonAddon.Native]::SetFirmwareEnvironmentVariableExW($Name, $GlobalGuid, $Data, [uint32]$size, 7)) {
         $e = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
@@ -341,7 +343,7 @@ try {
     # Language of the reader until settings are changed in Charon itself: English unless -Language pl (r399).
     if (-not (Test-Path (Join-Path $hak 'audio-language'))) { [IO.File]::WriteAllText((Join-Path $hak 'audio-language'), $(if ($Language -eq 'pl') { 'pl' } else { 'en' })) }
     if ($Sign) { [IO.File]::WriteAllBytes((Join-Path $hak 'charon-db.cer'), $certificate.RawData) }
-    [IO.File]::WriteAllText((Join-Path $hak 'addon.txt'), "Charon UEFI screen reader add-on r385; installed by Install-CharonAddon.ps1`r`n")
+    [IO.File]::WriteAllText((Join-Path $hak 'addon.txt'), "Charon UEFI screen reader add-on r410; installed by Install-CharonAddon.ps1`r`n")
 } finally { Dismount-Esp $root; if ($Sign -and $staged -ne $Source) { Remove-Item $staged -Recurse -Force -ErrorAction SilentlyContinue } }
 
 $espAt = Get-EspLocation

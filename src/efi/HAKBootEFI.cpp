@@ -135,13 +135,15 @@ static efi_status EFIAPI DriverSuspend(hakefi::ReaderControl*) {return hakefi::r
 static void UnpackReading(hakefi::ResidentOptions& o,uint32_t reading) {
     o.punctuation=uint8_t(reading&3);o.capitals=uint8_t((reading>>2)&7);o.screenLanguage=uint8_t((reading>>5)&3);o.readerFlags=uint8_t((reading>>8)&63);
     o.formatFlags=hakefi::ReadingFormat(reading);o.stereo=hakefi::ReadingStereo(reading);const uint8_t extra=uint8_t((reading>>20)&31);o.managerFlags=uint8_t(extra&7);o.linger=(reading>>29)&1;o.brailleAttributes=(extra&8)!=0;o.dictionary=(extra&16)!=0;   // r393
+    o.profile=hakefi::ReadingProfile(reading);   // r410
 }
 static efi_status EFIAPI DriverResume(hakefi::ReaderControl*,const char* language,uint8_t polish,uint8_t verbosity,uint8_t progress,uint32_t voice,uint32_t reading) {
     hakefi::ResidentOptions update;
     if(language && language[0] && language[1]) {update.language[0]=language[0];update.language[1]=language[1];}
     // polish: bit 0 Polish, bit 1 explicit messages (r373; older menus pass 0/1).
-    update.polish=(polish&1)!=0;update.explicitMessages=(polish&2)!=0;update.positions=(polish&4)==0;update.timers=uint8_t((polish>>3)&3);update.verbosity=verbosity;update.progress=progress;
+    update.polish=(polish&1)!=0;update.explicitMessages=(polish&2)!=0;update.positions=(polish&4)==0;update.timers=uint8_t((polish>>3)&3);update.verbosity=verbosity;update.progress=uint8_t(progress&3);update.formatGroups=uint8_t((progress>>2)&7);   // r410
     update.reviewOnly=(polish&0x20)!=0;   // r401: Charon's own screens - review keys only
+    hakefi::ApplyMore(update,driverControl.more);   // r410 V14
     update.rate=uint8_t(voice);update.pitch=uint8_t(voice>>8);update.volume=uint8_t(voice>>16);update.effectsVolume=uint8_t(voice>>24);
     UnpackReading(update,reading);
     return hakefi::residentReader.Resume(&update);
@@ -183,6 +185,7 @@ extern "C" efi_status EFIAPI efi_main(efi_handle self,efi_system_table* table) {
     hakefi::CharSettings settings;hakefi::LoadCharSettings(root,settings);
     char locale[64]={};hakefi::InstallationLocale(root,locale);
     const bool pl=hakefi::PolishSettings(settings,locale);
+    hakefi::systools::LoadClockSetting(root);   // r409: \EFI\HAK\clock.txt - the reader's clock shortcut says local time when the clock keeps universal time
     driverProvider=new(providerStorage) charonaudioefi::VoiceProvider;
     status=driverProvider->Initialize(self,boot,root,true);
     root->Close(root);
@@ -203,7 +206,9 @@ extern "C" efi_status EFIAPI efi_main(efi_handle self,efi_system_table* table) {
     options.verbosity=settings.verbosity?settings.verbosity:1;options.progress=settings.progress;options.explicitMessages=settings.explicitMessages;
     options.rate=settings.readerRate;options.pitch=settings.readerPitch;options.volume=settings.readerVolume;options.effectsVolume=settings.effectsVolume;
     options.positions=(settings.detail&4)!=0;options.timers=settings.timers;
-    UnpackReading(options,hakefi::PackReading(settings.punctuation,settings.capitals,settings.screenLanguage,settings.readerFlags,settings.formatFlags,uint8_t(settings.readerExtra&~7)));   // r393: a firmware boot (add-on) is a quick boot; the device list turns the manager handling on
+    options.formatGroups=settings.formatGroups;   // r410
+    const uint32_t settingsMore=hakefi::PackMore(settings.profile,settings.profileItems,settings.readerBar,settings.absoluteColours);
+    UnpackReading(options,hakefi::PackReading(settings.punctuation,settings.capitals,settings.screenLanguage,settings.readerFlags,settings.formatFlags,uint8_t(settings.readerExtra&~7),settings.profile));   // r393: a firmware boot (add-on) is a quick boot; the device list turns the manager handling on
     // r393/r397 (user): the add-on detects the external synthesizers in
     // \EFI\HAK\synths too. The chosen one speaks from power-on (TVox when it
     // cannot - then the reason is spoken); the voice ring later switches among
@@ -217,7 +222,7 @@ extern "C" efi_status EFIAPI efi_main(efi_handle self,efi_system_table* table) {
     status=hakefi::residentReader.Install(table,options);
     charontrace::Value("CHARON driver: reader installed",uint64_t(status));
     if(status!=EFI_SUCCESS)return EFI_SUCCESS;
-    driverControl={1,sizeof(hakefi::ReaderControl),hakefi::charonRelease,0,driverProvider->Voice(),effects,DriverSuspend,DriverResume};
+    driverControl={1,sizeof(hakefi::ReaderControl),hakefi::charonRelease,0,driverProvider->Voice(),effects,DriverSuspend,DriverResume,settingsMore};
     efi_handle handle=nullptr;
     boot->InstallProtocolInterface(&handle,&hakefi::readerControlGuid,EFI_NATIVE_INTERFACE,&driverControl);
     // r406: a mark that firmware loaded this add-on (a volatile variable the started system can
@@ -351,6 +356,7 @@ extern "C" efi_status EFIAPI efi_main(efi_handle self,efi_system_table* table) {
     }
 #endif
     // The resident reader keeps reading whatever firmware boots next.
+    if(hakefi::residentDriver)hakefi::residentDriver->more=hakefi::residentMore;   // r410 V14
     if(hakefi::residentDriver)hakefi::residentDriver->Resume(hakefi::residentDriver,hakefi::residentLanguage,hakefi::residentPolish,
         hakefi::residentVerbosity,hakefi::residentProgress,hakefi::residentVoice,hakefi::residentReading&~(uint32_t(7)<<20));   // r393: firmware boot order = quick boot
     root->Close(root);

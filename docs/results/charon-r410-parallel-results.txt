@@ -1,0 +1,108 @@
+=== RESUME HERE (agent 3, parallel downloads, r410; FINAL 2026-11-26 09:35) ===
+STATE: DONE, source final for this task. Tree buildable (-Werror): charon-win-r410n11 (release), charon-win-r410n11t
+ (--trace), charon-win-r410n11-drv (--driver), all PASS. Machines: none left (r410n-a, r410n-b deleted, loggers ended).
+ Sound slot handed back 09:12.
+USER'S OWN LISTENING RESULT (audible VMware run r410n-a, 09:08-09:11, 6 and 4 connections, names spoken as they
+ arrived): "Smooth" - even speech, no stutter, no odd pauses.
+ The 10 s before the first package name in pass 1 (09:08:29.7 -> 09:08:39.7) is NOT a stall: the voice was still
+ reading "Connected. Address 192.168.229.145" (the address in full) - serial "ws say" + "CHARON speak" lines; by the
+ rule the names that arrived meanwhile were counted and said as "qemu, and 149 more". Pass 2 (network already up, no
+ such sentence) said its first name 3 s after the start.
+
+CAUSE OF THE SLOW DOWNLOADS (MEASURED in VMware, r410n-a, trace "CHARON net: name lookup begins / name found"):
+ every connection's name lookup took 5.0 s. Charon configured EFI_DNS4 without a server list (UseDefaultSetting);
+ edk2's Dns4Configure then asks DHCP again for the DNS server (NetworkPkg/DnsDxe/DnsDhcp.c GetDns4ServerFromDhcp4:
+ Dhcp4->TransmitReceive with TimeoutValue DNS_TIME_TO_GETMAP = 5 s, DnsImpl.h) and VMware's NAT DHCP does not answer
+ that request. Charon makes a new DNS4 child per connection and net::DownloadAny makes TWO connections per file (HEAD
+ probe + GET) -> 10 s per file (n2t: 9.3-10.2 s per file, same for http and https) -> 151 packages = 25 minutes.
+ Environment-dependent: agent 1's helper h8 (another VMware network state) fetched the same packages in ~2 min.
+ FIX (CharonTcp4Transport.h ResolveFirmware): DNS4 is given the server the adapter already has (Ip4Config2, from
+ DHCP) -> lookup < 0.1 s.
+ The plain-HTTP "5 minutes per package" of agent 2's hv4 run did NOT reproduce here: in every run http behaved like
+ https (single path 10 s per file before the fix; batches 4-30 s for all 151). Not found in the client code either
+ (HTTP and HTTPS share Receive(); the HTTP body path was compared). If it shows again: the trace lines added here
+ ("receive timed out", "receive failed, status", "connect timed out", "close not confirmed in 2 s") will say where.
+
+DESIGN (one API, no second copy of the logic):
+ src/efi/CharonDownloads.h (https::many, firmware-free, host-tested): Run(jobs, handler, options, platform). Up to
+ Options::connections WORKERS (<= 8); each is one https::Client - own TCP connection, own BearSSL context, HTTP/1.1
+ keep-alive - running on its OWN 256 KiB stack (cooperative; switched by the existing tvox_context_swap, no new
+ assembly). The client code is unchanged (redirects, chunked, Range resumption, certificate checks); a transport that
+ would wait yields to the loop (https::many::Pass) instead of Stall. The loop resumes every worker, verifies completed
+ bodies on its own stack while the others go on, reports ONE combined progress, then calls Platform::idle once. Per
+ file: optional HEAD probe on the kept connection (CharonHttps.h: a HEAD answer no longer closes a keep-alive
+ connection), begin/write/reset/verify/arrived hooks; up to 3 attempts with back-off 1 s, 2 s (network failures,
+ 5xx/429/408); a failed file never stops the others; Escape stops all; caps: connections, perHost, inFlightBytes; a
+ firmware that refuses another TCP child (errNoTcp/errMemory) lowers the count and the batch goes on.
+ src/efi/CharonWsDownloads.h (firmware glue, ws::net::many): Download(items, n, options) - targets memory (reserved
+ here or the caller's), a file, or the caller's hooks; Platform::idle polls every TCP child, pumps the voice every
+ 10 ms, Escape every 100 ms, stalls 0.25 ms only when no connection moved; BackgroundPump is on during a batch; names
+ said as they arrive with the existing rule (newest + "and N more" / "i jeszcze N"; plan: "Downloaded: X, and 2
+ more." / "Pobrano: ..."; "Also downloaded: N." at the end); Explain() says a failure like net::HttpsFail. DNS
+ answers are remembered for one batch only (tcp::BatchNames), lookups serialized (the lookup code keeps statics).
+ Memory: Worker ~90 KiB + stack 256 KiB + TCP state 66 KiB each, AllocatePool, freed after the batch; Worker aligned
+ to 16 inside its block (VM-found: AllocatePool's 8-byte alignment gave #GP on an SSE store, fixed).
+
+CALLERS CONVERTED:
+ - Charon Hypervisor (agent 2's src/efi/CharonWsHypervisor.h, agreed): both signed indexes in one batch (2 conn.);
+   all packages in one batch (6 connections, memory from ReserveHigh as before, SHA-1 control-member check against the
+   signed index per package on completion, names spoken). DownloadKnown/KeepClient/KnownSink removed (replaced).
+ - CharonDOS programs (agent 1's src/efi/CharonWsDosApps.h): Fetch and FetchChosen -> FetchMany: one batch (4 conn.,
+   64 MB in flight), SHA-256 + unpack as each archive completes (Unpack, split from the old Install), memory freed at
+   once; "Downloading the programs, several at once. Programs: N." then names, then the old summary.
+ - Plan's everything-first download (agent 1's src/efi/CharonWsPlanDialogue.h FetchUpfront): all held files in one
+   batch (4 conn.) into their reserved held memory (held::Reserved), NVDA SHA-256 on completion, one combined
+   progress; then hv::FetchUpfront (its own batches). One file: its old line; several: "Downloading files at once: N."
+ - Installer kernel+initrd pairs (agent 1's files) -> install::FetchPair / FetchPairToMemory (CharonWsInstall.h):
+   Debian (RunDebian), Ubuntu (CharonWsInstall2.h), Arch (CharonWsInstall3.h), the plan's Ubuntu step and Debian
+   files onto the EFI partition (CharonWsPlanDialogue.h). Builds without HAK_CHARON_HTTPS (voice driver) keep the
+   sequential path.
+ Not converted (single files): NVDA alone, the CharonDOS reader, boot floppy, Windows ISO (one big file, left single
+ as asked), release list, catalogue probes, browser; PlaceDebian's late path (only when files did not fit in memory).
+
+MEASURED (VMware Workstation, UEFI, e1000 NAT; trace builds; times from the serial trace):
+ 151 Alpine 3.24 packages of world.txt (98.9 MB, dl-cdn.alpinelinux.org):
+   before: ~10 s per file (probe+GET, 2 x 5 s DNS) -> ~25 min (agent 2: 25-26 min in hvxp1)
+   single path with the DNS fix only: 70.7 s (n5t)
+   batch 1 kept-alive connection (before DNS fix, 1 lookup): 34.5 s
+   batch 4 connections, https: 8.3 / 11.3 / 11.6 / 24.8 s;  6 connections: 5.3 / 5.9 / 8.4 / 10.5 / 11.8 / 13.6 s
+   batch over plain http, 4-6 connections: 4.2 / 9.0 / 11.6 / 13.0 / 30.4 s (no stall; CDN variance)
+ Real plan "Debian, its installer, and Charon Hypervisor" (n7h, express, r410n-b): YES 09:15:07 -> Debian kernel +
+   initrd (95 MB, deb.debian.org, 2 conn.) 14 s -> hypervisor: ISO + 2 indexes 27 s, 151 packages 5.3 s, all checked ->
+   "Every file is downloaded" 09:15:59.9 (53 s for 651 MB) -> disk written -> "Charon Hypervisor written" 09:16:18,
+   Debian step started. (n6p run before the held::Find fix: 2 files 65 s while deb.debian.org gave the host 1.3 MB/s.)
+ CharonDOS (49 catalogue ZIPs, 12.1 MB, www.ibiblio.org): single path (DNS fix) 110 s; batch 4 connections 3.8 s.
+   dosapps::Fetch "all tested programs" (38) with unpack onto the USB medium: 49 s (audible run) / 75 s (silent run),
+   0 failed; before: ~10 s DNS per file + unpack -> several minutes.
+ Host (Winsock, tests/CharonDownloadsHostTest.cpp --real, same 151 packages): before (probe+GET, new TLS each) 73.5 s;
+   1 kept-alive connection 9.8 s; 6 connections 3.4 s.
+
+HOST TESTS (final tree): tests/CharonDownloadsHostTest.cpp 27/27 fake-transport checks (ordering, keep-alive, HEAD on
+ the kept connection, broken body resumed by Range, 503 retried with back-off, 404 alone, server closing keep-alive
+ every 2nd request, slow 1-byte connection, verification failure, 50 KB in-flight cap, per-host cap, firmware
+ refusing the 3rd connection, Escape, 64 KiB stack) + --real (2 more). Golden 406/0; plan host 5/5; reasons 447/0
+ (82 reasons, all in the table; fewer why.S sites than 450 because loops became batches); personal 496/0;
+ hypervisor host 0 failed. Build: clang++ -std=c++17 -O2 -Wall -Wextra -Werror -mno-stack-arg-probe -Isrc/efi
+ tests/CharonDownloadsHostTest.cpp <bearssl-host>/charon-bearssl.lib -lws2_32 -lbcrypt (comment in the file).
+
+CHANGED FILES (src/efi unless noted):
+ new: CharonDownloads.h, CharonWsDownloads.h, tests/CharonDownloadsHostTest.cpp, this file.
+ shared client: CharonHttps.h (Download's address/validator per Client instead of statics; HEAD keeps keep-alive),
+   CharonTcp4Transport.h (State per connection via context; Await yields inside a worker; DNS4 server list = the
+   DNS fix; batch name cache; trace lines on timeouts), CharonWsFetch.h (HttpsFail(code, result); includes
+   CharonWsDownloads.h), CharonWorkspace.h (TRACE builds only: net-test.txt / dos-test.txt test hooks).
+ AGENT 2's: CharonWsHypervisor.h - hunks: (1) DownloadKnown/KnownSink/KeepClient removed; (2) FetchPackages rewritten
+   as one batch (PackageJob, CheckPackage); (3) FetchAll: indexes in one batch, then VerifyIndex; the
+   https::Close(KeepClient()) after FetchPackages removed. State::unsaid is no longer used (left in place).
+ AGENT 1's (for the next agent 1): CharonWsDosApps.h (Unpack, Many/FetchMany/InstallArrived; Fetch and FetchChosen
+   use it; Install removed), CharonWsPlanDialogue.h (FetchUpfront rewritten with UpfrontRun/UpfrontBegin/Put/Drop/
+   Check/Progress; Ubuntu pair; Debian files pair), CharonWsInstall.h (FetchPair, FetchPairToMemory; RunDebian pair),
+   CharonWsInstall2.h (Ubuntu pair), CharonWsInstall3.h (Arch pair). New spoken texts (EN/PL): "Downloading files at
+   once: N." / "Pobieram naraz plików: N."; "Downloading the programs, several at once. Programs: N." / "Pobieram
+   programy, kilka naraz. Liczba programów: N."; pair line "Downloading into memory: X and Y" / "Pobieram do pamięci:
+   X i Y".
+TEST TOOLING (work/, not shipped): r410n-vm/{n.py, nk.py, nstep.py, n-make-iso.py, plan8.sh, net-test-*.txt};
+ evidence r410n-evidence/ (serial logs of every run, screenshots, aud-rec1.wav + .txt).
+LIMITS / OPEN: not run on real hardware; firmware other than VMware's (OVMF, vendor) not tried with several TCP4
+ children (the refusal path is host-tested only); the Windows ISO stays one connection; PlaceDebian's late path and
+ single-file callers unchanged; the plain-HTTP stall of hv4 not reproduced (see above).

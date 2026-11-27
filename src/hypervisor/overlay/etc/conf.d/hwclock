@@ -1,0 +1,5 @@
+# Charon Hypervisor: the PC's real-time clock is never written (Windows on the same disk keeps it in local time);
+# the hypervisor corrects its own clock from NTP and the last known offset (usr/lib/charonhv/hvclock.py).
+clock="UTC"
+clock_hctosys="YES"
+clock_systohc="NO"

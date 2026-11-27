@@ -88,6 +88,13 @@ struct State {
     WifiNetwork networks[maxNetworks];size_t networkCount;ListView wifiView;size_t wifiAdapter;bool inWifi;
     char16_t url[300];
 };
+// r409: the Wi-Fi network Charon joined (WifiJoin), kept in memory so that the system being installed can be given
+// the same connection without the user typing the password again (Windows: \charon\charon-network.txt on the install
+// media, RunWindows in CharonWsInstall2.h). Only name and password: Charon itself joins with DHCP and knows no
+// static address or proxy. ForgetJoined wipes it; a failed join wipes it too.
+struct JoinedWifi {bool valid;bool open;Ssid ssid;char key[65];};
+inline JoinedWifi& Joined() {static JoinedWifi joined;return joined;}
+inline void ForgetJoined() {memset(&Joined(),0,sizeof(JoinedWifi));}
 inline bool SameBytes(const uint8_t* a,const uint8_t* b,size_t n) {for(size_t i=0;i<n;++i)if(a[i]!=b[i])return false;return true;}
 inline State& N() {static State state;return state;}
 inline volatile bool& Signalled() {static volatile bool flag;return flag;}
@@ -175,14 +182,19 @@ inline bool Dhcp(Adapter& a) {
             if(info.hasGateway) {Cat(text,300,T(u", brama ",u", gateway "));CatIp(text,300,info.gateway);}
             Play(Icon::done);Say(text);return true;}
     }
-    Fail(T(u"Serwer DHCP nie odpowiedział w 30 sekund.",u"No DHCP answer in 30 seconds."));return false;
+    // r410 (helper pw, known issue 8): some firmware network cards answer no DHCP after a restart until the computer
+    // is powered off and on (measured: VMware's e1000e after any reset); the sentence says so.
+    Fail(T(u"Serwer DHCP nie odpowiedział w 30 sekund. Jeśli komputer był przed chwilą uruchamiany ponownie, wyłącz go całkiem i włącz jeszcze raz: niektóre karty sieciowe po ponownym uruchomieniu nie dostają adresu aż do wyłączenia zasilania.",
+           u"No DHCP answer in 30 seconds. If the computer has just been restarted, switch it off completely and on again: some network cards get no address after a restart until the power is switched off."));return false;
 }
 // Waits for an event-driven operation; false on Escape or timeout.
 inline bool WaitSignal(unsigned seconds,Http* http=nullptr) {
     for(unsigned tick=0;tick<seconds*100;++tick) {
         if(Signalled())return true;
-        if(http)http->Poll(http);
-        U().host->boot->Stall(10000);
+        // r409: with a transfer in flight the service is polled every 0.2 ms, not once per 10 ms (each call of the
+        // firmware's HTTP service delivers one small piece, so the old wait capped a download at some 30 KB/s).
+        if(http) {for(unsigned k=0;k<50 && !Signalled();++k) {http->Poll(http);U().host->boot->Stall(200);}}
+        else U().host->boot->Stall(10000);
         if(tick%100==50)Tone(600,20);
         if(tick%10==0 && EscapePressed())return false;
     }
@@ -372,7 +384,13 @@ inline bool WifiJoin(size_t index) {
     Say(T(u"Łączę się z siecią.",u"Connecting to the network."));
     const auto status=a.wifi->ConnectNetwork(a.wifi,&token);
     const bool done=status==EFI_SUCCESS && WaitSignal(30);
-    boot->CloseEvent(token.Event);memset(ascii,0,sizeof(ascii));
+    boot->CloseEvent(token.Event);
+    ForgetJoined();   // r409: remembered only while it is the network in use
+    if(done && token.Status==EFI_SUCCESS && token.ResultCode==0) {
+        auto& j=Joined();j.valid=true;j.open=w.open;j.ssid=w.ssid;
+        if(!w.open)for(size_t i=0;i<64 && ascii[i];++i)j.key[i]=ascii[i];
+    }
+    memset(ascii,0,sizeof(ascii));
     if(!done || token.Status!=EFI_SUCCESS || token.ResultCode!=0) {
         Fail((token.ResultCode==1 || token.ResultCode==2)?T(u"Sieć odrzuciła połączenie; sprawdź hasło.",u"The network refused; check the password."):T(u"Nie połączono z siecią.",u"Not connected."),status!=EFI_SUCCESS?status:token.Status);
         return false;}

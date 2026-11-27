@@ -74,13 +74,32 @@ inline bool Sink(void* context,const uint8_t* data,size_t size) {
     return true;
 }
 // Firmware reads the partition table again (the old volumes go away).
+inline efi_handle VolumeOfPartition(const uint8_t* unique);
 inline void Reconnect(efi_handle disk) {
     auto* boot=U().host->boot;
+    // r410 (helpers vr and s7, two Windows in a plan): Charon started from the plan's EFI partition after a restart
+    // reads its own files from that partition; once the disk was reconnected (Windows' partitions made) its old handle
+    // was gone, so copying Charon onto the second Windows' media failed at once ("na dysku Charona nie ma plików
+    // dodatku czytnika ekranu") and that Windows never came back to Charon. Its partition is found again by its GUID.
+    uint8_t own[16];bool onPartition=false;
+    if(!hakefi::selfram::Active() && U().host->selfDevice) {
+        size_t bytes=0;const uint8_t* p=DevicePathOf(U().host->selfDevice,bytes);
+        for(size_t at=0;p && at+4<=bytes;) {
+            const size_t length=size_t(p[at+2])|(size_t(p[at+3])<<8);if(length<4 || p[at]==0x7f)break;
+            if(p[at]==4 && p[at+1]==1 && length>=42 && p[at+41]==2) {memcpy(own,p+at+24,16);onPartition=true;break;}
+            at+=length;
+        }
+    }
     boot->DisconnectController(disk,nullptr,nullptr);
     boot->ConnectController(disk,nullptr,nullptr,true);
     // r408a: the volume handles of that disk are new now (or gone); Charon's own files are read from the
     // original medium only while it is still mounted, from the volume in memory otherwise.
     if(hakefi::selfram::Active()) {const efi_handle original=hakefi::selfram::OriginalDevice();U().host->selfDevice=original?original:hakefi::selfram::Handle();}
+    else if(onPartition) {const efi_handle again=VolumeOfPartition(own);
+        charontrace::Value("CHARON own volume after reconnect found",again?1:0);
+        // r410 (s7 run F): the open root of the old volume went with it; the copy into memory (selfcopy::Step reads
+        // host.root) then failed at once ("nie udało się skopiować Charona do pamięci") on a 12 GB machine.
+        if(again) {U().host->selfDevice=again;if(efi_file_protocol* root=OpenRoot(again))U().host->root=root;}}
 }
 // Writes the resource at `url` onto the whole disk `d`, from its first block.
 // `written` receives the image's size. False: said why.
@@ -90,19 +109,22 @@ inline bool UrlToDisk(const char* url,const disks::Disk& d,const char16_t* what,
     if(d.hasCharon && !R().on && !hakefi::selfram::Active()) {Fail(T(u"To jest dysk, z którego działa Charon, a Charon nie jest jeszcze wczytany do pamięci. Zaczekaj chwilę i spróbuj ponownie.",u"This is the disk Charon is running from, and Charon is not yet loaded into memory. Wait a moment and try again."));return false;}
     if(d.readOnly || !d.io || !d.io->WriteBlocks) {Fail(T(u"Na tym dysku nie da się zapisywać.",u"This disk cannot be written to."));return false;}
     client.transport=net::tcp::Transport();
-    auto result=https::Probe(client,url,probe);
+    const held::File* local=held::Find(url);   // r410: a plan fetched this image before it touched the disk; it lies in memory
+    auto result=local?https::Result::ok:https::Probe(client,url,probe);
     if(result!=https::Result::ok) {net::HttpsFail(client,result);return false;}
-    const uint64_t total=probe.totalLength!=https::unknownLength?probe.totalLength:probe.contentLength!=https::unknownLength?probe.contentLength:0;
+    const uint64_t total=local?local->size:probe.totalLength!=https::unknownLength?probe.totalLength:probe.contentLength!=https::unknownLength?probe.contentLength:0;
     if(!total) {Fail(T(u"Serwer nie podał rozmiaru obrazu.",u"The server did not give the image's size."));return false;}
     if(!R().on && total>disks::Bytes(d)) {
         static char16_t text[300];Set(text,300,T(u"Obraz jest większy niż dysk: ",u"The image is larger than the disk: "));systools::PutSize(text,300,total,Pl());Fail(text);return false;}
     static Memory memory;memory.reserved=false;memory.extra=0;
     if(!Reserve(memory,chunkBytes+4096)) {Fail(T(u"Za mało pamięci RAM.",u"Not enough RAM."));return false;}
     j=Job{};j.io=d.io;j.blockSize=d.blockSize;j.blocks=d.blocks;j.buffer=memory.data;j.total=total;j.label=what;
-    {static char16_t text[400];Set(text,400,T(u"Pobieram obraz i zapisuję go na dysk: ",u"Downloading the image and writing it to the disk: "));systools::PutSize(text,400,total,Pl());
+    {static char16_t text[400];Set(text,400,local?T(u"Obraz jest już w pamięci; zapisuję go na dysk: ",u"The image is already in memory; writing it to the disk: ")
+        :T(u"Pobieram obraz i zapisuję go na dysk: ",u"Downloading the image and writing it to the disk: "));systools::PutSize(text,400,total,Pl());
      Cat(text,400,T(u". Escape przerywa; dysk zostaje wtedy z niepełnym obrazem.",u". Escape stops it; the disk is then left with an incomplete image."));Say(text);install::HearOut(100);}
     uint64_t offset=0;
-    result=https::Download(client,url,offset,probe.validator[0]?probe.validator:nullptr,Sink,&j,answer);
+    if(local)held::Stream(*local,Sink,&j);   // r410: a stop sets j.failed, j.tooBig or j.cancelled; a short stream fails the size check below
+    else result=https::Download(client,url,offset,probe.validator[0]?probe.validator:nullptr,Sink,&j,answer);
     bool ok=result==https::Result::ok && !j.failed && !j.tooBig && !j.cancelled && j.done==total;
     if(ok && j.fill)ok=WriteOut(j,j.fill);
     if(ok && d.io->FlushBlocks)reinterpret_cast<BlockFlush>(d.io->FlushBlocks)(d.io);
@@ -156,13 +178,16 @@ inline efi_handle EspOn(const disks::Disk& d) {
 // Charon (\EFI\HAK of its own disk, with the registration script) onto the
 // new system's EFI partition, so the system can register the screen reader
 // and the Charon boot manager on its first start. False: no room or no files.
-inline bool CharonOnto(efi_handle esp) {
+// r409: ownHome: the disk was the one Charon itself lives on and has just been erased whole, so this
+// copy IS Charon's home from now on: saved answer sets and plan state are carried along (from the
+// copy in memory). Otherwise Charon is given to a new system and they stay behind (CharonPrivate.h).
+inline bool CharonOnto(efi_handle esp,bool ownHome=false) {
     if(!esp || VolumeReadOnly(esp))return false;
     static FileRef from,to;from.volume=U().host->selfDevice;Set(from.path,pathUnits,u"\\EFI\\HAK");
     to.volume=esp;Set(to.path,pathUnits,u"\\EFI\\HAK");size_t copied=0;
     MakeFolders(esp,u"\\EFI\\HAK");
     Say(T(u"Kopiuję Charona na partycję systemową EFI nowego systemu.",u"Copying Charon to the new system's EFI system partition."));
-    if(CopyTree(from,to,0,&copied)!=EFI_SUCCESS)return false;
+    if((ownHome?CarryCharonTree(from,to,&copied):CopyCharonTree(from,to,&copied))!=EFI_SUCCESS)return false;   // r409: give: without \EFI\HAK\answers and \EFI\HAK\plan
     // settings that belong to the stick, not to the installed copy
     static const char16_t* const stale[]={u"\\EFI\\HAK\\continue.bin",u"\\EFI\\HAK\\continue-set",u"\\EFI\\HAK\\installed-by.txt",u"\\EFI\\HAK\\reader-only",u"\\EFI\\HAK\\windows-iso-url.txt"};
     for(const auto* name:stale) {FileRef ref;ref.volume=esp;Set(ref.path,pathUnits,name);efi_file_protocol* file=nullptr;
@@ -178,8 +203,42 @@ inline bool CharonOnto(efi_handle esp) {
 }
 // A disk to erase: any writable one of at least `minimum` bytes that is not
 // Charon's own; usbOnly: removable/USB disks only (a stick for an ISO).
+// r409: Charon into memory NOW. The move normally happens in the menu's own loop a few seconds after
+// the start (BootMenu.h); someone who opens an installation sooner found the disk Charon lives on
+// missing from the list of targets, with no word of why. Here the copy is finished and Charon moves
+// onto its volume in memory before the list is made, as "Install Charon on this computer" does.
+// False: it could not be done (said); the disk Charon runs from then stays out of the list.
+inline bool EnsureInMemory() {
+    if(hakefi::selfram::Active())return true;
+    auto& host=*U().host;
+    if(!hakefi::selfcopy::Ready() && !hakefi::selfcopy::Failed()) {
+        Say(T(u"Kopiuję Charona do pamięci, żeby dysk, z którego działa, też mógł być celem instalacji.",u"Copying Charon into memory, so that the disk it runs from can be an installation target too."));
+        unsigned rounds=0;
+        while(hakefi::selfcopy::Step(host.boot,host.root,true)) {
+            Pump();
+            if(++rounds%32==0)Progress(T(u"Charon do pamięci",u"Charon into memory"),hakefi::selfcopy::Done(),hakefi::selfcopy::Total());
+        }
+        // r409: the bar ended on its last 32nd round ("59 / 62 MB" seen, with every file copied); it now ends on the whole.
+        // (The numbers are binary megabytes, as everywhere in Charon: 66 000 000 bytes of files are 62.9 of them.)
+        if(hakefi::selfcopy::Ready())Progress(T(u"Charon do pamięci",u"Charon into memory"),hakefi::selfcopy::Total(),hakefi::selfcopy::Total());
+    }
+    // r409: files or folders of \EFI\HAK that did not fit the copy's tables (4000 files, 512 folders, paths under 200
+    // characters) are never left out in silence: whatever is installed from the copy in memory will lack them.
+    if(hakefi::selfcopy::Ready() && hakefi::selfcopy::Skipped()) {
+        static char16_t note[400];Set(note,400,T(u"Uwaga: kopia Charona w pamięci jest niepełna. Liczba plików i folderów, które się w niej nie zmieściły: ",u"Note: Charon's copy in memory is incomplete. Files and folders that did not fit in it: "));
+        CatN(note,400,hakefi::selfcopy::Skipped());Cat(note,400,T(u". Charon zapisany z tej kopii na dysk będzie ich pozbawiony.",u". A Charon written to a disk from this copy will lack them."));Say(note);
+    }
+    if(hakefi::selfcopy::Ready() && hakefi::selfram::Move(host.boot,host.image,nullptr,nullptr)==EFI_SUCCESS && hakefi::selfram::Active()) {
+        const efi_handle original=hakefi::selfram::OriginalDevice();host.selfDevice=original?original:hakefi::selfram::Handle();
+        return true;
+    }
+    Say(T(u"Uwaga: nie udało się wczytać Charona do pamięci, więc dysku, z którego działa Charon, nie ma na liście celów. Zwykle brakuje na to pamięci RAM; inne dyski pozostają dostępne.",
+          u"Note: Charon could not be loaded into memory, so the disk Charon runs from is not in the list of targets. Usually there is too little RAM for it; other disks remain available."));   // r409: no advice to make a Charon stick
+    return false;
+}
 inline bool ChooseDisk(uint64_t minimum,bool usbOnly,size_t& chosen) {
     auto& s=disks::D();disks::Load();
+    if(!usbOnly && !hakefi::selfram::Active())for(size_t i=0;i<s.count;++i)if(s.list[i].hasCharon && !s.list[i].readOnly) {EnsureInMemory();disks::Load();break;}   // r409
     static char16_t labels[disks::maxDisks][300];static ask::Choice list[disks::maxDisks];static size_t map[disks::maxDisks];size_t count=0;
     for(size_t i=0;i<s.count;++i) {
         const auto& d=s.list[i];

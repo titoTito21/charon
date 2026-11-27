@@ -16,6 +16,9 @@ typedef struct {
   UINT64 LastTick,LastProgressTick;
   EFI_STATUS Error;
   BOOLEAN Begun,Running,SmallDma;
+#ifdef HAK_AUDIO_TRACE
+  UINT64 TraceStartNs,TraceGapNs[3],TraceReadNs[3];UINT32 TracePolls,TraceStartCursor;   /* r409 measurement: printed after the third poll or at a fault */
+#endif
 } HAK_STREAM_CONTEXT;
 #define HAK_FROM_PROTOCOL(p) CR(p,HDA_IO_PRIVATE_DATA,HakProtocol,HDA_CONTROLLER_PRIVATE_DATA_SIGNATURE)
 static EFI_STATUS HakSetLength(HAK_STREAM_CONTEXT *c,BOOLEAN small) {
@@ -89,6 +92,8 @@ static VOID HakFault(HAK_STREAM_CONTEXT *c,EFI_STATUS error,UINT32 reason,UINT64
   stopStatus=HakStopContext(c);
   if(!EFI_ERROR(stopStatus))c->Running=FALSE;
 #ifdef HAK_AUDIO_TRACE
+  HakTraceValue("HAK start run ns",c->TraceStartNs);HakTraceValue("HAK start cursor",c->TraceStartCursor);
+  {UINT32 i;for(i=0;i<c->TracePolls&&i<3;i++){HakTraceValue("HAK poll gap ns",c->TraceGapNs[i]);HakTraceValue("HAK poll read ns",c->TraceReadNs[i]);}}
   HakTraceValue("HAK DMA fault status",error);HakTraceValue("HAK DMA fault reason",reason);
   HakTraceValue("HAK DMA detail",detail);HakTraceValue("HAK DMA stop status",stopStatus);
   HakTraceValue("HAK DMA prior position",c->Position);HakTraceValue("HAK DMA actual bytes",cursor);
@@ -104,6 +109,9 @@ VOID HakAudioPoll(HDA_STREAM *stream) {
   UINT32 raw,position,remaining;UINT8 flags;UINT64 now;EFI_STATUS status;
   if(!c || !c->Running || EFI_ERROR(c->Error))return;
   pci=stream->HdaDev->PciIo;now=GetPerformanceCounter();
+#ifdef HAK_AUDIO_TRACE
+  if(c->TracePolls<3 && now>=c->LastTick)c->TraceGapNs[c->TracePolls]=GetTimeInNanoSecond(now-c->LastTick);
+#endif
   /* A delayed poll can hide an entire ring wrap. Refuse ambiguous accounting;
    * wall time detects a fault, it never supplies a consumed-frame estimate. */
   if(now<c->LastTick || GetTimeInNanoSecond(now-c->LastTick)>HAK_RING_MAX_POLL_NS) {
@@ -119,6 +127,13 @@ VOID HakAudioPoll(HDA_STREAM *stream) {
   /* r404: LPIB may read exactly CBL just before it wraps (VMware does): that is position 0. */
   if(!EFI_ERROR(status) && raw==HAK_RING_DMA_FRAMES*4)raw=0;
   if(EFI_ERROR(status) || raw>=HAK_RING_DMA_FRAMES*4) {HakFault(c,EFI_ERROR(status)?status:EFI_DEVICE_ERROR,EFI_ERROR(status)?5:6,EFI_ERROR(status)?0:raw);return;}
+#ifdef HAK_AUDIO_TRACE
+  if(c->TracePolls<3) {
+    c->TraceReadNs[c->TracePolls]=GetTimeInNanoSecond(GetPerformanceCounter()-now);
+    if(++c->TracePolls==3) {UINT32 i;HakTraceValue("HAK start run ns",c->TraceStartNs);HakTraceValue("HAK start cursor",c->TraceStartCursor);
+      for(i=0;i<3;i++){HakTraceValue("HAK poll gap ns",c->TraceGapNs[i]);HakTraceValue("HAK poll read ns",c->TraceReadNs[i]);}}
+  }
+#endif
   position=raw/4;remaining=(position+HAK_RING_DMA_FRAMES-c->Position)%HAK_RING_DMA_FRAMES;
   if(remaining>HAK_RING_MAX_ADVANCE) {HakFault(c,EFI_TIMEOUT,7,remaining);return;}
   if(remaining)c->LastProgressTick=now;
@@ -192,8 +207,32 @@ static EFI_STATUS EFIAPI HakWrite(HAK_AUDIO_STREAM *protocol,CONST INT16 *sample
     for(block=0;block<HAK_RING_BLOCK_COUNT;block++)
       HakRingFill(&c->Ring,block,(INT16*)(c->Stream->BufferData+block*HAK_RING_BLOCK_FRAMES*4));
     c->Position=0;c->LastTick=GetPerformanceCounter();c->LastProgressTick=c->LastTick;c->Running=TRUE;
+#ifdef HAK_AUDIO_STARTDELAY_MS
+    gBS->Stall(HAK_AUDIO_STARTDELAY_MS*1000);   /* test builds only: a host that needs this long to create its stream, before the stream runs */
+#endif
     if(!HdaControllerSetStreamState(c->Stream,TRUE))status=EFI_DEVICE_ERROR;
-    else status=gBS->SetTimer(c->Stream->PollTimer,TimerPeriodic,EFI_TIMER_PERIOD_MILLISECONDS(1));
+    else {
+      /* r409: a hypervisor creates its host sound stream inside the write of the RUN bit, on the
+       * processor's own thread (VMware: 23..48 ms on an idle host, measured; more on a busy one).
+       * That time was counted as a late poll: beyond HAK_RING_MAX_POLL_NS the stream was declared
+       * stalled before it had played, and the restart that followed met the same wait. A cursor that still reads 0 when the call returns has not moved during the
+       * call, so nothing can have been played unseen: the poll clock starts here. A cursor that
+       * has moved keeps the clock taken before the call, as before; every later poll is judged
+       * by the unchanged limits. */
+      EFI_PCI_IO_PROTOCOL *startPci=c->Stream->HdaDev->PciIo;UINT32 startCursor=MAX_UINT32;
+#ifdef HAK_AUDIO_TRACE
+      c->TraceStartNs=GetTimeInNanoSecond(GetPerformanceCounter()-c->LastTick);c->TracePolls=0;
+#endif
+      if(!EFI_ERROR(startPci->Mem.Read(startPci,EfiPciIoWidthUint32,PCI_HDA_BAR,HDA_REG_SDNLPIB(c->Stream->Index),1,&startCursor)) && startCursor==0) {
+#ifndef HAK_AUDIO_OLDSTART   /* test builds only: the clock as up to r408, to compare */
+        c->LastTick=GetPerformanceCounter();c->LastProgressTick=c->LastTick;
+#endif
+      }
+#ifdef HAK_AUDIO_TRACE
+      c->TraceStartCursor=startCursor;
+#endif
+      status=gBS->SetTimer(c->Stream->PollTimer,TimerPeriodic,EFI_TIMER_PERIOD_MILLISECONDS(1));
+    }
     if(EFI_ERROR(status))HakFault(c,status,11,status);
   }
 done:gBS->RestoreTPL(tpl);return status;

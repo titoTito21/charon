@@ -1,0 +1,10 @@
+CHARON grid 49 132 0 0 1 Menedżer rozruchu Windows
+G03 62*00,20*f0|62*0000,20*0420|                                                              Windows Boot Manager
+G06 20*00,67*8f|20*0000,67*0415|                    Choose an operating system to start, or press TAB to select a tool:
+G08 20*00,64*87|20*0000,64*0415|                    (Use the arrow keys to highlight your choice, then press ENTER.)
+G0c 27*00,13*87|27*0000,13*0415|                           Windows Setup
+G0e 27*00,25*f0|27*0000,25*0420|                           Windows Memory Diagnostic
+G22 20*00,6*8f|20*0000,6*0411|                    Tools:
+G26 27*00,25*87|27*0000,25*0415|                           Windows Memory Diagnostic
+G30 21*00,12*f0,36*00,8*f0,45*00,10*f0|21*0000,12*0420,36*0000,8*0420,45*0000,10*0420|                     ENTER=Choose                                    TAB=Menu                                             ESC=Cancel
+CHARON grid end

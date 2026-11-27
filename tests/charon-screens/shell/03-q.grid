@@ -1,0 +1,33 @@
+CHARON grid 31 100 30 7 1 Program
+G00 14*8f,63*87|77*0000|help          - Displays the UEFI Shell command list or verbose command help.
+G01 14*8f,72*87|86*0000|hexedit       - Provides a full screen hex editor for files, block devices, or memory.
+G02 14*8f,35*87|49*0000|http          - Download a file from HTTP server.
+G03 14*8f,44*87|58*0000|if            - Executes commands in specified conditions.
+G04 14*8f,65*87|79*0000|ifconfig      - Modifies the default IP address of the UEFI IPv4 Network Stack.
+G05 14*8f,64*87|78*0000|ifconfig6     - Displays or modifies IPv6 configuration for network interface.
+G06 14*8f,50*87|64*0000|initrd        - Registers or unregisters a file as Linux initrd.
+G07 14*8f,34*87|48*0000|load          - Loads a UEFI driver into memory.
+G08 14*8f,25*87|39*0000|loadpcirom    - Loads a PCI Option ROM.
+G09 14*8f,56*87|70*0000|ls            - Lists the contents of a directory or file information.
+G0a 14*8f,43*87|57*0000|map           - Displays or defines file system mappings.
+G0b 14*8f,61*87|75*0000|memmap        - Displays the memory map maintained by the UEFI environment.
+G0c 14*8f,38*87|52*0000|mkdir         - Creates one or more new directories.
+G0d 14*8f,58*87|72*0000|mm            - Displays or modifies MEM/MMIO/IO/PCI/PCIE address space.
+G0e 14*8f,53*87|67*0000|mode          - Displays or changes the console output device mode.
+G0f 14*8f,74*87|88*0000|mv            - Moves one or more files to a destination within or between file systems.
+G10 14*8f,61*87|75*0000|openinfo      - Displays the protocols and agents associated with a handle.
+G11 14*8f,55*87|69*0000|parse         - Retrieves a value from a standard format output file.
+G12 14*8f,59*87|73*0000|pause         - Pauses a script and waits for an operator to press a key.
+G13 14*8f,80*87|94*0000|pci           - Displays PCI device list or PCI function configuration space and PCIe extended
+G14 20*87|20*0000|configuration space.
+G15 14*8f,42*87|56*0000|ping          - Ping the target host with an IPv4 stack.
+G16 14*8f,53*87|67*0000|ping6         - Ping a target machine with UEFI IPv6 network stack.
+G17 14*8f,44*87|58*0000|reconnect     - Reconnects drivers to the specific device.
+G18 14*8f,20*87|34*0000|reset         - Resets the system.
+G19 14*8f,43*87|57*0000|rm            - Deletes one or more files or directories.
+G1a 14*8f,30*87|44*0000|sermode       - Sets serial port attributes.
+G1b 14*8f,56*87|70*0000|set           - Displays or modifies UEFI Shell environment variables.
+G1c 14*8f,29*87|43*0000|setsize       - Adjusts the size of a file.
+G1d 38*87|38*0000|Press ENTER to continue or 'Q' break:q
+G1e 6*8e|6*0000|Shell>
+CHARON grid end

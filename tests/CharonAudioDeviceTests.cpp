@@ -7,10 +7,13 @@
 using namespace charonaudioefi;
 static efi_boot_services boot{};static Stream stream{};static hakaudioefi::Protocol audio{};
 static efi_handle handles[2];static hakaudioefi::Port ports[1];static State observed{};
-static size_t accepted=0,written=0;static int calls=0,setups=0,begins=0,stops=0,frees=0;
+static size_t accepted=0,written=0;static int calls=0,setups=0,begins=0,stops=0,frees=0,otherLookups=0;
 static bool sameHandle=true,badAccepted=false;static efi_status setupStatus=0,beginStatus=0,writeStatus=0,stateStatus=0,stopStatus=0;
 static efi_status EFIAPI Locate(efi_locate_search_type type,efi_guid* guid,void*,size_t* count,efi_handle** out) {
-    CHECK(type==ByProtocol && !memcmp(guid,&streamGuid,sizeof(*guid)));*count=1;*out=handles;return EFI_SUCCESS;
+    CHECK(type==ByProtocol);
+    // r405: Open also looks for a USB sound card (the mirror). This machine has none: only the HDA stream exists.
+    if(memcmp(guid,&streamGuid,sizeof(*guid))) {++otherLookups;return EFI_NOT_FOUND;}
+    *count=1;*out=handles;return EFI_SUCCESS;
 }
 static efi_status EFIAPI Protocol(efi_handle handle,efi_guid* guid,void** out) {
     CHECK(handle==handles[0]);
@@ -22,7 +25,7 @@ static efi_status EFIAPI Protocol(efi_handle handle,efi_guid* guid,void** out) {
 static efi_status EFIAPI Free(void* value) {CHECK(value==handles || value==ports);++frees;return EFI_SUCCESS;}
 static efi_status EFIAPI Outputs(hakaudioefi::Protocol*,hakaudioefi::Port** out,size_t* count) {*out=ports;*count=1;return EFI_SUCCESS;}
 static efi_status EFIAPI Setup(hakaudioefi::Protocol*,uint64_t mask,int8_t gain,uint32_t frequency,uint32_t bits,uint8_t channels,size_t delay) {
-    ++setups;CHECK(mask==1 && gain==-12 && frequency==64 && bits==2 && channels==2 && delay==0);return setupStatus;
+    ++setups;CHECK(mask==1 && gain==127 && frequency==64 && bits==2 && channels==2 && delay==0);return setupStatus;
 }
 static efi_status EFIAPI Begin(Stream*) {CHECK(setups==1);++begins;return beginStatus;}
 static efi_status EFIAPI Write(Stream*,const int16_t*,size_t frames,size_t* taken) {
@@ -39,6 +42,7 @@ void Reset() {
 }
 int main() {
     int16_t pcm[512]={};Reset();Device device;CHECK(device.Open(&boot)==EFI_SUCCESS && begins==1 && frees==2);
+    CHECK(otherLookups>=1 && !device.UsbMirror() && !device.UsbPrimary());   // r405: the USB card was looked for and is not there
     CHECK(device.Open(&boot)==EFI_ALREADY_STARTED && device.NeedsStop());CHECK(device.Drained());
     CHECK(device.Write(pcm,128)==0 && calls==1);accepted=3;CHECK(device.Write(pcm,128)==3);
     observed.submitted=3;observed.queued=3;observed.flags=1;CHECK(!device.Drained() && device.LastError()==EFI_SUCCESS);

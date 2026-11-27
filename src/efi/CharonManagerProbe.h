@@ -14,6 +14,7 @@
 #include <efi/protocol/device-path.h>
 #include "CharonBootManagers.h"
 #include "CharonBcd.h"
+#include "CharonBcdList.h"
 #include "CharonManagerProfiles.h"
 namespace hakefi {
 struct ManagerNames {
@@ -83,6 +84,14 @@ inline bool ReadBcdFile(efi_boot_services* boot,efi_file_protocol* root,BcdSumma
         uint8_t* data=nullptr;size_t got=size_t(end);
         if(boot->AllocatePool(EfiBootServicesData,got,(void**)&data)==EFI_SUCCESS && data) {
             if(file->Read(file,&got,data)==EFI_SUCCESS)found=ReadBcd(data,got,summary);
+            if(found) {   // r410: tools and the menu policy (read only)
+                static bcdlist::Entry entries[10];bcdlist::Store store;
+                const size_t n=bcdlist::ListEntries(data,got,entries,10,&store);
+                for(size_t i=0;i<n;++i) {
+                    if(entries[i].tool) {if(!summary.tools) {size_t k=0;for(;entries[i].description[k] && k<63;++k)summary.tool[k]=entries[i].description[k];summary.tool[k]=0;}++summary.tools;}
+                    else if(entries[i].isDefault && entries[i].menuPolicy==bcdlist::policyStandard && store.displayBootMenu!=1)summary.tileMenu=true;
+                }
+            }
             boot->FreePool(data);
         }
     }

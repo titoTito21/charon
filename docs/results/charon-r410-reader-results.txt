@@ -1,0 +1,1468 @@
+Charon r410 - reader side (agent 2): results
+============================================
+Statuses: RAN+PASSED / RAN+FAILED / COMPILED ONLY / NOT VERIFIED / NOT STARTED. Paths are relative to the
+work directory unless they start with tests/ or src/ (then: charon-src-r395/).
+Sessions: 1 = 2026-11-23 evening (cut off by a usage limit), 2 = 2026-11-24.
+
+RESUME HERE - SESSION 6 / RELEASE STATE (2026-11-24 evening; read this block first)
+==================================================================================
+FINAL BUILDS of the reader side for r410 (built 21:14-21:16 from the tree as it stood at 21:12:40, the newest
+source file then: agent 1's CharonWsPlanDialogue.h; no source file changed during the builds). Reader control
+release 411, settings record V14 "CHARS00E" (48 bytes) - both UNCHANGED since session 3. App and driver must
+come from the same build:
+  charon-win-r410b38/CHARON.EFI      sha256 6d897b32881dff9a...  clean (no trace)   <- agent 1 / coordinator
+  charon-win-r410b38-drv/CHARONVOICE.EFI  d6b23551eb7bfd62...   clean driver       <- agent 1 / coordinator
+  charon-win-r410b38t/CHARON.EFI     4f63a56b1f7daa37...        trace ("CHARON speak" lines)
+  charon-win-r410b38t-drv/CHARONVOICE.EFI 179497988e136f3d...   trace driver
+  charon-win-r410b38g/CHARON.EFI                                trace + grid dump (captures only)
+  (full hashes: Get-FileHash; image.json in each folder.) The DRIVERS are byte-identical to b36/b37 (the changes
+  after b37 are agent 1's install-side files: BootMenu.h, CharonWsCore.h, CharonWsAsk.h, CharonWsPlan*.h,
+  CharonWsInstall2.h, CharonWsDetailed.h, CharonWsWinUsb.h, CharonHttps.h, CharonPlanState.h). b36 and b37 clean
+  apps are byte-identical to each other (same sources, reproducible build).
+  AGENT 1 KEPT EDITING after b38 (21:18-21:24: CharonWsInstall3.h, CharonWsQuestions.h, CharonWsDosSystem.h,
+  CharonWsDosApps.h, CharonLinuxScripts.h, src/linux/*.sh - install side only). No READER file changed after
+  16:14 (CharonResident.h). So: the DRIVER b38-drv is final; the APP must be rebuilt once agent 1 has finished,
+  with python3.15 charon-src-r395/tools/build-charon-windows.py NEWDIR [--trace] [--driver] (about 30 s).
+WHOLE BUILD NOT REGRESSION-TESTED: by the user's decision, the full 14-run boot-manager regression was NOT run again
+  after session 4 (last full run: b34t, 14 of 14, see "FULL 14-run regression on b34t"). Since then only
+  targeted runs (sessions 5 and 6) and a SMOKE READ on the final trace build: GRUB, Windows Boot Manager menu
+  (two-entry BCD), rEFInd (text-mode scan), FreeBSD loader (normal profile) - r410-smoke6b/ (b38t) and
+  r410-smoke6/ (b37t): see "SESSION 6" at the end of this file.
+HOST SUITES on b38t (r410-evidence/host-b38.txt; identical output to b37t, r410-evidence/host-b37.txt):
+  r410-host-tests.sh: 20 suites, all exit 0 - CharonFormattingTests, SpeechText, MessageMode, ConsoleSettings,
+    MelodySettings, SecretInput, Controls, Marks, Ocr, AaOcr, BootManagers, AudioStall 316/0, AudioDevice,
+    ReaderR410 90/0, ScreenModel 151 of 151, EntryInfo 181/0, BcdList 22/0, PixelControls 122/0,
+    MessageQueue 50/0, AreaOcr 34/0.
+  r410-provider-tests.sh: VoiceStallProvider 39/0, VoiceLatePump 32/0, VoiceProvider PASS.
+  r410-host-ocr-tests.sh: the same suites pass; its copies of SecretInput, VoiceStallProvider and VoiceProvider
+    do not link in that script (missing CharonTtf.o / CharonPool.o on its link line - a harness limit, the same
+    in session 5; the main and provider scripts build and pass them); BmOcr / TtfOcr are tools (usage exit 2).
+MACHINES of this agent: none (each run deleted its machine; agent 1's VMware machines r410a-* never touched).
+
+PER ANSWER - RELEASE STATE (work/r410-reader-user-answers.md)
+   1 wording by profile        DONE; Polish and English heard.
+   2 new screen spoken         DONE; Shell and Charon's own screens named.
+   3 countdown = sounds        DONE, MEASURED (Charon's own and GRUB's ticks, end tone). Reader command stops a
+                               known manager's countdown (H1 sound).
+   4 elements list             DONE on every screen incl. Charon's install dialogue (run 23).
+   5 hidden menu wait          DONE (proven session 3).
+   6 editors, command lines    DONE (word echo, completion, describe 95 rows; GRUB, systemd-boot, Limine).
+   7 entry information         DONE on GRUB, systemd-boot, Limine, Syslinux, rEFInd (also before the first key);
+                               honest "cannot tell" on scanned rEFInd entries and Windows; Clover not covered.
+   8 control reader            DONE on rEFInd, Clover, OpenCanopy (walk, click, G3 names, H2 question); NOT for
+                               wallpaper themes, firmware setup, logos, absolute pointers, sliders.
+   9 Windows entries           read-only; BCD list wired in; the F1 sentence COMPILED ONLY (needs a firmware
+                               Boot#### Windows entry with a two-system BCD - never available in QEMU).
+  10 kind by voice+tone+rate   DONE, MEASURED (rates, tones).
+  11 errors and warnings       DONE, MEASURED (alarm, full error, last error).
+  12 position and structure    DONE.
+  13 colours                   DONE, MEASURED (relative default, absolute option).
+  14 profiles + custom         DONE; Insert+V cycle heard in Charon's install dialogue too.
+  15 braille / bar / history   DONE; bar and history heard in the install dialogue (run 23).
+  F1 read-only BCD + text menu COMPILED ONLY in speech (see 9).   F2 risk sound always: RAN.
+  F3 Charon's countdown ticks: MEASURED.   F4 old V12 records keep formatting on: AS BUILT (decoder keeps
+  their formatting byte; not separately proven in a VM).
+  F5 describe words: 92 -> 95 rows with sources; RAN in a VM.
+  G1, G2 as built.   G3 PROVEN (rEFInd).   G4 PROVEN (rEFInd, Clover, OpenCanopy).
+  H1 stop sound MEASURED (GRUB, systemd-boot), words in beginner only.   H2 question before an uncertain click:
+  RAN (rEFInd PL+EN, OpenCanopy no question).   H3 accepted, used.   H4 vanished text by profile: RAN (FreeBSD
+  normal 10 of 10, beginner, expert; history).
+
+NEW SHORTCUTS OF r410 - English / Polish lists: see "NEW SHORTCUTS OF r410" below (final; nothing changed in
+  sessions 5 and 6 except the H2 confirmation row; Control+Alt+D = symbol level and Control+Alt+H = shortcut
+  summary, so "what changed" and "speech history" have only Insert+D / Insert+H).
+
+KNOWN LIMITS for the release notes
+  - On a slow console a row caught half drawn can be spoken in two parts ("Fr. eeBSD"); with H4 the normal and
+    expert profiles hear little of that text.
+  - Wallpaper themes (rEFInd on a wallpaper): icons not found as controls; GRUB themes read by OCR, about 1.5 %
+    of characters wrong on the theme corpus (0.16 % over all 18 screens).
+  - Logo / icon names are not recognised from the picture (names come only from text on the screen or from the
+    manager's configuration, said as "probably NAME"); firmware setup screens, absolute pointers and sliders are
+    not read as controls. Clover has no configuration parser (no entry information, no configured names).
+  - NetBSD and OpenBSD loaders were not run in r410.
+  - The r409 "voice row sticks on Natan" oddity was not reproduced (no change made); "Settings saved" on a
+    read-only medium and "eSpeak NG polski" in English are fixed and heard.
+  - The late-pump fix (speech in scraps under host disk load) is proven in QEMU under artificial disk load and in
+    the host test only, not on the VMware machines where the scraps were heard.
+  - Windows 8-11 tile menu: drawn after ExitBootServices, no UEFI reader can read it (said in speech).
+  - Control+Alt commands on GRUB: seen working, and once (not reproduced) GRUB got a key and opened its
+    command line (session 5, h1grubs).
+  - Unknown programs get no countdown stop key (no profile) - by design.
+  - Charon's install dialogue (run 23): "where am I" counts the help line as menu entry 1 of 2 instead of the
+    option (1 of 3); Insert+= there says the program's configuration was not found (meant for boot managers);
+    the workspace position differs by one between Charon's speech (6 of 15) and the reader's (7 of 16).
+  - Run 17's lost GRUB-theme ticks were not reproduced (7 of 7 in session 5); not explained.
+SETTINGS RECORD for tools/charon-os (agent 1 / coordinator): V14 "CHARS00E", 48 bytes, UNCHANGED since session 3;
+  charon-os must accept "CHARS00E" and mask byte32 with 7, byte33 with 3, byte37 with 7 (as reported in session 3).
+  Older records (V12 and earlier) migrate; formatting stays on where it was on (F4).
+
+RESUME HERE - SESSION 4 (2026-11-24; history - superseded by the block above)
+---------------------------------------------------------------------------------------------------------------
+User's third set G1-G4 is in work/r410-reader-user-answers.md (binding). G1, G2: as built. G3: done in code
+(CharonResidentControls.inc ControlWords, "probably NAME" only when icons == configured entries). G4: the corner
+jump was never limited to the test program (StartClick); clicks PROVEN on rEFInd and Clover (run 17).
+NEWEST GOOD BUILDS (final of session 4, same sources; reader control release 411):
+  charon-win-r410b34/CHARON.EFI + charon-win-r410b34-drv/CHARONVOICE.EFI      clean - for agent 1
+  charon-win-r410b34t/CHARON.EFI + charon-win-r410b34t-drv/CHARONVOICE.EFI    trace
+  charon-win-r410b34g/CHARON.EFI                                              trace + grid dump
+Blocks 1 to 5 are DONE (session 4 stopped at the block boundary, tree builds, all host suites pass, the 14-run
+regression has no unexplained difference). EXACT NEXT STEP: the list "OPEN" in "STATE AT THE END OF SESSION 4"
+at the very end of this file, item 1 first. Machines of this agent: none.
+How to repeat: sh r410-host-tests.sh $PWD/BUILD $PWD/OUT ; sh r410-provider-tests.sh $PWD/BUILD $PWD/OUT/provider ;
+  sh r410-run13.sh / run14 / run15 / run16 / run17 / run18 BUILD ["set ..."] ; sh r410-final.sh (capture, OCR,
+  confirmations, regression) ; python3.15 r410-regcmp.py OLD.out NEW.out.
+
+RESUME HERE - SESSION 3 (2026-11-24; history)
+--------------------------------------------------------------------------------------------------------------
+Follow-up answers F1-F5 of the user are in work/r410-reader-user-answers.md (binding).
+NEWEST GOOD BUILDS (same sources; app and driver must be of the same build - reader control release 411):
+  charon-win-r410b26/CHARON.EFI + charon-win-r410b26-drv/CHARONVOICE.EFI        clean (no trace) - for agent 1
+  charon-win-r410b26t/CHARON.EFI + charon-win-r410b26t-drv/CHARONVOICE.EFI      trace ("CHARON speak" lines)
+  charon-win-r410b26g/CHARON.EFI                                                trace + grid dump (captures)
+  Older build directories of this agent (b18-b25) were deleted; b16/b17 kept as the last builds of session 2.
+DONE IN CODE (b26; blocks A to E; see "Session 3" section at the end of this file for what is PROVEN):
+  CharonFormatting.h  payload 12 -> 14 (place tone, lead silence); ONE kind table kindTable (voice, family, tone);
+                      relative colours as default, r399 ladder as option; profile items (item*), ProfileItems().
+  CharonLiveVoice.*   formatPayload 14, place tone 1760..440 Hz, lead silence, kind tones from kindTable.
+  CharonSpeechText.h  formatPayloadChars 14.
+  CharSettings.h      V14 "CHARS00E" (48 bytes): profile 3 = custom, 12 item bits, reader bar, absolute colours.
+  CharonReaderControl.h  charonRelease 411, ReaderControl::more (PackMore / ApplyMore).
+  BootMenu.h, BootMenuModel.h, HAKBootEFI.cpp  plumbing + 14 new rows on the "Text formatting" page; Charon's own
+                      countdown ticks rise like the reader's (F3).
+  CharonResident.h / CharonResidentModel.inc  Item() instead of Beginner()/Expert(); alarm before an error or
+                      warning text, error read in full, last message (Insert+/ , Ctrl+Alt+5), history marks and
+                      filter (Left/Right in the history), reader bar (Insert+minus, Ctrl+Alt+1, setting), program
+                      name only when the kind of screen changed, structure words for beginners, risk sound on
+                      selection (F2). CharonResidentControls.inc (new): control reader, pointer walk and click.
+  work tools: r410-mkset.cpp (settings record for tests; charon-vm.py CHARON_SETTINGS_FILE), r410-run7.sh,
+              r410-tones.py, r410-find.py (measurement), r410-capture.py now logs t= per step.
+HELPERS' NEW FILES (EntryInfo and PixelControls are wired into the reader; BcdList is not):
+  src/efi/CharonEntryInfo.h + tests/CharonEntryInfoTests.cpp (181 checks)   - answer 7 "what this entry starts"
+  src/efi/CharonBcdList.h + tests/CharonBcdListTests.cpp (28 checks)        - answer 9 / F1 read-only BCD list
+  src/efi/CharonPixelControls.h + tests/CharonPixelControlsTests.cpp (122)  - answer 8 control reader
+  tests/CharonPointerProbe.cpp -> work/charon-win-r410-pprobe/PPROBE.EFI (never run)
+  r410-evidence/web/pointer-research.txt, entryinfo-sources.txt
+  A helper is adding the F5 words to CharonLoaderWords.h (r410-evidence/web/words-distro-sources.txt).
+NEXT STEPS: see "STATE AT THE END OF SESSION 3" at the very end of this file.
+
+RESUME HERE (updated 2026-11-24, end of session 2)
+-------------------------------------------------
+FINAL builds, made from the tree WITHOUT any workaround flag (agent 1 fixed the two install-side build
+breaks): charon-win-r410b17t/CHARON.EFI (trace), charon-win-r410b17g (trace + grid dump, for captures),
+charon-win-r410b17t-drv/CHARONVOICE.EFI (driver). Reader sources of b17 = b16 (only install-side files
+changed between them); b16 (charon-win-r410b16t/g/-drv, built with the two workaround flags) is the
+build the full regression and the last captures ran on. b17: host suites (r410-evidence/host-b17.txt)
+and an audible smoke run on GRUB and Ventoy (regression-r410-b17-smoke.out), identical to b16's lines.
+  python3.15 charon-src-r395/tools/build-charon-windows.py NEWDIR --trace [--driver]
+  (grid dump: CHARON_EXTRA="-DHAK_CHARON_GRID_DUMP"; with -DHAK_CHARON_READER_TRACE add
+  -fno-threadsafe-statics, or the link fails on __cxa_guard)
+Machines of this agent: none running, none left on disk. (vmrun list showed 2 machines, r410a-w1 and
+r410a-db1: agent 1's.) Superseded build dirs b0t..b15*, r410-run3, r410-diag were deleted.
+Kept evidence: r410-corpus (session 1 capture), r410-run2 (b7g, all 21 scenarios), r410-run4 (features,
+ticks recording), r410-run5 (b14g graphical sets), r410-run6 (b16g: rEFInd, GRUB theme, Clover, Windows
+Recovery), r410-evidence/, regression-r410.out (b14), regression-r410-b16.out (b16, final).
+NEXT (the coordinator's instruction of 2026-11-24): the open points of the user's answers in the table's
+order - 6 (word echo, paging, the other editors), 7 (what an entry starts, from the configuration on
+disk), 8 (control reader for graphical managers incl. mouse-only screens), 9 (Windows entries in Charon's
+list: read-only, see the research), 10-13 (formatting), 14 (custom profile, settings V14), 15 (reader
+bar, marked history; braille to be verified with work/charon-braille-sim.py) - then the full regression
+again on the final build. Session 2 stopped here because its working context was used up, not because
+of a blocker.
+How to repeat: sh r410-host-tests.sh $PWD/BUILD ; sh r410-provider-tests.sh $PWD/BUILD ;
+  CORPUS=dir sh r410-capture.sh GRIDBUILD/CHARON.EFI ["sets"] ; sh r410-run4.sh GRIDBUILD ;
+  CHARON_PORT=4476 sh r396-regression.sh BUILD/CHARON.EFI > out ;
+  python3.15 charon-src-r395/tests/charon-ocr-measure.py charon-src-r395/tests/charon-screens/ocr-reference.txt dir --lines
+
+After b14 (two changes, both from what the first regression and run 5 showed)
+  b15: src/efi/CharonResident.h - an anti-aliased line on a bar that falls into the screen's own console
+       colour gets another background (rEFInd's submenu). RAN+PASSED on b16 (r410-run6/refind/said.txt):
+       "rEFInd: menu, 2 pozycje. Boot using default options, 1 z 2", Down: "Return to Main Menu, 2 z 2".
+  b16: src/efi/CharonResidentModel.inc - a model list SHORTER than the block of rows the reader itself
+       found is not used (iPXE apart). Found by the regression: Ventoy said "mini.iso, 1 z 2" where r408
+       said "2 z 3".
+
+User's answers: state per point (work/r410-reader-user-answers.md, 15 points)
+-----------------------------------------------------------------------------
+  1 entry wording by profile      RAN+PASSED in a VM for GRUB (r410-run3/featgrub/said.txt, b10 build; the
+                                  wording code is unchanged in b14). normal "Opcje zaawansowane: ..., 2 z 4",
+                                  default entry "..., domyslna, 1 z N"; beginner "..., 4 z 4. Enter uruchamia";
+                                  expert name only, with the element's formatting mark instead of words.
+                                  Order = name, kind (submenu), state (default), position. NOT VERIFIED: the
+                                  English strings in a VM (the test machines run the Polish interface).
+  2 new screen                    PARTLY, RAN. Spoken: "<program>: menu, N items. <entry>, 1 of N", then the
+                                  title and help line; "Entry editor" / "Command line" when one opens. The
+                                  help line is skipped in the expert profile (COMPILED ONLY: not exercised).
+                                  Not done: the program's name only when the KIND of screen changed (it is
+                                  said whenever a menu is introduced); a nested GRUB menu is announced as
+                                  "submenu, N items".
+  3 countdown = sounds            RAN+PASSED, MEASURED. r410-run4/ticks/live.wav analysed by r410-ticks.py
+                                  (r410-evidence/ticks-b14.txt): one sentence ("grub: Charon test entry one,
+                                  domyslna, start za 7 sekund"), then ticks 1.0 s apart at 1288, 1319, 1350,
+                                  1381, 1412, 1438, 1469 Hz (design: 600 + 30 x (30 - seconds left)), then
+                                  the end tone 881 Hz for 510 ms. No per-second speech; the reader sent no
+                                  key. A GRUB theme's countdown label is now ticks too after its first
+                                  reading (model countdown row) - see run 5 below. NOT changed: Charon's
+                                  own menu countdown still ticks at 1000 Hz (BootMenu, not the reader).
+  4 elements list                 RAN+PASSED for GRUB. 15 elements on GRUB's menu: title, window, 4 entries,
+                                  help, 8 keys of the program. Typing filters ("klaw": 8), Enter on "Klawisz
+                                  e" sent e and GRUB opened its editor (trace "CHARON nav send program
+                                  key=0x65", r410-run4/feat2). Enter on an entry sends arrows (session 1:
+                                  "Przesuwam wybor, 2 razy w dol", GRUB). Key table: src/efi/
+                                  CharonManagerKeys.h, 88 rows, 11 programs. Spoken key list Insert+
+                                  apostrophe / Ctrl+Alt+7: RAN (featgrub). NOT VERIFIED: sending arrows in
+                                  systemd-boot, Limine, OpenCore, Windows, Syslinux, iPXE; buttons as
+                                  elements (no control model).
+  5 hidden menu wait by profile   COMPILED ONLY. beginner 5 s + full hint, normal 2 s, expert tone 1320 Hz
+                                  and 1 s (HiddenMenuPrompt in CharonResident.h).
+  6 editors and command lines     PARTLY. New and RAN+PASSED: the "describe" shortcut (Insert+semicolon,
+                                  Ctrl+Alt+6) with src/efi/CharonLoaderWords.h, 49 words, each checked
+                                  against kernel-parameters.txt, grub.texi or Limine CONFIG.md; in GRUB's
+                                  editor it said "linux: polecenie GRUB: ...; root=/dev/sda2: jadro: ...; ro:
+                                  ..." (r410-run4/feat2). Already there and seen again: typed characters,
+                                  the line on Up/Down ("Pusty wiersz", the linux line). NOT DONE: word echo,
+                                  line number for beginners, Tab completions "at once", paging with "there is
+                                  more"; systemd-boot's and Limine's editors and the Shell were not driven
+                                  with the new shortcut.
+  7 entry information on demand   PARTLY. Done: the program's key list (see 4); a risk warning from the
+                                  entry's NAME in "where am I" (Insert+T): recovery/rescue, firmware setup,
+                                  memory test, erasing, with the warning signal - RAN+PASSED ("Uwaga, wedlug
+                                  nazwy: test pamieci; przejmuje komputer i trwa dlugo"). NOT STARTED: what
+                                  the entry starts, read from the program's configuration on disk.
+  8 control reader for graphics   NOT STARTED. (Batch 4 made text beside pictures readable; icons, buttons,
+                                  sliders, tabs, focus frames, pointer walking: nothing yet.)
+  9 Windows BCD entries in Charon INVESTIGATED ON THE WEB, nothing implemented. Result
+                                  (r410-evidence/web/bcd-research.txt): no documented or source-evidenced
+                                  way to start ONE chosen BCD entry without writing the BCD or firmware
+                                  variables. bootmgfw.efi has no known load option for it; "bootsequence"
+                                  is a BCD write; winload.efi cannot be started alone; a modified BCD COPY
+                                  on a virtual volume works for WinPE (wimboot) but is unconfirmed for an
+                                  installed Windows and risky with BitLocker. So: entries can be LISTED
+                                  read-only (ReadBcdFile already reads the hive for the hidden-menu check),
+                                  the choice itself stays in the classic text menu - or the user allows a
+                                  one-time bootsequence write. Question for the user below.
+ 10 kind by pitch+timbre+tone+rate  PARTLY, host test only (session 1: CharonFormatting.h Kind -> voice
+                                  parameters and a tone per kind; CharonReaderR410Tests). The tones were not
+                                  measured in a recording; rate/pauses per kind not done.
+ 11 errors and warnings           PARTLY (kinds error / warning with their own voice parameters and sound in
+                                  the map). NOT DONE: interrupting everything, a "last message" shortcut,
+                                  vanished text read to the end and kept.
+ 12 position and structure        PARTLY (first / last sounds and indentation by depth in the map; pitch by
+                                  position exists as PositionPitch). NOT VERIFIED by measurement; stereo by
+                                  column and words only for beginners: not done.
+ 13 colours only when meaningful  NOT STARTED (the colour boxes still drive r399's absolute ladder).
+ 14 one profile + custom profile  PARTLY: one profile everywhere, saved, shortcut Insert+V / Ctrl+Alt+V
+                                  (RAN). The fourth "custom" profile: NOT STARTED (needs a settings V14).
+ 15 braille / reader bar / history  PARTLY, COMPILED ONLY: braille shows a status cell (d default, s
+                                  submenu, e edit field, h help, - entry) in front and the position " 2/6"
+                                  at the END of the line. Reader bar: NOT STARTED. History marks and
+                                  filter: NOT STARTED.
+
+Host suites on the final tree (r410-evidence/host-b17.txt, same counts on b14 and b16; sh r410-host-tests.sh / r410-provider-tests.sh)
+---------------------------------------------------------------------------------------------------------
+  CharonReaderR410Tests            RAN+PASSED  64 checks, 0 failed (settings V13, formatting map, profiles,
+                                               key table, word table)
+  CharonScreenModelTests           RAN+PASSED  151 recorded screens, 151 as expected
+        expected.txt is a golden file written from the model's own output, then read through; it guards
+        against changes. Independent check: a second capture of the same 21 scenarios (r410-run2, b7g):
+        132 of 151 screens gave the identical line; the other 19 differ only in a number that depends on
+        time (seconds left, percent) or, once, in an entry's label.
+  CharonAaOcrTests                 RAN+PASSED  now with 3 r410 cases (a line as wide as its area, text
+                                               beside a picture, a short selection bar); the r409 reader
+                                               fails the first of them (r410-host/aa409.out: FAIL 81)
+  CharonOcrTests                   RAN+PASSED
+  CharonVoiceLatePumpTests         RAN+PASSED  32 checks (pump every 10 / 100 / 200 / 400 ms: card empty
+                                               0.0 / 0.0 / 3.3 / 7.5 % of the time)
+  CharonVoiceStallProviderTests    RAN+PASSED  39 checks
+  CharonAudioStallTests            RAN+PASSED  316 checks
+  CharonSpeechTextTests, CharonMessageModeTests, CharonConsoleSettingsTests, CharonMelodySettingsTests,
+  CharonBootManagersTests          RAN+PASSED
+  CharonTtfOcrTests (tool)         RAN: Windows screenshots read in full (recovery 9 lines, menu 13,
+                                   memory test 13, its options 18)
+  CharonFormattingTests            RAN+FAILED  5 checks; stale since before r410 (the r409 release tree fails
+                                   7 of them, r410-host/fmt-r409.exe). Not refreshed.
+  CharonAudioDeviceTests           RAN+FAILED  stale since before r409.
+  CharonSecretInputTests, CharonControlsTests, CharonMarksTests, CharonVoiceProviderTests: do not build
+  with the recipe of r410-host-tests.sh (they need their own include sets); not run.
+
+Batch 1 - screen model
+----------------------
+  src/efi/CharonScreenModel.h (no firmware dependency) + src/efi/CharonResidentModel.inc (inside the
+  reader). Elements: program, kind of screen, title, help rows, list (items, selected, default, submenu,
+  depth, "more above/below"), countdown, edit field + caret, progress, message, windows. Each has its
+  own `sure` flag; not sure = the reader reads as before r410.
+  Per-program rules: GRUB, systemd-boot, Limine, OpenCore, Windows Boot Manager, Windows Memory
+  Diagnostic, UEFI Shell, Memtest86+, Syslinux, iPXE (menu with gaps; session 2: its settings screen),
+  icon pickers (count and selected icon from the picture analysis).
+  Session 2: a list the program shows only partly is said as "2 of 16 shown" (COMPILED ONLY).
+  VM proof (r410-run2/<set>/said.txt, b7g build, Polish interface):
+    systemd-boot  "systemd-boot: Charon probe loader, domyslna, start za 29 sekund"; "Windows Boot
+                  Manager, 2 z 3"; status and help screens read.
+    Limine        "Limine: Charon probe loader, domyslna, start za 29 sekund"; "Edytor wpisu".
+    OpenCore      "OpenCore: menu, 3 pozycje. 1. CHARON, domyslna, 1 z 3"; Shutdown/Restart as buttons.
+    Windows       "Menedzer rozruchu Windows: Windows Setup, domyslna, start za 29 sekund"; tools list;
+                  Memory Diagnostic and its options ("Test Mix: Standard, 2 z 3").
+    Syslinux      "Syslinux: Debian test one, domyslna, start za 59 sekund"; "Wiersz polecen" on Tab.
+    iPXE          typed netboot.xyz-like menu: "menu, 4 pozycje. boot from local hdd, 1 z 4" (gaps are
+                  not entries).
+    rEFInd text   "rEFInd: Boot ... GPROBE.EFI from GRUBTEST, domyslna, start za 29 sekund", "2 z 9".
+    GRUB          session 1 and r410-run3/featgrub.
+  Known wrong or weak (seen, not fixed):
+    - after a countdown, the first arrow key makes the entry heard twice (alone, then with the menu's
+      introduction) in GRUB, systemd-boot, rEFInd text; r408 did the same (regression-r408-tcg.out).
+    - UEFI Shell: "help edit" output was announced as "Program: menu, 2 pozycje" (a coloured row taken for
+      a selection by the pre-r410 code; the model itself has no list there).
+    - iPXE's command line says the program's name after every typed command ("eye pixie").
+    - a program key sent from the elements list does not trigger "Entry editor" (the key is not a "recent
+      key" for the reader).
+    - "where am I" puts ", w podmenu" after the risk warning.
+    - the screens the capture scripts meant to reach but did not: Windows "Edit boot options" (F10) and
+      advanced options (F8) - the test BCD's entry fails with 0xc000000f first; systemd-boot's editor
+      ("Entry does not support editing the command line" for the test entries). NOT VERIFIED.
+
+Batch 2 - voice formatting from the model: see answers 10-13. Default stays OFF (record byte40 = 252).
+  Insert+G / Ctrl+Alt+G cycles off / voice / sound icons / both (session 1, heard).
+
+Batch 3 - navigation (one implementation, the reader's Command path)
+  Insert+F7 | Ctrl+Alt+;   elements list (filter by typing, Enter goes / sends, Tab review only)
+  Insert+F5, F6 | Ctrl+Alt+[ ]   previous / next element
+  Insert+F4, F3, F2 | Ctrl+Alt+F / '   find: new, next, previous
+  Insert+F8, Insert+] [ | Ctrl+Alt+0 9 8   bookmark on/off, next, previous (per screen)
+  Insert+D (twice)   what changed since the last key (since the screen appeared)
+  Insert+T (twice)   where am I (with help line and profile); risk by name (session 2)
+  Insert+End         help line of the screen
+  Insert+apostrophe | Ctrl+Alt+7   keys of the program (session 2)
+  Insert+semicolon | Ctrl+Alt+6    describe the known words of the line (session 2)
+  Insert+V | Ctrl+Alt+V  verbosity profile;  Insert+G | Ctrl+Alt+G  formatting mode
+  RAN in a VM on GRUB only (session 1 run; r410-run3/featgrub; r410-run4/feat2). Key help (Insert+F1)
+  has the new lines in both languages (COMPILED ONLY). NOT VERIFIED: on Charon's own screens, in other
+  programs, the laptop layout. Ctrl+Alt+6 and 7 need two more key registrations per layout (520 handles).
+
+Batch 4 - OCR accuracy
+----------------------
+  Measure: tests/charon-ocr-measure.py with tests/charon-screens/ocr-reference.txt = 18 graphical screens
+  of 9 sets transcribed BY HAND from the pictures (170 lines, 5038 characters). Character error rate =
+  edit distance to the best-matching part of the reader's grid / reference characters.
+  BEFORE (reader as in r409; r410-evidence/ocr-before.txt, corpus of session 1; a second capture gave
+  12.13 %):
+      set         chars  errors   CER %   WER %   lines  missed
+      grubgfx       907      1     0.11    0.67     23      0
+      grubtheme     549    193    35.15   39.78     16      7
+      refind        890    273    30.67   39.16     25      8
+      clover       1195     70     5.86    8.29     48      4
+      canopy         39      0     0.00    0.00      4      0
+      opencore      119      0     0.00    0.00      6      0
+      limine        192      0     0.00    0.00      9      0
+      winmenu       778      0     0.00    0.00     30      0
+      winerr        369     70    18.97   22.95      9      1
+      ALL          5038    607    12.05   15.14    170     20
+  What the numbers showed: the readers hardly ever mistake a letter; they LOSE WHOLE LINES. Causes found
+  with a reader-trace build (r410-diag/) and reproduced on the host:
+    1. A row counted as "picture" when less than half of 32 samples were background: the widest line of
+       an area the reader had cropped to that very line (rEFInd's second hint line, long lines of its
+       About screen, Windows Recovery's "You'll need to use recovery tools ..."). Fix: the reader keeps
+       at least twice the ink's width when it crops (CharonResident.h RecognizeArea); the anti-aliased
+       reader samples 64 points and needs a quarter. (The same change in the TrueType reader made a
+       theme's wallpaper rows text - rows of "IIII" were spoken in run 3 - and was taken back.)
+    2. Text beside a picture was not read: a block of rows was one unit from its first ink column
+       (rEFInd's submenu entries beside the big icon, About text beside the "i"; Clover's first lines
+       beside its gear / question mark / badge). Fix: blocks are cut into parts at 24 blank columns
+       (CharonAaOcr.h always; CharonTtfOcr.h only when the whole block gave nothing).
+    3. Black text on a SHORT white selection bar in a grey screen (rEFInd's submenu): read against the
+       grey. Fix: each part's own most frequent brightness is its background; the line is reported on
+       the bar's colour, so it is also seen as the selection.
+    4. GRUB gfxterm: the letter over the underline caret was lost ("etparams"). Fix: CharonOcr.h reads
+       such a cell again without the caret rows, exact matches only. RAN+PASSED in a VM
+       (r410-run4/gfxedit: "setparams Charon test entry two").
+    5. A GRUB theme's terminal box: its frame was read as letters ("l l" on every row, and spoken).
+       Fix: a line of upright strokes only is not text; the same stroke alone at both ends of a line is
+       dropped. With (1) the theme's entry editor and nested text menu are now read at all.
+  Polish letters: GRUB gfxterm (Unifont) read "Zazolc gesla jazn", "zrodla i sciezki", "Pamiec: test
+  pamieci" with every diacritic right (r410-run3/grubgfxpl, 0 errors by eye; not in the reference file).
+  AFTER (b14g build, fresh capture r410-run5; r410-evidence/ocr-after.txt):
+      set         chars  errors   CER %   WER %   lines  missed
+      grubgfx       907      1     0.11    0.67     23      0
+      grubtheme     549     28     5.10    8.60     16      1
+      refind        890      2     0.22    0.70     25      0
+      clover       1195     15     1.26    1.04     48      1
+      canopy         39      0     0.00    0.00      4      0
+      opencore      119      0     0.00    0.00      6      0
+      limine        192      1     0.52    3.03      9      0
+      winmenu       778      0     0.00    0.00     30      0
+      winerr        369      0     0.00    0.00      9      0
+      ALL          5038     47     0.93    1.59    170      2
+  12.05 % -> 0.93 % of characters, 20 -> 2 lost lines. Of the 47 errors left: 5 are countdown digits that
+  differ because the picture was taken a second earlier or later than the reference (not reading errors);
+  27 are the GRUB theme's entry editor (first lines of its spaced-out terminal font: "setparams ..." and
+  "echo ..." are not read; the rest of that screen is); 15 are Clover's bottom-right line "5176
+  GRUBTEST\EFI\CLOVER" (not read: far right on the row of "F1:Help").
+  Still wrong and heard in run 5: the GRUB theme's countdown label was spoken twice ("... automatically in
+  5s." and "... artomatically in 3s."): one letter is misread where the progress bar's edge crosses the
+  text, and with it the row is not recognised as the countdown, so answer 3's "ticks only" does not hold
+  in this theme. The theme's terminal lines are spoken with the frame's "j" at both ends.
+  rEFInd's graphical submenu: both entries are read now, but in b14 moving between them was silent (the
+  white bar and the grey screen fall into one console colour). Changed after b14 (build b15: the bar gets
+  another colour, as r397 did for Clover) - see "After b14".
+  NOT DONE in batch 4: icon descriptions for rEFInd/OpenCore/Clover/Windows tiles (answer 8), scale
+  detection, a dictionary or context correction (none was needed: no letter confusions were measured
+  except "artomatically" on a theme's progress bar edge, still open), Polish text in themes with a
+  reference.
+
+Batch 5 - verbosity profiles (what each speaks)
+----------------------------------------------
+                         beginner                    normal (default)          expert
+  menu met               program: menu, N items +    program: menu, N items    open-object sound, no words
+                         "Up and Down choose, ..."
+  entry                  name, submenu, default,     name, submenu, default,   name only (kind and position as
+                         N of M, "Enter starts it"   N of M                    sounds; position words only when
+                                                                               the menu is first met)
+  countdown              sentence + "any key stops   one sentence, then ticks  entry name, then ticks
+                         the countdown ..." + ticks
+  editor / command line  "Entry editor. Insert F1    "Entry editor"            sound only
+                         lists the keys ..."
+  help line of a screen  read                        read                      not read (Insert+End)
+  elements list opening  with the list's keys        with the list's keys      "Elements list, N"
+  find                   "Line N, column M: ..."     the same                  the line only
+  hidden menu            5 s, full hint              2 s                       tone, 1 s
+  Settings row + shortcut + saved in V13: session 1 (host test); the shortcut RAN in a VM.
+
+Batch 6 - manager x feature (b7g capture r410-run2 unless another run is named)
+-------------------------------------------------------------------------------
+  works = heard in the trace as intended; partial = see note; no = not possible; n.v. = not verified
+                 menu item   default +   submenu /     editor /        errors      keys   send     note
+                 + position  countdown   nested        command line    read auto   list   arrows
+  GRUB text      works       works       works(1)      works           works       works  works
+  GRUB gfxterm   works       works       n.v.          works           n.v.        works  n.v.
+  GRUB theme     works       ticks(2)    partial(3)    partial(3)      n.v.        works  n.v.
+  systemd-boot   works       works       -             n.v.(4)         works(5)    n.v.   n.v.
+  rEFInd icons   works       spoken      partial(6)    n.v.            n.v.        n.v.   no(7)
+  rEFInd text    works       works       works         n.v.            n.v.        n.v.   no(7)
+  Limine         works       works       n.v.          works           n.v.        n.v.   n.v.
+  OpenCore text  works       default     -             -               n.v.        n.v.   n.v.
+  OpenCanopy     partial(8)  n.v.        -             -               n.v.        n.v.   no(7)
+  Clover icons   partial(9)  n.v.        partial(9)    n.v.            n.v.        n.v.   no(7)
+  Clover text    works       n.v.        works         n.v.            n.v.        n.v.   no(7)
+  Syslinux       works       works       n.v.          works           n.v.        n.v.   n.v.
+  iPXE           works       n.v.(10)    n.v.          works           works       n.v.   n.v.
+  Windows menu   works       works       tools list    n.v.(11)        works       n.v.   n.v.
+  Win. Recovery  -           -           -             -               works(12)   n.v.   -
+  Win. Mem.Diag  works       -           options       -               n.v.        n.v.   -
+  UEFI Shell     -           -           -             works(13)       works       n.v.   -
+  Memtest86+     no(14)      -           -             -               -           -      -
+  (1) a menu loaded with configfile is announced as "submenu"; GRUB draws a submenu entry like any other,
+      so ", submenu" on the entry needs the configuration (answer 7, not started).
+  (2) run 5. (3) the theme's terminal (editor, command line, nested text menu) is read since b14, but its
+      selected row (inverse) is not; when nothing can be read the reader says so. (4) the test entries
+      refuse editing. (5) "Entry does not support editing the command line." was read. (6) entries are
+      read after the batch 4 fixes (run 5); as a list with positions: n.v. (7) arrows are not sent to
+      icon pickers or to programs whose arrows may mean something else. (8) "GRUBTEST, ikona 2 z 3" on
+      Right; the first screen was silent in this capture. (9) the selected row beside the icon was lost
+      before batch 4 (run 5 shows the state). (10) "choose --timeout" shows "(N)": recognised in the
+      model and host test, not heard. (11) F8 / F10 screens not reached. (12) with the line that was
+      lost before batch 4 (run 5). (13) prompt and paging read; see "known wrong" for help output.
+  (14) Memtest86+ ends firmware services: the reader says so ("Ten program testuje pamiec bez uslug
+      firmware ... Charon nie moze go czytac i milknie ...") instead of going silent. RAN.
+  Windows 8+ tile menu: after ExitBootServices, not readable by any UEFI program; unchanged, see answer 9.
+
+Regression (14 runs, sh r396-regression.sh): RAN on b14 (regression-r410.out) and again, in full, on b16
+(regression-r410-b16.out). 14 of 14 managers found and started, 0 asserts, 0 exceptions, interrupted
+messages 4 in all (r408: 4). Compared with regression-r408-tcg.out line by line after removing the
+formatting marks (r410-evidence/reg-r408.norm, reg-r410-b16.norm); every difference:
+  intended  - one sentence for a menu that counts down untouched: "grub: Charon test entry one, domyslna,
+              start za 7 sekund" (GRUB, systemd-boot, Limine, Syslinux);
+            - ", domyslna" on the default entry (GRUB, systemd-boot, Limine, OpenCore);
+            - no formatting marks in the trace: voice formatting is off by default now;
+            - Windows Recovery and rEFInd: the lines lost before batch 4 are read ("You'll need to use
+              recovery tools ...", "Insert, Tab, or F2 for more options; Esc or Backspace to refresh");
+            - Memtest86+: the sentence that Charon cannot read it, instead of "System przejmuje sterowanie";
+            - FreeBSD: "Wiersz polecen" when its loader prompt opens; the menu window read in full;
+            - Syslinux: the entry is no longer said twice on the first key.
+  test only - systemd-boot's second entry is named "Windows Boot Manager" (harness configuration; r408's
+              run had "Windows Setup"); countdown seconds; OpenCore: under the hypervisor its timeout ran
+              out before the keys came, so GRUB had already started its entry (r408 ran under TCG).
+  found and fixed - Ventoy (first run, b14): "mini.iso, 1 z 2" instead of r408's "2 z 3": the model had
+              lost the first entry of the themed menu. b16 does not use a model list shorter than the
+              reader's own block; second run: "mini.iso, 2 z 3", "rescue-tools.iso, 3 z 3", as r408.
+  The reference was recorded under TCG; these runs used the hypervisor (whpx), sound on the host speakers.
+
+Small oddities of r409 taken over (session 1 edits, COMPILED ONLY)
+  "Settings saved" on a read-only medium; "eSpeak NG polski" in the English interface; the voice row
+  that sticks on Natan in a 76 MB self-install (src/efi/BootMenu.h, BootMenuModel.h, CharonSynthHost.h).
+Scraps of speech under a busy main thread
+  src/efi/CharonVoiceProvider.h: a late pump catches up (before: at most 2048 frames = 43 ms per pump).
+  Host test above. NOT VERIFIED in a VM under disk load.
+
+Settings record (REPORT TO COORDINATOR: tools/charon-os reads the same record; not edited here)
+----------------------------------------------------------------------------------------------
+  V13, magic "CHARS00D", still 48 bytes. byte36 bits 2-4 = formatting groups (bit2 kind, bit3 state and
+  warnings, bit4 position; default 7); byte38 bits 2-3 = verbosity profile (0 normal, 1 beginner,
+  2 expert). New records: byte40 = 252 (voice and sound-icon outputs off). V12 and older decode as
+  before (groups 7, profile 0, their formatting byte kept: who had formatting on keeps it on). A reader of
+  the record that accepts only "CHARS00C" rejects V13; one that does not mask byte36 / byte38 with 3 reads
+  wrong punctuation / language values. Session 2 changed nothing in the record. A custom profile
+  (answer 14) will need V14.
+  Resident protocol: charonRelease 410; PackReading bits 30-31 = profile; Resume's progress byte bits 2-4
+  = groups. App and driver must be of the same build.
+
+Sources consulted on the web
+----------------------------
+  Session 1 (reports with quotations: r410-evidence/web/web-*.txt):
+  GRUB: https://www.gnu.org/software/grub/manual/grub-dev/grub-dev.html ; grub-core/normal/menu_text.c,
+    menu_entry.c, menu.c via https://cgit.git.savannah.gnu.org/cgit/grub.git/plain
+  systemd-boot: https://www.freedesktop.org/software/systemd/man/latest/systemd-boot.html ,
+    https://www.freedesktop.org/software/systemd/man/latest/loader.conf.html , src/boot (GitHub raw)
+  rEFInd: https://www.rodsbooks.com/refind/using.html , /configfile.html , /themes.html
+  Limine: https://raw.githubusercontent.com/limine-bootloader/limine/v12.x (common/menu.c, CONFIG.md)
+  OpenCore: https://raw.githubusercontent.com/acidanthera/OpenCorePkg/master (BuiltinPicker.c, HotKeySupport.c)
+  Clover: https://raw.githubusercontent.com/CloverHackyColor/CloverBootloader/master/rEFIt_UEFI
+  Syslinux: https://raw.githubusercontent.com/geneC/syslinux/master (com32/menu, doc/menu.txt)
+  iPXE: https://ipxe.org/cmd/menu , /cmd/item , /cmd/choose ; hci/tui/menu_ui.c, settings_ui.c
+  Windows: https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/bcdedit--set ,
+    https://www.geoffchappell.com/notes/windows/boot/editoptions.htm , /advancedoptions.htm
+  UEFI Shell: https://raw.githubusercontent.com/tianocore/edk2/master/ShellPkg
+  Memtest86+: https://raw.githubusercontent.com/memtest86plus/memtest86plus/main (boot/efisetup.c)
+  Screen readers: NVDA https://download.nvaccess.org/documentation/userGuide.html (elements list NVDA+F7,
+    find NVDA+F3 / NVDA+Shift+F3); Orca https://help.gnome.org/users/orca/stable/commands_where_am_i.html.en ,
+    commands_find.html.en , commands_flat_review.html.en ; Emacspeak (GitHub tvraman/emacspeak:
+    voice-setup.el, emacspeak-sounds.el); BRLTTY https://brltty.app/doc/Manual-BRLTTY/English/BRLTTY-5.html ;
+    Fenrir (GitHub chrys87/fenrir docu/user.md); Speakup spkguide.txt; NVDA placeMarkers readme.
+  Session 2 (files fetched: r410-evidence/web/dl/):
+  Kernel words (answer 6): https://raw.githubusercontent.com/torvalds/linux/master/Documentation/admin-guide/kernel-parameters.txt
+    - quiet, debug, ro, rw, root=, init=, rdinit=, nomodeset, noapic, nolapic, nosmp, maxcpus=, mem=,
+      loglevel=, console=, acpi=, resume=, rootdelay=, rootwait, nokaslr, panic=, initrd=, S.
+      Not found there and therefore NOT explained: splash, single.
+  GRUB commands (answer 6): https://cgit.git.savannah.gnu.org/cgit/grub.git/plain/docs/grub.texi
+    - linux, initrd, chainloader, search, insmod, set, export, echo, boot, configfile, menuentry, submenu,
+      fwsetup, halt, reboot, normal, ls, cat, loadfont, terminal_output, sleep, probe.
+      Not found there and NOT explained: linuxefi, initrdefi, load_video, gfxpayload.
+  Limine keys: https://raw.githubusercontent.com/limine-bootloader/limine/v12.x/CONFIG.md
+    - protocol, cmdline, kernel_cmdline, comment.
+  https://www.gnu.org/software/grub/manual/grub/grub.html refused the connection; the upstream grub.texi
+  was used instead.
+  Rows of CharonManagerKeys.h marked "recorded screens" (Windows Boot Manager's and Memory Diagnostic's
+  key bars, Clover's help) come from the programs' own screens in tests/charon-screens, not from a
+  document.
+
+Changed files (reader side; against the r409 release tree)
+---------------------------------------------------------
+  new:     src/efi/CharonScreenModel.h, CharonResidentModel.inc, CharonManagerKeys.h, CharonLoaderWords.h,
+           tests/CharonScreenModelTests.cpp, CharonReaderR410Tests.cpp, CharonVoiceLatePumpTests.cpp,
+           tests/charon-screens/** (grids, expected.txt, ocr-reference.txt), tests/charon-ocr-measure.py
+  changed: src/efi/CharonResident.h, CharonFormatting.h, CharonKeyNotify.h, CharonKeyHelp.h,
+           CharonReaderControl.h, CharonVoiceProvider.h, CharonSynthHost.h, HAKBootEFI.cpp, CharonOcr.h,
+           CharonAaOcr.h, CharonTtfOcr.h, src/tts/runtime/CharonLiveVoice.cpp,
+           tests/CharonFormattingTests.cpp, tests/CharonAaOcrTests.cpp
+  shared with agent 1 (small edits, session 1): src/efi/CharSettings.h (V13), BootMenu.h, BootMenuModel.h
+  work/ tools: r410-capture.py/.sh, r410-run3.sh, r410-run4.sh, r410-final-runs.sh, r410-ticks.py,
+           r410-pl.cfg, r410-sub.cfg, r410-host-tests.sh, r410-provider-tests.sh
+
+Questions for the user (either / or)
+------------------------------------
+  1. Windows entries in Charon's list (answer 9): no way to start a chosen BCD entry without a write was
+     found. EITHER show them read-only and choose in Windows' own text menu (no write at all), OR let Charon
+     write the one-time "bootsequence" into the BCD when an entry is chosen (a documented Microsoft
+     mechanism, but a write to the BCD; not with BitLocker without a test).
+  2. Risk warnings (answer 7): today they come from the entry's NAME and only on demand (Insert+T).
+     EITHER keep them on demand, OR also say a short warning automatically when such an entry is selected
+     (every time, or only in the beginner profile).
+  3. Charon's own menu countdown still ticks at one pitch (1000 Hz). EITHER give it the same rising ticks
+     as the boot loaders, OR keep it distinct on purpose.
+  4. A menu loaded inside GRUB (configfile, or a real submenu) is announced "submenu, N items". EITHER
+     keep that word, OR say "menu, level 2" (beginner) and only a sound otherwise, as answer 12 suggests.
+  5. Old settings (V12 and earlier) that had voice formatting ON keep it on after the update. EITHER keep
+     that, OR switch everyone to OFF once, as for new installations.
+  6. The "describe" list has no entry for words not found in the checked documents (splash, single,
+     linuxefi, initrdefi, load_video, gfxpayload). EITHER leave them unexplained, OR add them from the
+     distributions' own documentation (Plymouth, Fedora's GRUB patches) with those sources named.
+
+SESSION 3 (2026-11-24) - what was built and what is PROVEN
+=========================================================
+Evidence: r410-run7/ (b18/b19 builds), r410-run8/ (b21/b22 builds), r410-evidence/formatting-measured-b21.txt,
+r410-evidence/host-b18.txt. Tools: r410-run7.sh, r410-run8.sh, r410-mkset.cpp, r410-tones.py, r410-find.py.
+
+Block A - formatting and messages (answers 10-13, 11)
+  One table: CharonFormatting.h kindTable (kind -> pitch, range, stress, richness, volume, rate, timbre, voice
+  family, tone). CharonLiveVoice.cpp plays the tones from it. Host: CharonFormattingTests ALL PASSED (the 5 stale
+  checks were refreshed to the current design: payload 14, relative colours, V14), CharonReaderR410Tests 90 checks.
+  MEASURED in recordings (QEMU wavcapture, 44.1 kHz stereo; settings: voice + sound icons + stereo speech):
+    place tone by position in a list of 4   1760 / 1109 / 698 / 440 Hz for items 1 / 2 / 3 / 4, about 50 ms each
+                                            (design: 1760 Hz top .. 440 Hz bottom) - r410-run8/fmtq, speech at
+                                            volume 1 so that the tones stand out; r410-find.py
+    stereo by screen column and depth       left-right level of the element's sounds: +5.7 dB (pan step 4 of 20),
+                                            +3.4 dB (step 6), +2.4 dB (step 7), +7.2 dB (step 3: the entry inside
+                                            the submenu); design 20 log(256 / (51 + 20.5 x step)) = 5.7 / 3.4 / 2.4 /
+                                            7.2 dB. The same ratios on the speech segments (r410-run7/fmt/tones.txt).
+    error alarm before the text             196 Hz square, 220-230 ms, centre, THEN the text (trace "CHARON alarm");
+                                            GRUB "error: can't find command" - r410-run7/fmt at 109.45 s, text from
+                                            110.31 s; r410-run8/fmtq at 97.15 s
+    error voice lower                       median voice pitch 81 Hz (error text) and 78 Hz (the same error repeated
+                                            by "last message") against 115-121 Hz for ordinary boot messages of the
+                                            same run: about -33 % (table: pitch -4 steps and the deep voice family)
+    countdown ticks                         812, 838, 875, 900, 925 Hz one second apart (GRUB, r410-run7/fmt)
+  FOUND AND FIXED while measuring: with voice formatting AND sound icons on, the element's sound (event, place
+  tone) was never played - a second mark with no word between replaced the first (CharonLiveVoice ParseSwitch).
+  This was so before r410 too. Fixed in b20: marks are merged; the place tones above are from the fixed build.
+  RAN (trace + heard): last message Insert+/ ("Ostatni blad: error: can't find command xyzzy'. grub"); history
+  marks and filter (Insert+H: "blad: error: ...", Right: "Tylko bledy, 1.", Left: "Wszystko, 50."); own words in
+  the auxiliary voice after a pause (mark "foml0-allm6---4": rate +2, volume -1, family 6, lead 80 ms).
+  NOT MEASURED: rate per kind as a number (only the marks in the trace); warning alarm (523 Hz sine) - no warning
+  appeared in the runs; "a message waits for the one being read" (6 s) and "an error is read in full before the
+  next message" (15 s) - COMPILED ONLY. Colours: relative default / absolute option - host tests only.
+  Changed on purpose: r399's absolute colour ladder is no longer the default (answer 13); it is the check box
+  "Absolute colours" on the Text formatting page.
+
+Block B - profiles and text output (answers 14, 15, 2, 5)
+  Custom (fourth) profile: 12 items as check boxes on the Text formatting page, settings V14. Host tests: round
+  trip, V13 and older still read, V13 with V14 bits refused, menu rows. RAN in a VM: Insert+V cycles normal ->
+  expert -> beginner -> custom ("Profil mowienia: wlasny...") - r410-run7/expert. NOT RUN: a custom set of items
+  from the settings file in a VM (set-custom.bin exists).
+  Beginner (r410-run7/begin): "grab: podmenu, 4 pozycje. Zazolc gesla jazn, poczatek listy, 1 z 4, poziom 2.
+  Strzalki ...", "..., uwaga: test pamieci, 3 z 4. Enter uruchamia", "..., uwaga: ustawienia firmware, koniec
+  listy, 4 z 4". Expert (r410-run7/expert): first entry with position, then names only; "e" opens the editor with
+  its sound only.
+  Program name only when the kind of screen changed: RAN - "grab: podmenu, 4 pozycje" after the editor, plain
+  "podmenu, 4 pozycje. ..." after Escape from the nested menu (r410-run8/fmtq step 11), "menu, 6 pozycji. ..."
+  when the menu is read after its countdown sentence (r410-run8/entry step 02).
+  Risk sound on selection (F2): RAN - trace "CHARON entry risk sound" on the memory-test and firmware-setup
+  entries; words only in the beginner run.
+  Reader bar: TEXT CONSOLE PROVEN (r410-run8/bartext, r410-run7/begin pictures): bar on the bottom row, black on
+  grey; the row is back to black after 5 s (pixel check), positions stay "3 z 4", "4 z 4" (the model does not
+  see the bar), nothing of the bar in the spoken text. Two defects found and fixed on the way: the console
+  attribute was restored from the reader's own idea of it (GRUB then drew two grey rows) -> now from the
+  console's Mode; on rEFInd the reader's picture grid (42 rows) was used for the console row -> now the console's
+  own QueryMode. GRAPHICAL MANAGER: see run 8b below.
+  Hidden-menu wait 5 / 2 / 1 s: NOT RUN in a VM (CHARON_GRUB_HIDDEN exists in charon-vm.py).
+  Help line skipped in expert: seen (no "Pomoc" message spoken by the reader voice in r410-run7/expert; the boot
+  message voice still reads the screen's other text).
+  Braille status cell / position with the Baum simulator: NOT RUN.
+  F3 Charon's own countdown ticks rise (600 + 30 x (30 - seconds left)): COMPILED ONLY (not measured).
+  Run 8b / 9 (b22-b24): reader bar on a GRAPHICAL manager PROVEN on rEFInd (r410-run8/barrefind: 01-crop.png shows
+  the bar "Boot EFI probe PROBE.EFI from GRUBTEST, 2 z 3" over the grey screen; 5 s later the strip is one colour
+  again (76800 pixels of 208,208,208), two later pictures identical; said.txt has no bar text). Once in that run
+  the reader said "ikona 2 z 3" instead of the icon's label (step 03) - not investigated.
+  Hidden-menu wait by profile PROVEN (r410-run9/hid*: trace "CHARON hidden menu wait ms" = 2000 normal, 5000
+  beginner with "... Bez klawisza uruchomi sie pozycja domyslna", 1000 expert with the tone and no words).
+  Custom profile from a settings file PROVEN (r410-run9/custom, items = position + line numbers): entries as
+  "name, 2 z 4" with no menu introduction; in GRUB's editor "Wiersz 2: pusty", "Wiersz 3: menuentry Tryb ...".
+  Braille with the Baum simulator RAN (r410-run9/braille/baum-display.log, 40 cells): status cell "e" on the
+  command line ("e grub> confi..."), "-" on a plain entry, the position "1/4" at the end of the first entry's
+  line, dots 7-8 on the highlighted cells. On an entry longer than the display the position falls outside the
+  40 cells (not scrolled to) - known limit.
+
+Block C - editors and entry information (answers 6, 7; F2, F5)
+  What an entry starts: src/efi/CharonEntryInfo.h (helper; GRUB, systemd-boot/BLS, Limine, rEFInd, Syslinux,
+  OpenCore; 181 host checks) wired in: LoadEntryInfo() reads the program's configuration from its own volume when
+  the program starts (grub.cfg, the files it loads, other .cfg files beside it; loader.conf + entries; refind.conf;
+  limine.conf; syslinux.cfg; config.plist). Shortcut Insert+equals / Ctrl+Alt+3. RAN+PASSED on GRUB
+  (r410-run8/entry, b24): "Charon test entry one: Wykonuje polecenia: echo Entry one selected; sleep 3.",
+  "UEFI firmware settings: Otwiera ustawienia oprogramowania ukladowego.", "Probe loader: Uruchamia program EFI
+  /EFI/probe/PROBE.EFI." No match is said as such ("... nie zgaduje, co uruchamia"). A menu typed in with
+  configfile from another folder is not found (seen: pl.cfg). Other managers: see run 10. The configuration also
+  gives ", submenu" for an entry GRUB draws like any other and a risk the name does not show (COMPILED ONLY).
+  Limits: a grub.cfg on a Linux partition (the ESP holds only a stub) cannot be read - no ext4 driver; Clover and
+  the Windows BCD are not covered by this shortcut.
+  F5 words: CharonLoaderWords.h 49 -> 92 rows with a source per row (r410-evidence/web/words-distro-sources.txt);
+  host test only for the new rows.
+  Line numbers in an editor (item of the beginner / custom profile): RAN (see custom above). "There is more" on
+  paged output (model screen "pager"): see run 10 (UEFI Shell help -b). Word echo: the existing setting "typed
+  words" (off by default, NVDA's default) - not changed, not re-tested. Tab completions: read as any new output
+  (not separately tested). systemd-boot's editor: its test entries refuse editing (as in session 2).
+
+Block D - control reader for graphical screens (answer 8)
+  Research: r410-evidence/web/pointer-research.txt (rEFInd pointer.c, Clover XPointer.cpp, OpenCore AIM.c, edk2
+  ConSplitter and Event.c; uefi.org answered 403, so structure layouts come from edk2 headers).
+  Code: src/efi/CharonPixelControls.h (helper; 122 host checks incl. recorded rEFInd, Clover, OpenCanopy and Windows
+  screens), src/efi/CharonResidentControls.inc (new: the reader's side), tests/CharonPointerProbe.cpp.
+  RAN+PASSED on the test program (mouse-only screen, r410-run8/pprobe, b24, QEMU with a USB mouse):
+    Insert+comma "4 kontrolek na ekranie"; Insert+F6 "przycisk, 1 z 3", "przycisk, 2 z 3", "przycisk, 3 z 3",
+    "suwak, 40 procent", "Ostatnia kontrolka"; Insert+Enter: the reader pushed the program's pointer to 0,0,
+    probed (48,48), went to 640,400 and the PROGRAM logged "PPROBE click Two 640 400"; then to 820,400 and
+    "PPROBE click Exit 820 400", "PPROBE end exit". One step in which the pointer was not seen was repeated.
+    1 pointer instance wrapped (GetState replaced in place). The buttons have no spoken label: the probe's own
+    5x7 font is not read by the reader's OCR, and no label is invented.
+  Found on the way: raw counts must be multiples of Mode->Resolution (65536 here), or programs that divide by the
+  resolution move nothing; a program sleeping on WaitForInput must be signalled again for every queued report
+  (the "wait" variant consumed one report and slept: "Wskaznik nie dotarl na czas. Nie kliknalem." - fixed in
+  b25, see run 8d).
+  RAN on rEFInd's icon screen (r410-run8/ctlrefind, b22): "Boot EFI probe GPROBE.EFI from GRUBTEST, ikona,
+  wybrane, 1 z 3. 9 kontrolek na ekranie, niepewnych: 2."; after Right "... PROBE.EFI ..., ikona, wybrane, 2 z 3";
+  Insert+F6 "ikona, 3 z 3", "ikona, 1 z 6" (the tool row), Insert+F5 back. Icons without a caption are "icon N of
+  M"; the name of the SELECTED icon is the line rEFInd itself shows for it.
+  NOT DONE / NOT VERIFIED: Clover, OpenCore, OpenCanopy, a GRUB theme and a graphical firmware setup with the new
+  commands in a VM (host tests on their recorded pictures only); clicking in rEFInd / Clover / OpenCanopy (only
+  the test program); absolute pointer devices; sliders dragged; names from the manager's configuration or from a
+  recognised system logo (not implemented: caption text or "icon N of M" only); the automatic speech of icon
+  pickers still comes from the older icon code, the new layer answers on demand and for walking; the double and
+  triple press of Insert+comma (all controls, pointer position) was not exercised.
+  OCR leftovers of session 2 (GRUB theme editor's first lines and "j" at the ends, theme countdown label spoken
+  twice, Clover's bottom-right line): NOT DONE.
+
+Block E - Windows entries (answer 9, F1): Charon's device list already names the systems of the BCD store behind
+  "Windows Boot Manager" (r389). Added the sentence that the system is chosen in Windows' own text menu and that
+  Charon writes nothing (BootMenu.h, only when the store lists more than one system). src/efi/CharonBcdList.h
+  (helper, read-only lister with types, tools and the menu policy; 28 host checks on a synthetic hive and three
+  real stores) is NOT wired in. COMPILED ONLY: the sentence was not heard in a VM.
+
+Coordinator's items of 2026-11-24 (agent 1's plan runs)
+  D4 stale device list after a plan's finish step: BootMenu.h now reads the device list again after the
+     workspace returns (inventory.Refresh), beside the registry reload that was already there. COMPILED ONLY -
+     needs agent 1's plan run to prove; the "invalid saved Continue target" in the same start was not root-caused
+     (the label reads continue.bin afresh every time it is drawn, so a stale list is not its cause).
+  r409 oddities ("Settings saved" on a read-only medium, the voice row that sticks on Natan, "eSpeak NG polski"
+     in the English interface): the session 1 edits are in the tree, still COMPILED ONLY.
+  Run 8d (b25): the WAITING variant of the test program (WaitForEvent on WaitForInput) is clicked too:
+  "PPROBE click One 460 400", "PPROBE click Two 640 400"; spoken "Kliknieto: przycisk, 1 z 3" (r410-run8/pwait).
+
+Block F - batch 3 navigation on other managers (run 10, r410-run10/<set>/said.txt, b25/b26, Polish interface)
+  systemd-boot  elements list (16 elements; "Windows Boot Manager, 2 z 3; element 2 z 16"), where am I ("Program:
+                systemd-boot. ... Menu. Pozycja 1 z 3: Charon probe loader, domyslna. Start za 18 sekund."), find
+                ("boot": "Wiersz 17, kolumna 38: Reboot Into Firmware Interface", next: "Wiersz 19 ..."): RAN+PASSED.
+                Insert+End read the countdown line ("Boot in 13 s."), not a key bar: systemd-boot has none on screen.
+                The menu's own timeout then started the entry (the reader does not stop countdowns), so bookmarks,
+                changes, entry information and the Ctrl+Alt keys were NOT reached there.
+  Limine        elements list (11 elements, the countdown as its own element): RAN+PASSED; the rest not reached
+                (same reason).
+  rEFInd text   elements list (19), where am I, help line, find, bookmark on / next ("Zakladka 1 z 1"), what
+                changed ("Bez zmian od ostatniego klawisza"), entry information (honest "no single entry of this
+                name"): RAN+PASSED. DEFECT SEEN: the Enter that ends the find prompt also reached rEFInd (it opened
+                the entry's submenu). Not fixed.
+  Windows menu  elements list (13 / 12), where am I (with the risk by name on "Windows Memory Diagnostic"), help
+                line, find, bookmark, what changed ("Zmienilo sie 1 wiersz"), entry information ("... nie znalazl
+                pliku konfiguracji ..."), and the Ctrl+Alt set: Ctrl+Alt+; (list), Ctrl+Alt+W (where), Ctrl+Alt+3
+                (entry information), Ctrl+Alt+7 (keys of the program): RAN+PASSED.
+  UEFI Shell    "help -b": "Jest wiecej" once the page stops (trace "CHARON paged output announced"); elements
+                list (32 lines), where am I ("Stronicowanie"), what changed, find ("Nie znaleziono: map" - right,
+                the word was not on that page): RAN+PASSED. Seen: the internal Shell is named "Program"; the
+                announcement starts with a stray full stop when nothing precedes it (". Jest wiecej").
+  NOT VERIFIED: Charon's own screens with the new shortcuts; the laptop layout as a setting (the Ctrl+Alt keys
+  themselves were pressed on Windows' menu); sending arrows from the elements list outside GRUB.
+  The three r409 oddities and the late-pump fix under disk load in a VM: NOT VERIFIED (host test of the pump only:
+  CharonVoiceLatePumpTests 32 checks).
+
+Block G - final builds, host suites, regression
+  Builds: see RESUME HERE at the top (b26, b26t, b26g, both drivers). Clean (no trace) builds pass too.
+  Host suites on the final tree (r410-evidence/host-b25.txt; b26 differs by two lines that the suites do not
+  reach): CharonFormattingTests ALL PASSED (was 5 failing), CharonReaderR410Tests 90 checks, CharonScreenModelTests
+  151 of 151, CharonEntryInfoTests 181, CharonBcdListTests 22 (28 with all three stores as arguments),
+  CharonPixelControlsTests 122, CharonAudioStallTests 316, CharonVoiceStallProviderTests 39,
+  CharonVoiceLatePumpTests 32, CharonSpeechText / MessageMode / ConsoleSettings / MelodySettings / Ocr / AaOcr /
+  BootManagers PASS. Unchanged: CharonAudioDeviceTests fails (stale since before r409); CharonSecretInput /
+  Controls / Marks / VoiceProvider tests do not build with this recipe.
+  FULL 14-run regression on b26t: regression-r410-b26.out. 14 of 14 managers found and started, 0 asserts, 0
+  exceptions, interrupted messages 5 in all (b16: 4). Compared with regression-r410-b16.out line by line after
+  removing the language marks (r410-evidence/reg-b16.cmp, reg-r410-b26.norm) - EVERY difference:
+    1. OpenCore run, GRUB's menu read again after a key: "menu, 8 pozycji. Charon test entry one, 1 z 8" instead of
+       "grub: menu, 8 pozycji. ..." - INTENDED (answer 2: the program's name only when the kind of screen changed;
+       it was said three lines earlier).
+    2. Syslinux: "Automatic boot in 48 seconds" instead of 47 - timing.
+    3. iPXE: three of the four "Porada: ..." tips of Charon were spoken, the fourth ("sam numpad ...") not, within
+       the same waiting time - see the repeated run below.
+    4. FreeBSD: one more boot message read at the start ("Consoles: EFI console. Reading loader env vars ...") and 1
+       interrupted message instead of 0 - see the repeated run below.
+  Against regression-r408-tcg.out the differences are those already listed for b16 above plus these four.
+  Repeated runs (regression-r410-b26-again.out; regression-r410-b17-freebsd-again.out):
+    iPXE again on b26t: all four tips spoken -> difference 3 was timing.
+    FreeBSD again on b26t: the loader's early console text ("Consoles: EFI console ...") is read as a boot message
+    AGAIN, and this time the menu window ("Okno: Welcome to FreeBSD. 1. Boot Installer ...") was NOT read; 1
+    interrupted message. The same run on b17t (session 2's build) the same day: menu window read, no early text,
+    0 interrupted. So difference 4 comes from the r410 session 3 code, NOT from timing: OPEN DEFECT, not
+    root-caused. Selection and command line were read as before ("Wiersz polecen", "A"). Candidates to look at:
+    LoadEntryInfo() at program start (file access on the CD volume before the first screen is read), and the
+    r400 "quiet countdown menu" hold in Flush() together with the new introKind_ reset.
+  VERDICT: 14 of 14 start and are read; one unexplained difference (FreeBSD's first screen) must be fixed or
+  explained before a release; the others are intended or timing.
+  OCR on a fresh capture with b26g (r410-run11, r410-evidence/ocr-b26.txt), 18 screens, 5038 characters:
+      grubgfx 1 error (0.11 %), grubtheme 28 (5.10 %, 1 line lost), refind 0, clover 15 (1.26 %, 1 line lost),
+      canopy 0, opencore 0, limine 1 (0.52 %), winmenu 0, winerr 0; ALL 45 errors = 0.89 % of characters, 1.47 %
+      of words, 2 lines lost of 170 (b14: 47 errors, 0.93 %; r409: 607 errors, 12.05 %). The session 2 leftovers
+      (GRUB theme editor lines, Clover's bottom-right line) are unchanged.
+
+STATE AT THE END OF SESSION 3 - per answer (work/r410-reader-user-answers.md) and what a successor does next
+===========================================================================================================
+   1 entry wording by profile     as session 2; plus the custom profile. RAN (GRUB). English strings in a VM: n.v.
+   2 new screen                   DONE: name only when the kind of screen changed (RAN: GRUB; regression diff 1);
+                                  help line skipped in expert (seen); nested GRUB menu stays "submenu, N items" (F3).
+   3 countdown = sounds           as session 2; ticks measured again (812..925 Hz). GRUB theme label twice: open.
+                                  F3 Charon's own countdown with rising ticks: COMPILED ONLY.
+   4 elements list                RAN on systemd-boot, Limine, rEFInd text, Windows menu, UEFI Shell (run 10).
+                                  Sending arrows outside GRUB: n.v. Pixel controls are walked with the same keys.
+   5 hidden menu wait             PROVEN in a VM: 5000 / 2000 / 1000 ms (run 9).
+   6 editors, command lines       describe words 92 rows with sources (F5; host test); line numbers RAN; "there is
+                                  more" RAN (Shell); word echo = existing setting, Tab completions: not re-tested;
+                                  systemd-boot's and Limine's editors not driven.
+   7 entry information            what an entry starts: RAN on GRUB; other managers host tests only (rEFInd text and
+                                  Windows gave the honest "cannot tell"); risk sound on selection always (F2): RAN;
+                                  key list: RAN on Windows (Ctrl+Alt+7).
+   8 control reader               test program walked and CLICKED (poll and wait variants), rEFInd's icons named and
+                                  walked: RAN. Clover / OpenCore / OpenCanopy / GRUB theme / firmware setup: host
+                                  tests on recorded pictures only. Logos, config names, absolute pointers: not done.
+   9 Windows entries              read-only + sentence (F1): COMPILED ONLY. No write code anywhere.
+  10 kind by pitch+timbre+tone+rate  one table; tones, place tones, pan MEASURED; voice pitch of the error kind
+                                  measured; rate per kind not measured as a number.
+  11 errors and warnings          alarm before the text MEASURED (error); lower voice MEASURED; last message RAN;
+                                  history keeps and marks them RAN; "read in full / next message waits": COMPILED
+                                  ONLY; warning alarm not heard (no warning occurred).
+  12 position and structure       place tone and stereo MEASURED; first / last sounds and wrap: sounds exist, not
+                                  measured separately (GRUB's menu does not wrap); words only for beginners: RAN.
+  13 colours                      relative default, absolute option: host tests only.
+  14 profiles + custom            DONE, settings V14; RAN from a settings file and by the shortcut.
+  15 braille / bar / history      braille status cell and position RAN (Baum simulator); reader bar PROVEN on a text
+                                  console and on rEFInd's graphical screen; history marks and filter RAN.
+  Settings record: V14 "CHARS00E", still 48 bytes (CharSettings.h comment). REPORT TO COORDINATOR: tools/charon-os
+  must accept magic "CHARS00E" and mask byte32 with 7, byte33 with 3, byte37 with 7 (the upper bits now hold the
+  custom profile's items, the reader bar and the absolute-colours switch); byte38 bits 2-3 may be 3.
+  Reader control release 411 (ReaderControl::more): app and driver of the same build only.
+  NEXT, in this order: (1) the FreeBSD first-screen defect above; (2) OCR leftovers of batch 4; (3) control reader
+  on Clover / OpenCore / OpenCanopy / a GRUB theme in a VM, and clicking in rEFInd (enable_mouse) and Clover;
+  (4) prove the COMPILED ONLY items (F1 sentence, F3 ticks, D4 with agent 1, the r409 oddities, message queueing);
+  (5) the find prompt's Enter that reaches rEFInd; the stray full stop of ". There is more"; "Program" as the
+  internal Shell's name; (6) wire CharonBcdList.h if the types / tools should be listed.
+  Machines of this agent: none running, none on disk.
+
+Questions for the user (either / or) - session 3
+  1. Reader's own words inside an entry ("..., default, 2 of 5") now use another, slightly faster voice after a
+     short pause when voice formatting is on. EITHER keep that, OR keep one voice and only the pause.
+  2. The reader bar stays 5 seconds after each utterance and covers the program's bottom line for that time.
+     EITHER 5 seconds, OR until the next key.
+  3. Pixel controls without readable text are announced as "button, 2 of 3" / "icon 3 of 3". EITHER leave it at
+     that, OR let the reader also try names from the manager's configuration by position (can be wrong when the
+     manager orders or hides entries itself).
+  4. Clicking for the user: the reader pushes the pointer into the top left corner first to learn where it is.
+     EITHER accept that visible jump, OR only click when the pointer was already seen (fewer screens will work).
+
+SESSION 4 (2026-11-24) - blocks 1 to 5 of the coordinator's order
+=================================================================
+Evidence: r410-run12/ (FreeBSD runs, settings records), r410-run13/ (blocks 2 and 3), r410-host-s4/ (host suites).
+Tools: r410-fbsd.sh, r410-trace.py (filtered reader trace), r410-run13.sh, r410-own.py (Charon's own screens),
+r410-we.cfg (GRUB menu with a warning, an error, Linux words, a long entry); charon-vm.py got CHARON_CD_BPS (slow
+CD) and CHARON_BOOT_RO (write-protected boot stick); r410-capture.py got the pseudo-key "waitN".
+
+Block 1 - FreeBSD's first screen: ROOT-CAUSED, FIXED, PROVEN
+  The session 3 note "comes from the r410 session 3 code" was WRONG. Repeated runs: b26t 5 of 5 good on an idle
+  host; b17t (session 2) 4 of 4 read the early text and 3 of 4 lost the menu while the host was busy (a build and
+  two helpers were running) - r410-run12/fbsd-stat.log, fbsd-b17/, fbsd-b26b/. So it is a race that exists since
+  before session 3, not LoadEntryInfo, not the countdown hold, not the error classifier.
+  Cause (reader trace, r410-run12/fbsd-b27r): FreeBSD's loader draws its console text by GOP blits, character by
+  character. On a slow or loaded machine the reader's 500 ms forced flush sees the early text while it is still
+  being drawn; the screen is never quiet for 60 ms, so that text WAITS in the message buffer; the loader then
+  clears the screen and draws its menu, whose text was appended BEHIND the waiting early text - spoken about a
+  minute late, or cut off without a word when the 1600-character buffer was full ("menu not read").
+  Fix: src/efi/CharonMessageQueue.h (new, no firmware dependency) + CharonResident.h QueueMessage / ClearShadow /
+  SendMessages(now): waiting text whose screen was cleared is sent at once (spoken, kept in the history) and the
+  new screen starts a new message; newer text is never dropped for lack of room (the waiting text goes out first).
+  Host: tests/CharonMessageQueueTests.cpp, 28 checks, 0 failed (the recorded FreeBSD flushes: fast machine, slow
+  machine, clear and menu in one flush, no clear at all with nothing lost, and the old behaviour documented).
+  VM: slow path forced with the reader-trace build b28r: 3 of 3 runs speak the early text and THEN the menu window
+  as its own message (r410-run12/fbsd-b28r, 1 interrupted message each: the menu interrupts the early text, as
+  messages do with formatting off). Fast path b27t: 5 of 5 under TCG and 2 of 2 under WHPX read the menu, 0
+  interrupted (r410-run12/fbsd-b27t-tcg, fbsd-b27t). Together 10 of 10 with the menu read.
+  Left as it is: on the slow path a row caught half drawn is spoken in two parts ("Revi. sion 3.0"), and a rest
+  of the logo's ASCII art can start the menu message ("y. . Okno ..."); both only when drawing is that slow.
+  Other loaders that print before a menu: the rule is general (ClearShadow is the one place every clear passes:
+  ClearScreen, a full-screen fill, a mode change). A loader that does not clear (NetBSD's and OpenBSD's plain
+  prompts) gets one message, and host case 4 shows that nothing is lost when the buffer fills. Haiku's loader,
+  iPXE and Syslinux are in the 14-run regression (see block 5). NetBSD / OpenBSD media are not on this host: NOT
+  RUN.
+
+Block 2 - defects seen in session 3 (run 13 on b29t: r410-run13/<set>/said.txt, serial.log; run 15 on b30t)
+  "The find prompt's Enter also reaches rEFInd": WRONG DIAGNOSIS in session 3. The trace of that run shows rEFInd's
+     own "Automatic boot in N seconds" running out right after the prompt closed; eaten keys already leave an empty
+     key behind (HookRead / HookReadEx). The real defect is the next point.
+  The loader's own timeout during reader commands: NEW RULE in the reader (CharonResident.h NoteReaderUse /
+     CountdownKeyWork / ArmStopKey): a reader command while a KNOWN boot manager counts down gives that manager,
+     once and after the reader's list or prompt is closed, the key that stops its countdown and means nothing else
+     (F11; Limine: a character its menu ignores, because Limine counts only keys it knows). Nothing is said: the
+     ticks stop. Trace "CHARON countdown key after reader command". RAN+PASSED on b29t:
+       GRUB (8 s)          Insert+T with 7 s left; 14 s later Down reads "Charon test entry two, 2 z 6".
+       systemd-boot (30 s) the whole navigation sequence, 127 s, menu still there at the end.
+       rEFInd text (30 s)  menu still there after 110 s of reader commands.
+       Windows menu (30 s) Insert+T with 23 s left; 38 s later Down reads "Windows Memory Diagnostic, 2 z 2".
+       Syslinux (60 s)     Insert+T with 57 s left; Down 62 s later reads "Debian test two, 2 z 3".
+       Limine (30 s)       FAILED on b29t (F11 is not a key Limine counts: "Starting the operating system");
+                           b30t sends "`" instead - see run 15 below.
+     Not covered: unknown programs (no profile: no key is sent), OpenCore and Clover (not run with a countdown).
+  NEW DEFECT FOUND AND FIXED: Control+Alt+digit commands (Ctrl+Alt+3 entry information ...) ran the command AND
+     reached the program: systemd-boot and rEFInd took the "3" as their own key (rEFInd started entry 3). Now the
+     character of a Control+Alt command is kept from the program in both read paths (commandSwallowChar_).
+  Stray full stop in ". Jest wiecej": FIXED, RAN ("Jest wiecej" - r410-run13/shell step 01).
+  Internal Shell named "Program": FIXED, RAN ("Program: Powloka UEFI. ... Stronicowanie." - step 02).
+  Braille position on a 40-cell display: FIXED, RAN (r410-run13-braille.log): a line that does not fit carries
+     the position in the status cells: "- 5/6  ─ a very long entry name that doe"; short lines keep it at the end
+     ("linux words 4/6").
+
+Block 3 - proofs owed
+  Warning alarm, error read in full, next message waits (answer 11) - MEASURED in r410-run13/wefmt/live.wav
+  (r410-seg.py, r410-find.py; GRUB entry of r410-we.cfg prints a warning, 6 s later an error, 1 s later a line):
+     warning   523 Hz sine, 140 ms, centre (L = R) at 39.14 s; its text from 39.32 s (180 ms after the tone began)
+     error     196 Hz, 250 ms, centre at 44.99 s; the error text 45.93 - 49.81 s, read to its end
+     next line printed 1 s after the error: spoken from 50.19 s, i.e. only after the error had ended (0.4 s later);
+               no "CHARON message interrupted" between them. (The test line contains the word "error", so it was
+               itself read in the error voice - the classifier works on words.)
+     two ordinary messages 2 s apart: spoken one after the other in one stretch, no interruption between them.
+  Insert+/ said the LAST message, which by then was GRUB's help text, not the error. Changed: pressed twice it gives
+     the last ERROR or WARNING whatever came after (lastAlarm_; key help row updated in both languages).
+  Colours (answer 13) - RAN, marks + pitch: the same GRUB help text is sent with neutral voice marks under the
+     default ("fmmm0-ammm0-h-0") and with the colour ladder's marks under "Absolute colours" ("fmmm0-akmm0-h-0",
+     "-ajmm0-", "-aomm0-"); median voice pitch of that 16 s text 118.9 Hz (relative, r410-run13/wefmt) against
+     113.7 Hz (absolute, r410-run13/weabs), other ordinary text 116.7 - 121.5 Hz (r410-f0.py).
+  Describe words (F5) in a VM: "load_video: funkcja GRUB zapisywana przez grub-mkconfig ...", "set: ...; gfxpayload
+     =keep: zmienna GRUB: tryb obrazu ..." in GRUB's editor; systemd-boot's editor (editor yes): "quiet: jadro: ...;
+     ro: jadro: ..." and the line read "quiet ro"; Limine's editor: lines read on Down and on demand; "path:" was not
+     in the table - added with kernel_path: and module_path: from Limine CONFIG.md (table now 95 rows).
+  Tab completions: RAN - "conf" + Tab in GRUB's command line is read at once ("igfile").
+  Word echo: FAILED on b29t (a space at the end of a line changes no visible text, so only "spacja" was said);
+     fixed in CursorEcho - see run 15.
+  What an entry starts: systemd-boot "Windows Boot Manager: pozycja, ktora systemd-boot dodaje sam. Uruchamia
+     program EFI."; Syslinux "Debian test one: Uruchamia jadro Linux, plik vmlinuz1."; rEFInd text: honest "no single
+     entry of this name" (its entries are found by scanning, not configured); rEFInd graphical said "I cannot tell
+     which entry is selected" - fixed (the selected icon's name is used) - see run 15.
+  Run 15 (b30t, r410-run15/<set>): what run 13 found, after the fixes
+     Limine: the countdown stops ("`" as its stop key): Insert+T, then 30 s without a key, Ctrl+Alt+3, Down / Up -
+       the menu is still there 80 s after the start. Entry information on Limine: "Charon probe loader: Uruchamia
+       program EFI /EFI/probe/PROBE.EFI. Pozycja domyslna." Its editor: "Edytor wpisu", the line on Down.
+     Control+Alt+3 / 5 / 6 / 7 / 4 on rEFInd text, systemd-boot and Limine: the command runs, the program's
+       selection does not move (before: rEFInd started its third entry).
+     systemd-boot entry information: "Charon probe loader: Uruchamia program EFI /EFI/probe/PROBE.EFI."
+     rEFInd graphical with two configured entries: after a key "Boot Graphical probe from GRUBTEST: Uruchamia
+       program EFI /EFI/probe/GPROBE.EFI." and the same for "Probe one" (rEFInd's "Boot TITLE from VOLUME" is
+       matched by its title). On the very first screen, before any key, b30t still said "I cannot tell which entry
+       is selected" - the first icon's name is now kept too (COMPILED ONLY until the final run).
+     Word echo (setting "typed words" on): "echo", "hello" are said when the space ends them. PASS.
+     Describe: "linuxefi: polecenie GRUB w Fedorze i Ubuntu ...; root=/dev/sda2: ...; ro: ...", "initrdefi: ...".
+       FOUND: on systemd-boot's MENU the word "probe" of an entry title was explained as GRUB's command. Fixed:
+       GRUB words are described only in GRUB, Limine keys only in Limine (COMPILED ONLY until the final run).
+     Rate per kind as a number (answer 10; r410-run15/rate/live.wav, the same eleven words after a first word
+       "arrow" / "warning" / "error", r410-seg.py): ordinary message 3.00 s (22 characters a second); warning
+       3.33 s after its 150 ms tone at 520 Hz (11 % slower); error at least 3.73 s after its alarm (24 % slower
+       or more: the first word is spoken apart).
+
+Block 4 - control reader on real graphical managers (run 14 on b30t: r410-run14/<set>; run 17 on b32t)
+  rEFInd as it comes (entries found by scanning) RAN: "Boot EFI\probe\GPROBE.EFI from GRUBTEST, ikona, wybrane, 1 z 3.
+       9 kontrolek na ekranie, niepewnych: 2."; Insert+F6 "ikona, 2 z 3", "ikona, 3 z 3" - position only: the
+       configuration lists no entries, so G3 offers no name (as the user ruled).
+  rEFInd with a wallpaper (banner fillscreen) RAN: the pixel layer is sure of NO control on the picture (5 found, 0
+       sure) and says so; the selected icon's own line is still read ("Boot Graphical probe from GRUBTEST, 2 z 3") and
+       Insert+F6 walks the text lines. LIMIT: icons on a wallpaper are not walked or clicked.
+  Clover RAN: "Clover Boot Options, ikona, wybrane, 1 z 5. 5 kontrolek na ekranie, niepewnych: 2."; Insert+F6 / F5
+       "ikona, 2 z 5" ...; focus by the selection frame follows Right. Click: FAILED on b30t ("Nie widze wskaznika
+       na tym ekranie, wiec nie klikam" after the pointer had been followed three times) - see run 17.
+  OpenCanopy DRAWS in the test VM (CHARON_OC_CANOPY=1): "GRUBTEST, ikona, 2 z 3", "Windows, ikona, 3 z 3" (names =
+       the labels it draws); the first Insert+comma gave no answer twice (NOT root-caused), later "GRUBTEST, ikona,
+       wybrane, 2 z 3. 3 kontrolek ...". Click: FAILED on b30t in the same way as Clover.
+  OpenCore's built-in text picker: read as a menu ("OpenCore: menu, 3 pozycje. 1. CHARON, domyslna, 1 z 3"), no pixel
+       controls (right: it is text). FOUND: its timeout is not shown on the screen, so the reader's stop key was
+       not sent and the default entry started during Insert+comma. Changed: the stop key is also sent at the first
+       reader command when the known manager has had no key yet - see run 17.
+  GRUB theme: a text menu drawn as a picture - "To ekran tekstowy: jego elementy podaje lista elementow", Insert+F6
+       walks its entries ("Charon test entry two, 2 z 6"). No pointer in GRUB.
+  OVMF / edk2 setup: NOT REACHED - in this harness the reader lives in CHARON.EFI and the setup is entered through
+       a reset; it is a text-console form browser, read as text, not a pixel screen.
+  False "Niebieski ekran smierci." / "Czarny ekran." heard on rEFInd (text and themed) and systemd-boot while
+       reader commands were used: the stuck-screen detector now leaves a screen alone on which the reader sees a menu
+       or an icon picker (Windows Recovery's blue error screen is still announced).
+  Clicking when the hovered control hides the pointer (Clover, OpenCanopy): after two sightings and with the scale
+       measured on both axes, the place given by the scale is used when it lies on the control (trace "CHARON
+       pointer not seen on the control, place by scale"). G4: the corner jump is used on every screen.
+  G3: "probably NAME, icon, 2 of 3" from the configuration when the icon row has as many icons as the
+       configuration has top-level entries (ControlWords).
+  OCR leftovers (helper, HOST ONLY so far; tests/CharonAreaOcrTests.cpp 34 checks, r410-host-ocr/):
+       1 theme editor's first lines - three causes (a line 15 px apart took its neighbour's grid row; a wallpaper
+         strip beside the terminal page; the underline caret) - fixed in CharonTtfOcr.h and RecognizeArea;
+       2 "j" at both ends - the box's edges are taken out as a pair (FindFrameEdges);
+       3 countdown label twice - not a letter confusion: the white half of the progress bar was read a second time
+         as "holes in a bar" and overwrote the start of the right line; the hole reading is dropped when real
+         glyphs overlap it. No tolerant comparison was added;
+       4 Clover's bottom-right line - not OCR: the line starts at cell 171 of a 160-column grid; it now keeps the
+         right end of its row.
+       Host numbers on the run 11 pictures: 43 errors / 2 lines lost before, 1 error / 0 lost after (canopy not in
+       that harness). VM confirmation: see the final capture in block 5.
+  Icon names from recognised logos: NOT IMPLEMENTED - about 18 icons in 3 programs on the corpus are too few to
+       prove zero wrong names, and CharonPng.h decodes palette PNG only.
+  Run 17 (b32t, r410-run17/<set>) - block 4 after the fixes
+     rEFInd, three configured entries, mouse on: Insert+F5 to icon 1, Insert+Enter -> the reader walked the pointer
+       (seen at 49,49 and 341,341, then placed by the measured scale at 485,405) and clicked; rEFInd answered
+       "rEFInd - Booting OS. Starting PROBE.EFI" and the probe ran. CLICK PROVEN in rEFInd.
+       G3 names were NOT said in this run ("ikona, 1 z 3"): the code compared the image the configuration was read
+       for with the running image, which differ at that moment. Check removed - see run 18.
+     Clover: Insert+F6 to icon 2 of 5, Insert+Enter -> "Kliknieto: ikona, 2 z 5" and Clover opened its Options
+       screen ("Options. Boot Args: . Configs, podmenu ..."). CLICK PROVEN in Clover.
+     OpenCanopy: Insert+Enter on "Windows, ikona, 3 z 3" -> the selection moved there ("Windows, ikona 3 z 3",
+       "Kliknieto: Windows, ikona, 3 z 3"); a single click selects in OpenCanopy, it does not start. Its first
+       Insert+comma is still not answered (OPEN, not root-caused).
+     OpenCore text picker: Insert+T, 25 s without a key, Down -> "2. GRUBTEST, 2 z 3": the hidden timeout no
+       longer starts the default entry (stop key at the first reader command).
+     GRUB theme, VM confirmation of the OCR work: the countdown label is spoken ONCE ("... executed automatically
+       in 8s ..."), then ticks (3 tick traces of about 7 expected - the label's changes are not all seen: OPEN);
+       the editor reads "setparams 'Charon test entry two'. echo Entry two selected. sleep 3." with no "j"; the
+       command line's text is read (and the sentence "this theme draws it in a font Charon cannot read" is now
+       said only when nothing was read).
+     Last error under a double press: Insert+/ twice -> "Ostatni blad: ..." after GRUB's help text had become the
+       last message. PASS.
+  Run 16 (b32t, r410-run16/<set>) - Charon's own screens and the owed proofs
+     F3 Charon's OWN countdown, MEASURED (r410-run16/ticks/live.wav, r410-ticks.py): ticks one second apart at
+       1262, 1288, 1319, 1350, 1381, 1412, 1438, 1469 Hz (design 600 + 30 x (30 - seconds left)), then the end
+       tone 875 Hz. One rule everywhere: GRUB's countdown after it gave 1319 ... 1469 Hz and 881 Hz.
+     r409 oddity "Settings saved" on a medium that cannot be written: PROVEN with a write-protected USB stick
+       (CHARON_BOOT_USB=1 CHARON_BOOT_RO=1): the status line reads "Ustawienia obowiazuja do restartu: nosnika
+       startowego nie da sie zapisac" (r410-run16/ro/05-spc.png).
+     English interface (set-en.bin): "Welcome to Charon. Starting: Disk - GRUBTEST (GRUB, found by Charon) ...",
+       "Boot devices, submenu", "Wrap lists, disabled", "Synthesizer, combo box, TVox, built in". The record used
+       had only TVox selected: the eSpeak NG name and the voice row - see run 18.
+     F1 sentence: NOT REACHED in this harness. The Windows row of the device list is one Charon found on the disk
+       ("Dysk lub partycja - GRUBTEST (Windows Boot Manager, znalazl Charon)"); the BCD summary and the sentence are
+       attached only to FIRMWARE boot entries (Boot####) that start bootmgfw.efi. To hear it: a machine whose
+       firmware has a Windows Boot Manager entry and whose BCD lists two systems (any of agent 1's Windows
+       machines with a second loader entry). CharonBcdList.h IS wired in now (ReadBcdFile: tools of the store,
+       and "tile menu" = default loader with boot menu policy Standard and no forced text menu, in which case the
+       sentence says that no UEFI reader can read that menu and that Charon's installer can switch it). Host:
+       CharonBcdListTests 22 checks. COMPILED ONLY in the list.
+     D4 device list after a plan: COMPILED ONLY. It cannot be shown without a plan run (a plug or unplug is
+       already caught by the r386 media check). Agent 1 must run: any plan that installs or removes a system and
+       returns to Charon through the finish step, with a trace build of the same sources; expected: the device list
+       shows the new entry (or no longer shows the removed one) without a restart, and Enter on it starts it.
+     Speech under host disk load (r410-diskload.py: 4 threads writing 256 MB files with fsync while the machine
+       starts): first 9.5 s of speech - 2 pieces under 80 ms and 15 short gaps, against 1 and 17 without load
+       (r410-scraps.py; r410-run16/load, r410-run16/ticks). No scraps. This is QEMU, not the VMware setup in which
+       the scraps were heard; host test CharonVoiceLatePumpTests as before.
+     New shortcuts on Charon's own screens (main menu, device list): elements list ("Lista elementow ... 12",
+       "Kolejnosc rozruchu, podmenu, 4 z 10; element 4 z 12"), where am I ("Ekran: Charon. Menu. Pozycja 3 z 10:
+       Urzadzenia rozruchowe"), find ("Wiersz 6, kolumna 3: Ustawienia UEFI"), bookmark, next bookmark, and the
+       Ctrl+Alt list all answered - but each answer came ONE KEY LATE: on Charon's own screens the reader's work
+       ran only at Charon's next keyboard read. Fixed (ServiceCommand: the command is carried out in the same
+       read) - see run 18. Also seen: "Program: Program" as the name on Charon's own screen, and Ctrl+Alt+; typed
+       a ";" into the list's filter there.
+  Run 18 (b33t, r410-run18/<set>)
+     Charon's own screens, answers AT ONCE now (main menu, settings page, workspace): Insert+T "Ekran: Charon.
+       Menu. Pozycja 3 z 10: Urzadzenia rozruchowe", Insert+F7 "Lista elementow ... 12" / 30 on the settings page /
+       17 in the workspace, find ("Wiersz 5, kolumna 3: Ustawienia Charona"), bookmark, Ctrl+Alt+W, Ctrl+Alt+;,
+       Ctrl+Alt+7 ("Charon nie ma listy klawiszy tego programu ..."). Still seen in b33t and changed after it
+       (COMPILED ONLY): the name "Program" on Charon's own screens (now "Charon"); the ";" of Ctrl+Alt+; typed into
+       the list's filter on Charon's own screens. The install dialogue was not driven.
+     G3 PROVEN on rEFInd (three configured entries, three icons): "Boot Probe one from GRUBTEST, ikona, wybrane,
+       1 z 3", Insert+F6 "prawdopodobnie Graphical probe, ikona, 2 z 3", "prawdopodobnie Debian GRUB, ikona, 3 z 3";
+       the tool row of six icons stays "ikona, 1 z 6" (six icons, three configured entries: no name).
+     r409 oddity "voice row sticks on Natan": NOT REPRODUCED - RHVoice's row walks Natan, Slt, Alicja, Cezary,
+       Magda, Michal, Alan, Bdl, Clb (the 76 MB self-install was not rebuilt).
+     r409 oddity "eSpeak NG polski" in English: the ROW was right ("Synthesizer voice, combo box, eSpeak NG
+       Polish") but the message after choosing the synthesizer still said "Synthesizer: eSpeak NG, eSpeak NG
+       polski." Fixed after b33t (synths::VoiceTail used by SynthMessage): COMPILED ONLY.
+
+Block 5 - final builds, suites, capture (regression: see the end)
+  Builds (same sources; reader control release 411 unchanged - app and driver of the same build):
+     charon-win-r410b34/CHARON.EFI + charon-win-r410b34-drv/CHARONVOICE.EFI      clean (no trace) - for agent 1
+     charon-win-r410b34t/CHARON.EFI + charon-win-r410b34t-drv/CHARONVOICE.EFI    trace
+     charon-win-r410b34g/CHARON.EFI                                              trace + grid dump (captures)
+     Session 4's intermediate builds b27r .. b33t and charon-win-r410ocr1/2 are superseded (deleted).
+  Host suites on the final tree (r410-evidence/host-b34.txt; sh r410-host-tests.sh BUILD OUT ;
+  sh r410-provider-tests.sh BUILD OUT/provider): every suite of the list passes, none is stale any more:
+     CharonFormattingTests, CharonSpeechTextTests, CharonMessageModeTests, CharonConsoleSettingsTests,
+     CharonMelodySettingsTests, CharonOcrTests, CharonAaOcrTests, CharonBootManagersTests   PASS
+     CharonSecretInputTests 47, CharonControlsTests, CharonMarksTests 8                      PASS (revived: they
+        needed <efi/protocol/file.h> before CharonSystemTools.h and CharonTtf.o on the link line)
+     CharonAudioDeviceTests                                                                   PASS (revived: gain
+        127 since r404, the USB sound card lookup of r405)
+     CharonVoiceProviderTests                                                                 PASS (revived, in the
+        provider script: stream size, gain, 250 ms deadline while preparing, 15 cues, the 24 MB speech reserve,
+        the r409 rest-and-restart design instead of "fails after 64 restarts")
+     CharonAudioStallTests 316, CharonVoiceStallProviderTests 39, CharonVoiceLatePumpTests 32   0 failed
+     CharonReaderR410Tests 90, CharonScreenModelTests 151 of 151, CharonEntryInfoTests 181, CharonBcdListTests 22,
+     CharonPixelControlsTests 122, CharonMessageQueueTests 28 (new), CharonAreaOcrTests 34 (new)   0 failed
+     CharonTtfOcrTests and CharonBmOcrTests are tools that need a font and a picture; they left the list.
+     Helper's observations, not acted on: CharonSystemTools.h uses efi_file_protocol without including
+     <efi/protocol/file.h>; VoiceProvider::Shutdown() does not clear hakefi::VoiceResting().
+  OCR on a fresh capture with b34g (r410-run19, r410-evidence/ocr-b34.txt), the same 18 screens, 5038 characters:
+      grubgfx 0, grubtheme 8 (1.46 %), refind 0, clover 0, canopy 0, opencore 0, limine 0, winmenu 0, winerr 0;
+      ALL 8 errors = 0.16 % of characters, 0.49 % of words, 0 lines lost of 170
+      (b26: 45 errors, 0.89 %, 2 lines lost; b14: 47, 0.93 %; r409: 607, 12.05 %, 20 lines lost).
+  Confirmations on b34t (r410-run20): "Program: Charon" on Charon's own screens; Ctrl+Alt+; opens the list there
+      with no ";" in its filter; "Synthesizer: eSpeak NG, eSpeak NG Polish." in the English interface (the third
+      r409 oddity: FIXED and heard); Limine "path:" described; no GRUB word described on systemd-boot's menu.
+      NOT fixed: entry information on rEFInd's graphical screen BEFORE any key still says "I cannot tell which
+      entry is selected" (after one arrow key it works).
+
+Manager x feature, what session 4 added (works / partial / no) - the session 2 table stands for the rest
+                     stop key on   entry info     Ctrl+Alt    describe /   controls   click      names (G3)
+                     reader cmd    (Insert+=)     kept away   editor       walked
+  GRUB               works         works (s3)     n.t.        works        (text)     -          -
+  GRUB theme         n.t.          n.t.           n.t.        editor read  (text)     -          -
+  systemd-boot       works         works          works       works        (text)     -          -
+  Limine             works         works          works       works        (text)     -          -
+  rEFInd text        works         honest no      works       -            (text)     -          -
+  rEFInd graphical   n.t.          after a key    n.t.        -            works      works      works
+  rEFInd + wallpaper n.t.          n.t.           n.t.        -            no         no         -
+  Clover             n.t.          not covered    n.t.        -            works      works      n.t.
+  OpenCanopy         works         n.t.           n.t.        -            works (*)  selects    draws labels
+  OpenCore text      works         n.t.           n.t.        -            (text)     -          -
+  Windows menu       works         honest no      works (s3)  -            (text)     -          -
+  Syslinux           works         works          n.t.        n.t.         (text)     -          -
+  UEFI Shell         -             -              n.t.        pager "Jest wiecej"; named "Powloka UEFI"
+  Charon's screens   -             -              works       -            -          -          -
+  (*) OpenCanopy's first Insert+comma gets no answer; n.t. = not tested; (text) = a text screen: the elements list.
+  Limine's stop key is a grave accent, the others get F11. systemd-boot's editor needs "editor yes".
+
+Per answer after session 4 (work/r410-reader-user-answers.md)
+   1 wording by profile     as session 3. English strings HEARD now (run 16 / 18, English interface).
+   2 new screen             as session 3; the Shell is named; Charon's own screens are named "Charon".
+   3 countdown = sounds     F3 Charon's own countdown MEASURED (1262..1469 Hz, end tone 875 Hz). GRUB theme label
+                            once, then ticks (3 of about 7 heard: partial). The reader still never stops a countdown
+                            by itself; a reader COMMAND of the user now counts as a key for the manager.
+   4 elements list          also on Charon's own screens (main, settings, workspace), answers at once.
+   5 hidden menu wait       as session 3 (proven).
+   6 editors, command line  word echo FIXED and heard; Tab completion heard; systemd-boot's and Limine's editors
+                            driven (describe, line reading); describe words 95 rows, spot-checked in GRUB,
+                            systemd-boot and Limine; GRUB / Limine words only in their own program.
+   7 entry information      RAN on GRUB, systemd-boot, Limine, Syslinux, rEFInd graphical (configured entries);
+                            honest "cannot tell" on scanned rEFInd entries and Windows. Clover: not covered.
+   8 control reader         rEFInd, Clover, OpenCanopy: recognised, focus followed, walked; CLICK proven in rEFInd
+                            (entry started) and Clover (Options opened), selects in OpenCanopy; G3 names proven on
+                            rEFInd; G4 corner jump everywhere. No: wallpaper themes, firmware setup, logos,
+                            absolute pointers, sliders.
+   9 Windows entries        read-only; CharonBcdList.h wired in (tools, tile-menu policy); the sentence COMPILED
+                            ONLY (needs a firmware Boot#### entry for Windows - see run 16).
+  10 kind by voice+tone+rate  rate MEASURED: warning 11 % slower, error 24 % slower or more than an ordinary message.
+  11 errors and warnings    warning alarm MEASURED (523 Hz, 140 ms, text 180 ms later); error read in full and the
+                            next message waiting MEASURED; last error under a double press RAN.
+  12 position and structure as session 3.
+  13 colours                relative default against the absolute option: marks and pitch MEASURED (118.9 / 113.7 Hz).
+  14 profiles + custom      as session 3.
+  15 braille / bar / history  braille position stays visible on a 40-cell display (RAN).
+  G1, G2 as built. G3 PROVEN (rEFInd). G4 PROVEN (rEFInd, Clover, OpenCanopy).
+  Settings record: UNCHANGED in session 4 - V14 "CHARS00E", 48 bytes (the report to the coordinator of session 3
+  stands: tools/charon-os must accept "CHARS00E" and mask byte32 with 7, byte33 with 3, byte37 with 7).
+  New strings (all English and Polish): "probably" / "prawdopodobnie", "There has been no error or warning yet",
+  the tile-menu sentence, three Limine rows, the changed key-help row. No BCD or firmware-variable writing.
+
+NEW SHORTCUTS OF r410 (user-facing list; desktop = Insert as the reader key; laptop and Ctrl+Alt set = Control+Alt)
+  English
+    elements list (type to filter, Enter goes there)       Insert+F7            Control+Alt+;
+    previous / next element or control                     Insert+F5 / F6       Control+Alt+[ / ]
+    find text; next / previous place                       Insert+F4; F3 / F2   Control+Alt+F; / and '
+    bookmark here; next / previous bookmark                Insert+F8; ] / [     Control+Alt+0; 9 / 8
+    what changed (twice: since the screen appeared)        Insert+D             - (Control+Alt+D is the symbol level; verified in session 5)
+    where am I (twice: with help and profile)              Insert+T             Control+Alt+W
+    help line of the program                               Insert+End           Control+Alt+Y
+    keys of the program on the screen                      Insert+'             Control+Alt+7
+    describe the known words of the line                   Insert+;             Control+Alt+6
+    what the selected entry starts                         Insert+=             Control+Alt+3
+    last message (twice: last error or warning)            Insert+/             Control+Alt+5
+    reader bar on the bottom line on / off                 Insert+-             Control+Alt+1
+    controls of a graphical screen (twice: all; 3x pointer) Insert+,            Control+Alt+4
+    click the chosen control (mouse-only screens)          Insert+Enter         Control+Alt+2
+      (H2: a control whose name was not read from the screen is asked about first: Enter confirms, any other key cancels)
+    verbosity profile: normal, expert, beginner, custom    Insert+V             Control+Alt+V
+    text formatting: off, voice, sound icons, both         Insert+G             Control+Alt+G
+    speech history; Left / Right filter by kind            Insert+H             - (Control+Alt+H is the shortcut summary)
+  Polski
+    lista elementów (pisanie filtruje, Enter przenosi)     Insert+F7            Control+Alt+;
+    poprzedni / następny element albo kontrolka            Insert+F5 / F6       Control+Alt+[ / ]
+    szukaj tekstu; następne / poprzednie miejsce           Insert+F4; F3 / F2   Control+Alt+F; / i '
+    zakładka tutaj; następna / poprzednia zakładka         Insert+F8; ] / [     Control+Alt+0; 9 / 8
+    co się zmieniło (dwa razy: od pojawienia się ekranu)   Insert+D             - (Control+Alt+D to poziom interpunkcji; sprawdzone w sesji 5)
+    gdzie jestem (dwa razy: z pomocą i profilem)           Insert+T             Control+Alt+W
+    wiersz pomocy programu                                 Insert+End           Control+Alt+Y
+    klawisze programu, który jest na ekranie               Insert+'             Control+Alt+7
+    opis znanych słów wiersza                              Insert+;             Control+Alt+6
+    co uruchamia wybrana pozycja                           Insert+=             Control+Alt+3
+    ostatni komunikat (dwa razy: ostatni błąd/ostrzeżenie) Insert+/             Control+Alt+5
+    pasek czytnika w dolnym wierszu                        Insert+-             Control+Alt+1
+    kontrolki ekranu graficznego (2x wszystkie; 3x wskaźnik) Insert+,           Control+Alt+4
+    kliknij wybraną kontrolkę (ekrany tylko na mysz)       Insert+Enter         Control+Alt+2
+      (H2: o kontrolkę bez nazwy odczytanej z ekranu czytnik najpierw pyta: Enter potwierdza, inny klawisz anuluje)
+    profil mówienia: zwykły, ekspert, początkujący, własny Insert+V             Control+Alt+V
+    formatowanie tekstu: wyłączone, głos, ikony, oba       Insert+G             Control+Alt+G
+    historia mowy; Lewo / Prawo filtr rodzaju              Insert+H             - (Control+Alt+H is the shortcut summary)
+  Source: src/efi/CharonKeyHelp.h (the spoken key list, Insert+F1 / Alt+F1) and CharonKeyNotify.h. A separate
+  "laptop layout" setting does not exist: a keyboard without Insert or numpad uses the Control+Alt set.
+
+FULL 14-run regression on b34t: regression-r410-b34.out (r396-regression.sh, port 4476, WHPX)
+  14 of 14 managers found and started, 0 asserts, 0 exceptions, 2 interrupted messages in all (b26: 5, b16: 4).
+  Compared section by section with r410-regcmp.py: r410-evidence/reg-b34-vs-b26.txt, reg-b34-vs-b16.txt,
+  reg-b34-vs-r408.txt. Against b26 these sections are IDENTICAL: grub, sdboot, limine, refind, memtest, ventoy,
+  haiku, debian. EVERY difference against b26:
+    1. OpenCore: "Choose the Operating System: Timeout" as one message instead of "Timeout" alone, 0 interrupted
+       instead of 1 - the two lines now reach the voice together. Harmless.
+    2. Clover: the bottom-right line is read now ("... F1:Help. 5176 GRUBTEST EFI CLOVER") - INTENDED (OCR
+       leftover 4). The flashing start line "Welcome to Clover 5176. ... scan entries ..." was not spoken and
+       nothing was interrupted (b26: spoken, then interrupted). A/B the same hour (r410-evidence/reg2-b34t.out,
+       reg2-b26t.out): b26t did NOT speak it either -> the host's timing today, not the build (b30t and b32t
+       spoke it in runs 14 and 17).
+    3. Windows: "Wczytywanie, czekaj." (the reader's "loading" sentence, said when the disk is read for a second
+       without text) missing in the regression run. A/B: b34t and b26t both said it in the repeated run -> timing.
+    4. Syslinux: "Automatic boot in 47 seconds" instead of 48 - timing.
+    5. iPXE: the fourth "Porada: ..." tip of Charon spoken within the waiting time (b26: three) - timing, as
+       session 3 showed.
+    6. FreeBSD: the menu window is read, no early loader text, 0 interrupted instead of 1 - the fast path; the
+       slow path is covered by block 1 (early text first, then the menu as its own message).
+  Against b16 the same sections differ plus OpenCore's "menu, 8 pozycji" without "grub:" (session 3, intended);
+  against regression-r408-tcg.out every section differs by the r410 wording itself (positions, "menu, N items",
+  countdown sentences) as listed for b16 in session 2 - no new kind of difference.
+  Loaders that print before a menu, in this regression: Haiku's loader, iPXE, Syslinux - identical to b26 /
+  timing only.
+  VERDICT: 14 of 14 start and are read; no unexplained difference is left. The FreeBSD defect of session 3 is
+  closed.
+
+STATE AT THE END OF SESSION 4 - what is open, for a successor
+  Machines of this agent: none running, none on disk (agent 1's VMware machines were never touched).
+  OPEN (in the order I would take them):
+   1. F1 sentence and the BCD tools / tile-menu wording: heard nowhere yet (needs a firmware Boot#### entry for
+      Windows with a two-system BCD). D4: needs agent 1's plan run.
+   2. rEFInd graphical: entry information before the first key; icons on a wallpaper (0 sure controls).
+   3. OpenCanopy: the first Insert+comma is not answered.
+   4. GRUB theme: only 3 of about 7 countdown ticks were heard after the label's single reading.
+   5. On a slow blit console a row caught half drawn is spoken in two parts (FreeBSD's "Revi. sion 3.0").
+   6. Clover: no configuration parser (entry information, G3 names); Control+Alt commands not exercised on
+      Clover, OpenCore, GRUB; Control+Alt+D / H meanings not verified for the key list.
+   7. The install dialogue of Charon was not driven with the new shortcuts.
+   8. Unknown programs get no stop key (no profile) - by design; say if they should.
+  Either / or questions for the user - session 4
+   1. A reader command now stops a known boot manager's own countdown (one harmless key, no words). EITHER keep
+      it silent (the ticks just stop), OR say "countdown stopped" once.
+   2. Insert+Enter on an icon in rEFInd STARTS that entry (a click is a click). EITHER keep that, OR ask "start
+      NAME? Enter confirms" before the reader clicks an entry icon.
+   3. When the hovered icon hides the pointer, the reader clicks at the place its measured scale gives (how the
+      clicks in rEFInd, Clover and OpenCanopy worked). EITHER accept that, OR click only when the pointer is seen
+      on the control (then Clover and OpenCanopy cannot be clicked).
+   4. Early loader text that left the screen before it was read is still spoken first (answer 11) and the menu
+      follows as its own message. EITHER keep that, OR put such text only into the history when a menu replaces it.
+   (All four were answered by the user: fourth set H1-H4 in work/r410-reader-user-answers.md - see SESSION 5.)
+
+SESSION 5 (2026-11-24) - the user's fourth set H1-H4 and the small open items
+==============================================================================
+Evidence: r410-run21/ (H1, H2, small items; settings records set-beg.bin, set-beg-en.bin, set-exp.bin),
+r410-run21r/ (reader-trace build), r410-run21g/ (grid-dump build), r410-run22/ (FreeBSD, H4), r410-host-s5/ and
+r410-evidence/host-b36.txt (host suites). Tools: r410-run21.sh, r410-stoptone.py (finds the stop sound in a
+recording), r410-fbsd5.sh + r410-fbsd5.py (FreeBSD runs with a verdict per run). r410-capture.py no longer drops
+spoken text that begins with the word "CHARON" (an entry of that name).
+Builds used: b35t / b35r (reader trace) / b35g (grid dump) = sources after H1, H2, H4; b36* = b35 plus one line
+(the beginner's words also when the countdown is known only from the screen model). Settings record UNCHANGED
+(V14 "CHARS00E"); reader control release UNCHANGED (411).
+
+1. H1 - "countdown stopped" sound: RAN+PASSED, MEASURED
+   Code: CharonResident.h NoteReaderUse / CountdownKeyWork / StopSound / StopSoundWork. When a reader command sends a
+   known manager its stop key, the reader plays two sine notes falling a fifth: 660 Hz for 60 ms and, 90 ms after
+   its start, 440 Hz for 120 ms (two calls of the existing tone function from the timer; nothing new in the driver,
+   mixed with speech like every cue). The older setting "Charon stops the countdown" keeps its spoken sentence.
+   Words "Odliczanie zatrzymane." / "Countdown stopped." only where the profile gives key hints (beginner; in the
+   custom profile the existing item "key hints" - no thirteenth item, no record change), only when the reader knew
+   of a countdown (a number seen changing, or the screen model's countdown row), and after the command's own answer
+   has been spoken (at most 15 s later). When the key is sent blind (a manager that has had no key yet and shows
+   no countdown, e.g. OpenCore's hidden timeout) the sound is played and no words are said.
+   Measured (r410-stoptone.py; 48 kHz recordings of the machine's sound, the command was Control+Alt+S "silence",
+   which says nothing, so the sound stands alone):
+     GRUB (8 s)          r410-run21r/h1grubs/live.wav  660 Hz note at 20.888 s, 50 ms above half amplitude, strongest
+                         line 660 Hz; 440 Hz note 90 ms later, 110 ms, strongest line 440 Hz; trace "CHARON
+                         countdown stopped sound"; 12 s later Down reads "Charon test entry two, 2 z 6".
+     systemd-boot (30 s) r410-run21/h1sds/live.wav     ticks one second apart at 694 ... 931, 962 Hz (r410-ticks.py),
+                         then 660 Hz at 31.503 s, 55 ms, line 660 Hz; 440 Hz 100 ms later, 115 ms, line 440 Hz; no
+                         tick after it; 13 s later Down reads "Windows Boot Manager, 2 z 3".
+   Under speech (Insert+T, normal and expert profile; r410-run21/h1grub, h1sd, h1exp): the trace line is there in
+   each run and the menu is still there 14 s later; the notes are not separable from the voice by the measuring
+   script (not measured there).
+   Words, beginner profile (b36t): r410-run21/h1beg "... Start za 5 sekund." then "Odliczanie zatrzymane.";
+   r410-run21/h1begen "... Starts in 6 seconds. ..." then "Countdown stopped." Normal and expert: no words.
+   Seen once and NOT explained: in one run on b35t (r410-run21/h1grubs, kept) GRUB's countdown was already gone
+   when its menu was first read (a key had reached GRUB before the test's first key), no stop key was sent, and
+   after Control+Alt+S GRUB opened its command line. The same keys on the reader-trace build did nothing of the
+   kind (the trace shows the notification, the command, the F11, and no character reaching GRUB). Control+Alt
+   commands on GRUB therefore stay "seen working once, seen failing once" - see the limits.
+   ALL READER TONES (so that new ones stay distinct; sine unless "square"):
+     countdown tick            one note, 40 ms, 600 Hz (30 s or more left) + 30 Hz per second less ... 1470 Hz (1 s)
+     countdown end             880 Hz, 500 ms
+     countdown stopped (H1)    660 Hz 60 ms, then 440 Hz 120 ms beginning 90 ms after the first began
+     warning alarm             523 Hz, 140 ms                error alarm       196 Hz square, 220 ms
+     risky entry selected      330 Hz square, 90 ms          hidden menu (expert)   1320 Hz, 120 ms
+     capital letter            2000 Hz, 50 ms                blank / stuck screen   80 and 90 Hz in turn, 500 ms
+     progress                  40 ms, 110 Hz x 2^(percent/25): 110 ... 1760 Hz, rising with the percentage
+     busy (spinner)            35 ms, 523 587 659 698 784 880 988 1047 Hz in turn
+     reader add-on on / off    784 then 1175 Hz (110 + 170 ms) / 1175 then 784 Hz
+     waiting loop of the driver 660 Hz 120 ms and 880 Hz a quarter second later, soft (CharonVoiceProvider.h)
+     with formatting on, at the first word (CharonFormatting.h kindTable, CharonLiveVoice.cpp):
+       default entry 523 Hz twice (30 + 45 ms); submenu 659 then 988 Hz (25 + 25 ms); edit field 900 Hz square,
+       three 18 ms ticks; help line glide 1319 -> 1175 Hz 70 ms; title 392 Hz 60 ms; error 311 / 294 / 277 Hz
+       square; warning 440 -> 415 Hz twice; countdown 1000 Hz two 12 ms ticks; passing message glide 1047 -> 784 Hz
+       110 ms; place in the list 1760 (top) ... 440 Hz (bottom), 45 ms; list top 1568 -> 1760 Hz, list bottom
+       392 -> 349 Hz, 35 ms; indentation 1200 + 200 Hz per level, 14 ms ticks
+     event icons (formatting on): open 600 -> 900 Hz, close 900 -> 600 Hz (60 ms glides); select 2000 Hz 14 ms;
+       jump 300 -> 1500 Hz; wrap 400 then 1600 Hz; scroll 3000 2600 2200 Hz; warn 440 / 415 Hz square; question
+       500 -> 1000 Hz + 1000 Hz; delete 1200 -> 300 Hz square; button 1000 Hz square; tab 1200 Hz twice; submenu
+       opens 523 659 784 Hz, closes 784 659 523 Hz (25 ms each); toggle 1500 -> 2000 Hz; value 880 then 1320 Hz;
+       disabled 220 -> 200 Hz; editor 700 Hz square twice; help 784 988 1175 Hz; password 300 Hz square; new
+       program 523 + 784 Hz together; task done 784 then 1047 Hz; countdown end 1760 Hz 50 ms
+     Charon's own workspace (never while a boot manager runs): open 660 Hz 40 ms, close 440 Hz 40 ms, edge 220 Hz.
+   Nearest neighbours of the new sound: "submenu closes" (three falling notes in 75 ms, formatting on only) and the
+   close glide 900 -> 600 Hz; the stop sound is the only falling PAIR of separate notes and lasts 210 ms.
+
+2. H2 - question before a click on a control without a certain name: RAN+PASSED
+   Code: CharonResidentControls.inc AskOrClick / ClickAnswerIn / ClickAnswer / ClickAskWork, ProbableName;
+   CharonResident.h FilterKey, Command, timer; key help row (CharonKeyHelp.h) in both languages.
+   Rule: Insert+Enter / Control+Alt+2 on a control whose label was READ FROM THE SCREEN clicks at once (as before).
+   A name from the configuration ("probably NAME") or no name: the reader asks and waits; Enter clicks; any
+   other key cancels with "Anulowano, nie klikam." / "Cancelled, no click."; the answering key (Enter or the other
+   one) is eaten and never reaches the program; another reader command drops the question; a question nobody
+   answers is cancelled after 20 s with the same words. Icons and tiles are asked "Uruchomic: ... ?" / "Start:
+   ... ?", other controls "Kliknac: ... ?" / "Click: ... ?".
+   rEFInd, three configured entries (r410-run21/h2man): "prawdopodobnie Probe one, ikona, 1 z 3"; Insert+Enter ->
+     "Uruchomic: prawdopodobnie Probe one? Enter potwierdza, inny klawisz anuluje."; Escape -> "Anulowano, nie
+     klikam." and rEFInd's screen is identical byte for byte before and after (03-insert_ret.ppm = 05-wait4.ppm;
+     Escape would have rescanned); Insert+Enter, Enter -> trace "CHARON click question answered, yes=1", "CHARON
+     pointer clicked", "Kliknieto: prawdopodobnie Probe one, ikona, 1 z 3", the probe runs ("Probe loader 1.0").
+   rEFInd as it scans, unnamed icons (r410-run21/h2scan): "ikona, 1 z 3"; Insert+Enter -> "Uruchomic: ikona 1 z 3?
+     Enter potwierdza, inny klawisz anuluje."; Down -> "Anulowano, nie klikam.", screen identical (Down did not
+     move rEFInd's selection); Control+Alt+2 asks the same; Enter -> clicked, "rEFInd - Booting OS. Starting
+     GPROBE.EFI".
+   No answer (r410-run21/h2time): cancelled by itself after 20 s; the Enter pressed after that was rEFInd's again
+     (it started its selected entry) - as it must be once the question is gone.
+   English (r410-run21/h2en): "probably Probe one, icon, 1 of 3"; "Start: probably Probe one? Enter confirms, any
+     other key cancels."; "Cancelled, no click."; tool row "Start: icon 1 of 6? ...".
+   Certain name (r410-run21/h2canopy, OpenCanopy draws its labels): "GRUBTEST, ikona, 2 z 3", Insert+Enter -> no
+     question, "Kliknieto: GRUBTEST, ikona, 2 z 3" (trace: no "click asked", one "pointer clicked").
+   Not reproduced this session: a certain name on rEFInd. With the mouse enabled rEFInd's selection was not seen
+     as a control by the pixel layer, so icon 1 was "probably Probe one" and was asked about too (run 18, without
+     the mouse, had "Boot Probe one from GRUBTEST, ikona, wybrane"). That errs on the side of asking.
+
+3. H3 - the click at the place computed from the measured pointer scale: ACCEPTED by the user, as built in
+   session 4. Used again in this session's clicks (trace "pointer not seen on the control, place by scale" in
+   h2man and h2scan, both clicks landed).
+
+4. H4 - early loader text that vanished before it was read, by profile: RAN+PASSED
+   Code: CharonMessageQueue.h rule 3 (SendWhenCleared, Replaced), CharonResident.h QueueMessage, the timer's send
+   condition, ReadsEverything / PendingAlarm.
+   Rule as built:
+     beginner (and a custom profile with "key hints" on): as before - text whose screen was cleared is sent at
+       once, spoken, kept in the history; the new screen follows as its own message.
+     normal, expert: waiting text whose screen was cleared is NOT sent at the clear. When new screen text arrives
+       (the menu) it is read at once and the vanished text is filed in the history only, marked "message", before
+       the menu's entry. When nothing replaces it and the screen falls quiet, it is spoken after all (nothing is
+       lost without a word).
+     every profile: text with an error or warning word is sent at the clear and read in full (answer 11).
+   "Replaced by a menu" is implemented as "replaced by any new screen text": FreeBSD's menu itself reaches the
+   reader as a message window, so no menu test is available at that point.
+   Host: tests/CharonMessageQueueTests.cpp 50 checks, 0 failed (was 28). New recorded-screen cases: 6 the recorded
+   slow FreeBSD run in the normal profile (nothing spoken at the clear, the menu is the only spoken message, the
+   early text whole in the history before it); 7 the same with clear and menu in one flush; 8 cleared and nothing
+   follows: spoken once the screen is quiet; 9 the vanished text is an error / a warning: spoken first, in both
+   orders of clear and menu; 11 no clear and no room: everything still spoken. Cases 2 and 3 are the beginner.
+   VM, FreeBSD 14 bootonly.iso (r410-fbsd5.sh; verdict lines in r410-run22.log; serial logs in r410-run22/):
+     normal, slow path (reader-trace build b35r)   5 of 5: trace "CHARON vanished text to the history only", the
+                                                  menu window is the FIRST message, 0 interrupted messages
+                                                  (session 4, same path: early text spoken, 1 interrupted each)
+     normal, fast path (b36t)                      5 of 5: the menu is the first message, 0 interrupted
+     beginner, slow path (b35r, set-beg.bin)       1 of 1: early text spoken in order (two messages), then the
+                                                  menu; 2 interrupted (each later message interrupts, as before)
+     beginner, fast path (b36t)                    1 of 1: the menu, 0 interrupted
+     expert, slow path (b35r, set-exp.bin)         1 of 1: history only, the menu first, 0 interrupted
+     history (normal, slow, r410-run22/slow-hist)  Insert+H, Up, Up: "komunikat: Okno: Welcome to FreeBSD ...",
+                                                  "komunikat: Loading /boot/defaults/loader.conf ... ; wypowiedz 2
+                                                  z 3", "komunikat: Consoles: EFI console ..." - the vanished text
+                                                  is there, marked as a message, in order.
+   Seen in that sixth slow run and by design: the FIRST part of the early text was spoken ("Consoles: EFI console
+   ... Revision") because the screen stood still for 60 ms while that text was on it - it was read as any message
+   is, not as vanished text; the menu then interrupted it (1 interrupted) and the second part went to the history
+   only. So in the normal profile the early text is not always silent on a slow machine; it is never spoken
+   AFTER it has left the screen.
+   Other loaders: not run (the rule sits in the one place every clear passes, as in session 4).
+
+5. Small open items of session 4
+   OpenCanopy's first Insert+comma "gets no answer": NOT A DEFECT OF THE READER - ROOT-CAUSED. The answer was
+     spoken every time ("CHARON, ikona, wybrane, 1 z 3. 3 kontrolek na ekranie, niepewnych: 3." in the trace of
+     run 17); the capture tool threw away every spoken line that begins with "CHARON" as if it were a trace line,
+     and OpenCanopy's first entry is named CHARON. Tool fixed; r410-run21/h2canopy/said.txt shows the answer.
+   GRUB theme, "3 of about 7 ticks": NOT REPRODUCED on b35g (r410-run21g/grubtheme, no key during the countdown):
+     label once ("grub: Charon test entry one, domyslna, start za 7 sekund"), tick traces 7 6 5 4 3 2 1 and the
+     end - 7 of 7; in the recording (r410-ticks.py) ticks at 1288, 1319, 1350, 1412, 1438, 1469 Hz one second
+     apart (the 1381 Hz tick lies under speech and is not separated by the script) and the end tone 881 Hz. The
+     reader's grid has the row "... executed automatically in Ns." read right in every one of the five dumps.
+     Run 17's loss is not explained; no code was changed for it.
+   rEFInd graphical, "what this entry starts" before the first key: FIXED, RAN (r410-run21/refindgfx, b35t):
+     Insert+= as the first key -> "Boot Probe one from GRUBTEST Automatic boot in 60 seconds: Uruchamia program EFI
+     /EFI/probe/PROBE.EFI." (the name of rEFInd's first screen is kept: CharonResident.h, the r396d branch). The
+     name still carries rEFInd's countdown line, as the first reading of that screen does.
+   Half-drawn row spoken in two parts on the slow path: LIMIT, not changed. It needs the forced 500 ms flush to
+     leave the row that is still being drawn for the next flush - a change in the core of Flush that would need
+     the full regression, which was not run this session. Seen again: "Fr. eeBSD", "escape. ape to loader prompt".
+     With H4 the normal and expert profiles no longer hear most of that text.
+   Control+Alt+D and Control+Alt+H: VERIFIED IN THE CODE (CharonKeyNotify.h Command, CharonResident.h Command):
+     Control+Alt+D = symbol level (the same command as Insert+P); Control+Alt+H = the spoken shortcut summary.
+     So "what changed" (Insert+D) and the speech history (Insert+H) have no Control+Alt key. Also verified:
+     Insert+End and Control+Alt+Y are the same command (the program's help line / key-hint bar). Key list updated.
+   The new shortcuts inside Charon's install dialogue: see run 23 below.
+
+6. Run 23 (session 6, b37t + b37t-drv) - the new shortcuts inside Charon's OWN install dialogue: RAN+PASSED,
+   with three wording / model limits
+   Script r410-run23.sh; evidence r410-run23s6/dlgpl (Polish, 50 steps) and r410-run23s6/dlgen (English, 39
+   steps): said.txt, serial.log (trace), live.wav (48 kHz recording; the sound went to the host speakers too),
+   a picture per step. asserts=0, exceptions=0 in both. The session-5 attempt (r410-run23/install, install2) is
+   superseded: its medium had no CHARONVOICE.EFI, so Charon said "Na nosniku Charona nie ma czytnika ekranu
+   CHARONVOICE.EFI, wiec nie ma czego instalowac." and the dialogue never opened. Now CHARON_VOICE puts the
+   driver on the medium. Path: Space, Down x5, Enter (workspace), Down x5, Enter ("Install Charon on this
+   computer") -> "Co zainstalowac na tym komputerze? sam czytnik ekranu: ..., 1 z 3" / "What to install on this
+   computer? the screen reader alone: ..., 1 of 3". Left with Escape at the first question: NOTHING was installed
+   or written (the next Insert+T is back in the workspace: "Pozycja 7 z 16: Zainstaluj Charona ...").
+   Inside the dialogue every command answered at once (PL; EN the same in English):
+     where am I  Insert+T, Ctrl+Alt+W   "Program: Charon. Ekran: Charon: instalacja Charona na tym komputerze. Menu.
+                                        Pozycja 1 z 2: Escape cofa. F1 powtarza pytanie. ..."   (see limit a)
+     elements list Insert+F7, Ctrl+Alt+; "Lista elementow, rozruch wstrzymany, 5. ..."; Down walks to "Co
+                                        zainstalowac ... 2 z 2; element 5 z 5", "Koniec listy"; Escape "Lista
+                                        elementow zamknieta." (Ctrl+Alt+; gave 6 after the option changed)
+     find Insert+F4 + "komp", Insert+F3  "Wiersz 31, kolumna 24: Co zainstalowac na tym komputerze? ..." then
+                                        column 59 (the second "komp" on the row)
+     bookmark Insert+F8, Insert+]       "Zakladka: ..."; after Down changed the option: "Zakladka 1 z 1,
+                                        zaznaczonego tekstu nie ma juz na ekranie; wiersz 31" (right: the row changed)
+     last message Insert+/, Ctrl+Alt+5  "Nie bylo jeszcze zadnego komunikatu." / "There has been no message yet."
+                                        (true: the dialogue's question is screen text, not a message)
+     describe Insert+;                  "Charon nie ma opisu zadnego slowa z tego wiersza." (no loader words: right)
+     what changed Insert+D              "Zmienilo sie 2 wiersze: czytnik ekranu i menedzer rozruchu Charon jako
+                                        zapasowy wpis ..." (after Down) / EN "Changed: 18 lines, empty now 13: ..."
+     reader bar Insert+- twice          "Pasek czytnika wlaczony: dolny wiersz ekranu pokazuje, co mowie." /
+                                        "Pasek czytnika wylaczony."
+     history Insert+H, Up, Up, Escape   "Historia mowy, rozruch wstrzymany ... wypowiedz 1 z 23", older entries in
+                                        order, "Historia mowy zamknieta."
+     help line Insert+End               "Escape cofa. ef jeden powtarza pytanie. ..." ; keys Insert+' "Charon nie ma
+                                        listy klawiszy tego programu. Insert End czyta wiersz pomocy z ekranu."
+     profile Insert+V x4                expert, beginner, custom, normal - each announced; back to normal.
+   The answering keys never reached the dialogue (the option changed only on the plain Down keys; Escape inside
+   the list / history / find closed those and did not cancel the dialogue).
+   The trace line of the expert announcement starts with "mmm0-ammm0y--0": that is the formatting mark U+E003
+   with its 14-character payload (the expert profile's sound cue), consumed by the voice (CharonSpeechText.h
+   SpeechOut) - not spoken.
+   LIMITS seen (not changed: no regression run is planned, and the dialogue's layout is agent 1's file):
+     a. The screen model reads the dialogue as a 2-row menu whose row 1 is the help line, so "where am I" says
+        "Pozycja 1 z 2: Escape cofa ..." instead of the option "1 z 3"; the question and the selected option are
+        one row on the screen ("Co zainstalowac ...? <- sam czytnik ekranu ..."), cut at the right edge
+        ("... a Charon czy"). The dialogue's own speech gives the full option and "1 z 3".
+     b. Insert+= on the dialogue says "Charon nie znalazl pliku konfiguracji tego programu ..., wiec nie wie, co
+        ta pozycja uruchamia." - honest but meant for boot managers; on Charon's own dialogue it should say that
+        it does not apply.
+     c. The workspace count differs between Charon's own speech ("6 z 15") and the reader's where am I ("7 z 16":
+        the reader counts the title row); seen in session 5 too.
+   Repeated on the final trace build b38t + b38t-drv (r410-run23s6b/dlgpl, Polish, 50 steps): word for word the
+   same as on b37t (said.txt compared with the times removed: no difference), asserts=0, exceptions=0.
+
+SESSION 6 (2026-11-24 evening) - run 23, final builds, host suites, smoke read
+==============================================================================
+No reader source was changed in this session. Settings record, reader control release: unchanged.
+Builds: b38 / b38-drv / b38t / b38t-drv / b38g (see the top block). b37* and b36* are the same reader sources
+  (b36 = b37 clean app byte for byte); b35*, b36t and older are superseded.
+Host suites: r410-evidence/host-b37.txt and host-b38.txt (identical) - counts in the top block.
+Smoke read (by the user's decision this replaces the full regression; THE WHOLE BUILD WAS NOT REGRESSION-
+  TESTED). Script r410-smoke6.sh BUILD (CORPUS=...); recorded sound in each folder (live.wav), sound on the host
+  speakers; one machine at a time on QMP port 4476, each deleted after its run.
+  b38t: r410-smoke6b/{smgrub,smwin,smrefind}/said.txt, r410-smoke6b/fbsd/run1.out + run1.serial.log
+  b37t: r410-smoke6/... - the same lines, word for word, apart from timing.
+    GRUB            "grub: Charon test entry one, domyslna, start za 7 sekund"; after Down "grub: menu, 6 pozycji.
+                    Charon test entry one, domyslna, 1 z 6" + GRUB's help text as a message; Down "Charon test
+                    entry two, 2 z 6"; Up back. (The test entry boots and fails at once - "Failed to boot both
+                    default and fallback entries" - as in every earlier run: test entries have no kernel.)
+    Windows menu    "Wczytywanie, czekaj."; "Menedzer rozruchu Windows: Windows Setup, domyslna, start za 28
+                    sekund"; Down "menu, 2 pozycje ..." + the menu text as a message, "Windows Memory Diagnostic,
+                    2 z 2"; Up "Windows Setup, domyslna, 1 z 2".
+    rEFInd (text)   "Boot EFI probe GPROBE.EFI from GRUBTEST, 1 z 3" + the countdown and key line as a message;
+                    Right "... PROBE.EFI ..., 2 z 3"; Left back.
+    FreeBSD normal  r410-fbsd5.py verdict: early text spoken 0, menu window spoken as message 1 of 2,
+                    interrupted 0, asserts 0 (the fast path; the same as session 5's five fast runs). The test's
+                    Down then leaves the beastie menu for the loader prompt ("Wiersz polecen", "Exiting menu!"),
+                    as in session 5.
+  All four read and navigated as in sessions 4 and 5; no new kind of difference. Managers NOT smoke-read on
+  b38t: systemd-boot, Limine, OpenCore / OpenCanopy, Clover, Syslinux, iPXE, Memtest86+, Ventoy, Haiku, Debian,
+  the UEFI Shell, GRUB themes (last full regression on b34t; targeted runs in session 5 on b35/b36).
+Machines of this agent at the end: none (no qemu process, no r410o-* / r410c-* / r396-freebsd folders).

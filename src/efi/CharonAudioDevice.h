@@ -126,6 +126,10 @@ public:
     }
     charon::AudioEngine::Sink Sink() {return {this,WriteThunk,DrainedThunk};}
     efi_status LastError() const {return error_;}
+    uint64_t Submitted() const {return submitted_;}   // r409: frames the HDA stream took since Open (CharonAudioStall.h)
+#ifdef HAK_CHARON_STALLTEST
+    void InjectTimeout() {Fail(EFI_TIMEOUT);}         // test builds only: the stream is treated as stalled
+#endif
     bool Vanished() const {return vanished_;}
     void MarkVanished() {vanished_=true;}   // r402: the driver's stream went away; Open may find it again
     bool NeedsStop() const {return bound_ || usb_.Opened();}   // r405: a USB mirror alone also has to be stopped

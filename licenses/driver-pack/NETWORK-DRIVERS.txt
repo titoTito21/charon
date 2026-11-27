@@ -1,0 +1,848 @@
+CHARON NETWORK DRIVERS, SECOND PACK (r407): WIRED GAPS AND WI-FI
+================================================================
+Written 2026-11-22. Pack: work/charon-drivers-r407-net (beside the first pack
+work/charon-drivers-r407, see DRIVER-PACK.txt; this file does not repeat it).
+Regenerate: tools/make-charon-netpack.py (fetch, vm-start/vm-build/vm-get/
+vm-stop or ipxe, assemble, verify, qemu-test) and the host builds
+tools/build-charon-netdrv-rge.py, -alc.py, -wifi.py, -usbcfg.py,
+-intelundi.py.
+
+NOTHING IN THIS PACK HAS BEEN RUN ON A PHYSICAL COMPUTER. "QEMU" below means
+QEMU 11.1 with OVMF (edk2-x86_64-code.fd), accel=tcg, UEFI shell, the card's
+option ROM switched off, DHCP from QEMU's user network. No emulator offers
+any Wi-Fi card, an RTL8125, a Killer or an MT7921, so everything for those is
+"never run": compiled, linked, checked as a PE32+ x86-64 EFI driver image and,
+where stated, loaded in QEMU without the hardware. Read "built" as "built",
+not as "works".
+
+
+0. HOW CHARON USES THE FILES (CharonWsNet.h LoadDrivers, changed in r407)
+
+  Folder \EFI\HAK\drivers on ANY FAT volume, files in name order:
+    nic-*.efi      PCI network cards        loaded when no adapter is driven
+    nic-usb-*.efi  USB network adapters     (same rule: the name starts nic-)
+    wifi-*.efi     Wi-Fi                    loaded when no adapter is driven, or
+                                            when no handle carries the Wi-Fi
+                                            connection protocol
+    net-*.efi      IPv4 stack of edk2       loaded when adapters have no IPv4
+                                            service
+  Sub-folders (experimental\, manual\) are never read: a file there is tried
+  only when somebody copies it up into \EFI\HAK\drivers.
+  Changes made to the rule in r407 (CharonWsNet.h, build checked with
+  tools/build-charon-windows.py -> work/charon-win-r407net5: PASS; compile
+  and link only, the changed loader code was not run in a machine):
+  * UNDI-only state. A maker's UNDI driver (Intel's, Realtek's) publishes only
+    the Network Interface Identifier protocol; Simple Network comes from
+    SnpDxe, which is a net-* file. net-*.efi is now also loaded when an NII
+    3.1 handle exists without Simple Network (before: only when Simple Network
+    existed without IPv4, so a hand-installed UNDI driver on a firmware
+    without SnpDxe stayed dead).
+  * Once per session. Driver images stay resident. Without the L key, nic-*
+    and wifi-* are now loaded once per session each; before, every visit of
+    the Network view loaded all images again as long as the hardware they
+    serve was absent (with wifi-* files in the folder that would have been
+    every visit on every computer whose firmware has no Wi-Fi driver).
+  * GetNetworks token. Charon's copy of EFI_80211_GET_NETWORKS_TOKEN had a
+    ResultCode member the UEFI structure does not have (only the connect
+    token has one; MdePkg/Include/Protocol/WiFi2.h). The firmware's result
+    pointer therefore landed in the wrong member and every scan ended with
+    "The scan failed" - on any firmware Wi-Fi driver, not only ours. Found by
+    compiling the driver side against the edk2 header. Fixed, with a
+    static_assert on the size (32 bytes).
+  * Connect result. Result codes 1 (refused) and 2 (failed) both give the
+    "check the password" message (before: only 2).
+  * Late adapters. When the connect pass after loading nic-* produced no
+    adapter, Charon waits 0.8 s and connects once more (a USB adapter that
+    nic-usb-29 moves to its CDC configuration appears from a timer, 1.2).
+  * Two ways the first pack's net-*.efi stop the machine. Those files are a
+    DEBUG build of edk2 (cut out of QEMU's OVMF), where a failed assertion is
+    an endless loop: net-10-DpcDxe.efi asserts when the firmware already has
+    the DPC protocol ("gEfiDpcProtocolGuid already installed in database"),
+    net-14-Ip4Dxe.efi when the firmware has no EFI_RNG_PROTOCOL (DxeNetLib.c,
+    "Failed to locate EFI_RNG_PROTOCOL"). Both were reproduced in QEMU/OVMF
+    (logs: source\intelundi\qemu-gig-undi-plus-pack-*.serial.txt). Charon now
+    skips net-10-* when the DPC protocol is present and loads no net-* file
+    at all when there is no random number protocol, and says so ("The
+    firmware has no random number source, which the IPv4 modules need; they
+    were not loaded."). The files themselves are unchanged (first pack).
+  Not changed: a computer whose firmware drives one adapter gets no nic-*
+  driver for a second one. iPXE opens PCI and USB devices EXCLUSIVE, so a
+  resident iPXE image would take a firmware-driven card away at the next
+  connect; USB adapters are the safe case (nic-usb-*). Documented as uncovered.
+
+1. WIRED: WHAT THIS PACK ADDS
+
+File (top folder = loaded     Hardware                                  Source, licence                     State
+by Charon's rule)
+----------------------------  ----------------------------------------  ----------------------------------  --------------------------------
+nic-16-intel-newer.efi        Intel 1G/2.5G as in current iPXE: all     iPXE git 1fa3091d (2026-11, after   QEMU: e1000 (82540EM), 82545EM,
+                              of nic-10-intel plus I219-LM/V (18) to    2.0.0) "intel" + patch 20 (seven    e1000e (82574L): adapter + DHCP
+                              (29): 8086:550a-5510, 57a0, 57a1, 57b3-   IDs from Linux igc_hw.h);           10.0.2.15 each. igb (82576):
+                              57ba (Meteor/Arrow/Lunar/Panther Lake);   GPL-2.0-or-later                    binds, link down, no lease - NOT
+                              added here: Killer E3100G family                                              passed. The added IDs: never
+                              8086:3100 (I225-K), 3101 (I225-K2), 3102                                      run (no such card in QEMU).
+                              (I226-K), I226-LMvP 5503, I225-I 15f8,
+                              I220-V 15f7, I221-V 125e (193 IDs in
+                              all). In a merged folder THIS image, not
+                              nic-10, takes every Intel card both
+                              know (newer build = higher binding
+                              Version, section 6).
+nic-18-server.efi             Solarflare SFC4000/SFC9xxx, NetXen/       iPXE git 1fa3091d: etherfabric,     built; loads in QEMU and binds
+                              QLogic Phantom, Neterion X3100, Myricom   sfc_hunt, phantom, vxge, myri10ge,  nothing; never run with such a
+                              Myri-10G, Exablaze ExaNIC, Mellanox       exanic, hermon, golan;              card.
+                              ConnectX-2/3 (hermon), ConnectX-4/5/6     GPL-2.0-or-later
+                              (golan); 42 IDs. Such cards normally
+                              bring their own UEFI driver in the
+                              option ROM.
+nic-usb-29-cdc-select.efi     USB adapters whose first configuration    own code (src/netdrv/usb-cdc-       built; mechanism run in QEMU
+                              is maker-specific but which also have a   select), BSD-2-Clause-Patent        (emulated usb-net, test variant:
+                              CDC-ECM/NCM one: Realtek RTL8152/8153/                                        RNDIS -> ECM switch, adapter,
+                              8155/8156/8157 (most USB-C adapters and                                       DHCP 10.0.2.15); NEVER run with
+                              docks), Aquantia AQC111U/112U. Details                                        a physical adapter. See 1.2.
+                              in 1.2.
+manual\nic-19-intel-undi-     Intel's own UNDI drivers: gig = 82571-    Intel IntelUndiPkg, built           gig: QEMU e1000e (82574L)
+gig.efi, -xgig.efi,           82583, 80003ES2LAN, 82575/6, 82580,       unmodified with MSVC in edk2:       adapter + DHCP 10.0.2.15 + ping;
+-i40e.efi, -ice.efi           I340, I350, I210, I211, I354 (56 IDs);    release 24.3 (edk2-staging          igb (82576): binds, no lease -
+                              xgig = 82598, 82599/X520, X540, X550,     branch Intel_UNDI) for gig/xgig,    NOT passed. xgig, i40e, ice:
+                              X552, X553 (40); i40e = X710/XL710/       release 29.3 (bexcran/              built, not run. BY HAND ONLY
+                              XXV710/X722 (24); ice = E810, E830 (16).  IntelUndiPkg) for i40e/ice;         (not loaded by Charon).
+                              NOT I217/I218/I219, NOT I225/I226.        BSD-3-Clause. See 1.3.
+                              See 1.3.
+experimental\                 Realtek RTL8125/8125B/8125D (2.5G),       OpenBSD rge(4) if_rge.c 1.50,       EXPERIMENTAL, NEVER RUN on the
+nic-17-realtek-rge.efi        RTL8126 (5G), RTL8127 (10G), Killer       commit c02cc426, compiled           chip. Loaded in QEMU; a test
+                              E3000 (10ec:3000), E5000 (10ec:5000):     UNMODIFIED on a kernel-API shim     build ran the start path on an
+                              the usual card of current desktop         (src/netdrv/rge-uefi); ISC;         emulated RTL8139 up to rge's
+                              boards. See 1.1.                          Realtek patch tables under          chip check. NOT loaded by
+                                                                        rge-license (licences\)             Charon by itself.
+experimental\                 Qualcomm Atheros AR8131/8132/8151/8152,   OpenBSD alc(4) if_alc.c 1.59 +      EXPERIMENTAL, NEVER RUN on the
+nic-17-atheros-alc.efi        AR8161/8162/8171/8172, Killer E2200/      sys/dev/mii, same commit and        chip. Loaded in QEMU; a test
+                              E2400/E2500 (13 IDs, see 1.1).            shim, unmodified; BSD-2-Clause      build ran shim + Simple Network
+                                                                                                            under OVMF's stack on an
+                                                                                                            emulated e1000. NOT loaded by
+                                                                                                            Charon by itself.
+
+1.1 RTL8125/8126/8127 and Atheros/Killer: the OpenBSD ports (experimental\)
+  Route chosen for the cards iPXE and edk2 do not know: OpenBSD's drivers,
+  compiled UNMODIFIED (not one changed line, no patch) on a small "OpenBSD
+  kernel API on UEFI" shim, so the chips' initialisation sequences, PHY
+  parameters and patch tables are exactly the ones OpenBSD runs on real
+  hardware; only the shim and the UEFI face are new (src/netdrv/rge-uefi,
+  about 4260 lines, ISC). openbsd/src commit c02cc426.
+    nic-17-realtek-rge.efi  rge(4), if_rge.c rev 1.50 of 2026-11-20 (ISC):
+      RTL8125, 8125B, 8125D, RTL8126, RTL8127 and 8127ATF, chosen by the
+      hardware revision register; PCI 10ec:8125, 8126, 8127, 3000 (Killer
+      E3000), 5000 (Killer E5000). No firmware file: the MAC/PHY patch tables
+      OpenBSD builds into /etc/firmware/rge-* (sys/dev/microcode/rge/
+      rgemcode.h) are compiled in; their Realtek licence travels with the
+      pack (licences\, "rge-license": distribution allowed "provided this
+      copyright notice is accompanying it").
+    nic-17-atheros-alc.efi  alc(4), if_alc.c rev 1.59 with sys/dev/mii (mii,
+      atphy, ukphy), BSD-2-Clause: 1969:1063 AR8131, 1062 AR8132, 1073/1083
+      AR8151, 2060/2062 AR8152, 1091 AR8161, 1090 AR8162, 10a1 AR8171, 10a0
+      AR8172, e091 Killer E2200, e0a1 E2400, e0b1 E2500. No firmware.
+  How: driver binding on EFI_PCI_IO (BY_DRIVER, not exclusive; attributes
+  saved and restored), a child handle with Simple Network and a MAC device
+  path node, the firmware's or the first pack's MNP/IP4/DHCP on top. No
+  interrupts: the driver's interrupt handler is polled from GetStatus/Receive/
+  Transmit and a 10 ms timer at TPL_CALLBACK. Registers through PciIo Mem/Io
+  on the BAR the driver picks, DMA through PciIo AllocateBuffer + Map (one
+  pool of about 1.8 MB), every wait bounded, ExitBootServices silences the
+  chip. Messages and counters are kept in volatile variables (GUID
+  6B3A2F61-9D1C-4E7A-8F52-1C0E7D3A9521: CharonRgeLog, CharonRgeStat,
+  CharonAlcLog, CharonAlcStat; UEFI shell: dmpstore -guid ...).
+  Checked here (QEMU, evidence in source\rge): both images are PE32+ x86-64,
+  subsystem 11, with relocations, no undefined symbol; they load at the
+  preferred address and relocated (loaded twice), appear in "drivers", bind
+  nothing, the firmware keeps running. Test-only builds (never shipped) that
+  also bind an emulated card ran the shared code under OVMF's network stack:
+  rge on QEMU's RTL8139 up to rge's own chip check ("rge0: unknown version
+  0x74800000", clean release, six times); alc on QEMU's e1000 with a pretended
+  link: child handle, MNP/IP4/DHCP on top, six frames handed to Transmit,
+  buffers recycled, the driver's watchdog firing on the foreign chip, Stop and
+  Start again without a fault.
+  NOT run anywhere: the chip-specific code on its chip - initialisation, PHY,
+  link, a frame really leaving or arriving, a DHCP lease. That is why both
+  files are in experimental\, which Charon never reads.
+  Left out or simplified (full list with function names: source\rge\NOTES.txt):
+  no MSI/MSI-X and no multi-queue; no checksum offload, TSO, VLAN, jumbo
+  frames, wake-on-LAN; media always autonegotiation; RTL8127ATF SFP code
+  compiled but never exercised; Statistics/NvData unsupported; panic() and
+  KASSERT() log and continue; unsigned (Secure Boot refuses them).
+  Trying one on a real computer whose firmware drives no adapter:
+    1. Secure Boot off. Copy experimental\nic-17-realtek-rge.efi (or the alc
+       file) up into \EFI\HAK\drivers, same name.
+    2. Charon, Workspace, Network. Expected: "Drivers loaded: N" without
+       "failed", a new entry "Ethernet, cable unplugged" or, within about 5 s
+       of link, "Ethernet, cable connected, no address".
+    3. Enter: "Getting an address from DHCP", then "Connected. Address ...".
+    4. On failure, UEFI shell: dmpstore -guid 6B3A2F61-9D1C-4E7A-8F52-
+       1C0E7D3A9521, drivers, dh -p SimpleNetwork, pci. Report the Log text
+       (chip and MAC, or "unknown version", "reset never completed!",
+       "timeout waiting to patch phy mcu", "watchdog timeout"), the Stat line
+       (state, link, sent, received), and the 10ec:/1969: line of pci.
+    5. If the Network view stops responding, delete the file again and report
+       the computer model.
+
+1.2 USB adapters through their CDC configuration (nic-usb-29-cdc-select.efi)
+  Realtek RTL8152/8153/8156/8157 and Aquantia AQC111U/112U adapters start in
+  a configuration only the maker's driver understands; a second or third
+  configuration is a standard CDC-ECM or CDC-NCM network function. Firmware
+  always selects the first one, and EFI_USB_IO has no "set configuration"
+  call. But the standard SET_CONFIGURATION request, sent as a control
+  transfer, is honoured by edk2's USB bus driver: it removes the interface
+  handles and creates those of the new configuration (MdeModulePkg/Bus/Usb/
+  UsbBusDxe/UsbBus.c, UsbIoControlTransfer: "Select a new configuration. This
+  is a dangerous action ... The old UsbIo will be uninstalled and new UsbIo
+  be installed"). The driver (5.6 KB, no ID table) looks at every USB
+  interface that is vendor-specific (class ff) and that no driver manages;
+  when the whole active configuration is vendor-specific and another one has
+  a CDC-ECM (preferred) or CDC-NCM interface, it sends that request from a
+  timer, never from inside Start(). Then the first pack's class drivers
+  (nic-usb-33 + nic-usb-35/36) take over. It never touches hubs, keyboards,
+  storage, audio, devices with one configuration, or an interface a real
+  driver wants (binding version 1, the lowest). When the firmware does not
+  follow (old handle still there), it restores the old configuration.
+  Run in QEMU/OVMF with the emulated usb-net device (RNDIS first, CDC-ECM
+  second) and a TEST variant that accepts that device: switch, new ECM
+  interface, adapter, DHCP lease 10.0.2.15; a second connect pass causes no
+  second switch. The shipped image loads and manages nothing there.
+  FOUND ON THE WAY, NOT FIXED (belongs to the first pack): edk2's UsbCdcEcm,
+  UsbCdcNcm and UsbRndis read the configuration descriptor with index
+  "bConfigurationValue - 1" (UsbEcmFunction.c LoadAllDescriptor line 44 and
+  the same line in the other two). On QEMU's usb-net (value 2 at index 0,
+  value 1 at index 1) the unmodified nic-usb-35 therefore binds after the
+  switch but produces no adapter; the lease above was obtained with a test
+  build of UsbCdcEcm that looks the descriptor up by value (patch:
+  source\usbcfg\UsbCdcEcm-descriptor-index.patch, about 15 lines). Realtek
+  adapters number their configurations 1, 2, 3 in order (lsusb listing in
+  Linux commit ec51fbd1b8a2), so the unmodified class drivers should work
+  there - not verified on a device.
+  Unknown: firmware with a USB stack other than edk2's (AMI, Insyde,
+  Phoenix); physical xHCI controllers (edk2's XhcSetConfigCmd only adds the
+  new endpoints). The driver's result line is the volatile variable
+  CharonUsbCdcSelect, GUID 6b1f4d2a-3c5e-4f7b-9a1d-52c80e7f31a6 (UEFI shell:
+  dmpstore -guid ...): "0bda:8153: configuration 01 -> 02 (CDC-ECM):
+  switched, new interfaces created", "... firmware USB stack did not follow
+  the change; old configuration restored", "... no CDC-ECM or CDC-NCM
+  configuration; left alone". The adapter appears a moment after the connect
+  pass; Charon now waits 0.8 s and connects once more when the first pass
+  gave no adapter (section 0).
+  Known devices (Linux 7.3 r8152.c table: 34 IDs, the devices Linux itself
+  treats this way since commit ec51fbd1b8a2; aqc111.c: 5 IDs): 0bda:8050,
+  8053, 8152, 8153, 8155, 8156, 8157, 815a; Microsoft 045e:07ab, 07c6, 0927,
+  0c5e; Samsung 04e8:a101; Lenovo 17ef:304f, 3054, 3062, 3069, 3082, 3098,
+  7205, 720c, 7214, 721e, a359, a387; Linksys 13b1:0041; Nvidia 0955:09ff;
+  TP-Link 2357:0601, 0602; D-Link 2001:b301; Dell 413c:b097; ASUS 0b05:1976;
+  TRENDnet 20f4:e02b, e02c; Aquantia 2eca:c101, ASIX-branded 0b95:2790, 2791,
+  TRENDnet 20f4:e05a, QNAP 1c04:0015. Not verified: that ASIX AX88179A/B and
+  AX88772D/E have a CDC configuration (if they do, the same rule serves them).
+  Test with an RTL8153 adapter: whole pack in \EFI\HAK\drivers, adapter
+  plugged in with a cable before Charon starts, Workspace, Network. Success:
+  "Drivers loaded: N", then an entry "Ethernet, cable connected, no address";
+  Enter gives "Getting an address from DHCP", "Connected. Address ...". If no
+  adapter appears, press L once; if still none, the variable above says where
+  it stopped. Report computer model, firmware maker, the adapter's USB ID and
+  that line.
+
+1.3 Intel's own UNDI drivers (manual\nic-19-intel-undi-*.efi)
+  Intel publishes the source of its UEFI network drivers under BSD-3-Clause
+  ("Copyright (c) 2001-2018, Intel Corporation ... Redistribution and use in
+  source and binary forms, with or without modification, are permitted",
+  license_bsd.txt; full text in licences\): tianocore/edk2-staging, branch
+  Intel_UNDI, commit 97599f20 ("aligned to Intel network driver release
+  24.3", 2019), and a third party's copy of the release 29.3 sources that
+  Intel ships inside its PREBOOT package (github.com/bexcran/IntelUndiPkg,
+  commit 90dff4e6; two lines changed in ice_switch.c).
+  CAREFUL with release 29.3: 36 files of it (18 each in GigUndiDxe and
+  XGigUndiDxe: Forms/ and Hii/, the set-up pages) carry an "INTEL
+  CONFIDENTIAL" header ("No part of the Material may be ... distributed ...
+  without Intel's prior express written permission") instead of the BSD
+  text. Binaries built from those may not be passed on. So gig and xgig are
+  built from release 24.3, in which every file is BSD (checked: 0 of 197
+  files with that header), and i40e and ice from 29.3, whose folders have
+  none; the build tool reads the header of every file of a module and
+  refuses a module with a non-BSD one.
+    gig   GigUndiDxe 9.0.03 (24.3)    xgig  XGigUndiDxe 7.4.06 (24.3)
+    i40e  I40eUndiDxe 5.0.12 (29.3)   ice   IceUndiDxe 4.2.97 (29.3)
+  What they do NOT do: no Intel UNDI source has the PCH adapters I217/I218/
+  I219 or I225/I226 (there is no igc UNDI source at all), so they close none
+  of the gaps of current desktop and laptop boards; for those the pack has
+  nic-10/nic-16 (iPXE). What they add over the iPXE images are 44 IDs: I210
+  fibre/backplane (8086:1536-1538, 157c), I354 (1f40, 1f45), 82598 and some
+  X520/X550/X552/X553 ports, 3 of X710 and the E830 (ten IDs).
+  Why by hand: (1) on every card an iPXE image also knows, iPXE takes the
+  card away again - it opens the device exclusively and the firmware then
+  stops the UNDI driver (seen with nic-10 + gig on e1000e, in both load
+  orders: the UNDI starts first because its binding Version 0x09000300 is
+  higher, then iPXE's driver replaces it; lease through iPXE) - so in the
+  loaded set they would add a start/stop cycle on the hardware and nothing
+  else; (2) they are UNDI drivers and need SnpDxe above them, which on
+  firmware without a network stack means the first pack's net-*.efi, with
+  the two hazards described in section 0; (3) xgig, i40e and ice have never bound to a
+  device. To use one: copy it up into \EFI\HAK\drivers under a name that
+  starts with nic- and, for a card iPXE also knows, remove the iPXE image
+  that would take it (nic-10/16 for gig, nic-15 for the others).
+  Run in QEMU (source\intelundi\*.serial.txt): gig on e1000e: "Intel(R)
+  PRO/1000 Open Source 9.0.0" manages the card, an NII 3.1 child with the
+  MAC appears, OVMF's SnpDxe on top, lease 10.0.2.15, ping of 10.0.2.2
+  answered. gig on igb (82576): binds, "Media present", no frame leaves, no
+  lease in 62 s - not passed. gig on e1000 (82540EM): not in its table. All
+  four images load together without error and the lease still works.
+
+2. WI-FI BEFORE THE OPERATING SYSTEM: WHAT EXISTS
+
+  What UEFI expects of a Wi-Fi driver (UEFI specification, network protocol
+  chapters; declarations in edk2 MdePkg Protocol/WiFi2.h, Supplicant.h,
+  EapConfiguration.h): the driver of the chip publishes, on one handle,
+    - a Simple Network Protocol that looks like Ethernet (the firmware's
+      MNP/IP stack goes on top unchanged),
+    - EFI_WIRELESS_MAC_CONNECTION_II_PROTOCOL: GetNetworks (scan),
+      ConnectNetwork, DisconnectNetwork, all asynchronous with a token,
+    - and it uses (or brings) an EFI_SUPPLICANT_PROTOCOL: the WPA key
+      handshake and frame encryption, fed with SSID, pass phrase or PMK, AKM
+      and cipher suites; EFI_EAP_CONFIGURATION_PROTOCOL for 802.1X.
+  What edk2 has: only the user side, NetworkPkg/WifiConnectionManagerDxe (the
+  set-up page that scans, stores profiles and calls the protocols above; its
+  INF lists gEfiWiFi2ProtocolGuid "TO_START" and the supplicant and EAP
+  configuration protocols as "SOMETIMES_CONSUMES"; it knows the AKM suites
+  PSK, SAE, OWE, 802.1X and Suite B). Checked in the edk2 tree used here
+  (work/ha): no module of edk2 PRODUCES the Wi-Fi or the supplicant protocol -
+  there is no chip driver and no supplicant in edk2.
+  (WPA3 Personal was added to it in 2022, commit e1eef3a "Add Wi-Fi Wpa3
+  support in WifiConnectManager".) Both protocols date from UEFI 2.6;
+  specification 2.10 has them in chapter 27, "Network Protocols - VLAN, EAP,
+  Wi-Fi and Supplicant" (chapter title seen, the pages themselves could not
+  be fetched here: uefi.org answered 403).
+  What the makers publish: nothing that could be found. Searches of
+  intel.com and of the Realtek, MediaTek and Qualcomm download pages turned
+  up only operating system drivers - no stand-alone UEFI Wi-Fi driver, no
+  release notes, no licence. Such drivers exist inside the firmware of some
+  business laptops (the makers' recovery-over-Wi-Fi features use them); a
+  module cut out of somebody's firmware image has no licence that would let
+  it be passed on, so that is not a route. This is a negative search result,
+  not proof: if a maker does offer one, it goes into \EFI\HAK\drivers by hand
+  as wifi-05-<name>.efi exactly like the wired drivers of section 5.
+  Open source: no UEFI driver for any Wi-Fi chip and no port of a Linux or
+  BSD Wi-Fi stack to UEFI was found (searches for implementations of
+  EFI_WIRELESS_MAC_CONNECTION_II_PROTOCOL return only edk2's header and
+  WifiConnectionManagerDxe). The only open pre-boot 802.11 code is iPXE's
+  (section 3), which iPXE itself marks FILE_SECBOOT ( FORBIDDEN ): it is
+  excluded from iPXE's Secure Boot signed builds.
+  Charon's side: the Wi-Fi view (r400) scans and connects through exactly
+  these protocols, so it works wherever a driver publishes them: firmware
+  with a built-in Wi-Fi driver (never tested), and the drivers of sections 3
+  and 4. Its GetNetworks token was wrong until r407 (section 0).
+
+3. WI-FI WITH iPXE'S 802.11 LAYER (wifi-10-atheros.efi, wifi-11-legacy.efi)
+
+  What iPXE has: an 802.11 layer (net/80211: scan, association, WEP, WPA-PSK
+  with TKIP, WPA2-PSK with CCMP in software; no 802.1X, no WPA3, no 802.11n
+  rates) and four drivers: ath5k (Atheros AR5xxx 802.11a/b/g, about
+  2003-2009), ath9k (AR5416, AR9160, AR9280, AR9285, AR2427, AR9287, AR9380
+  "AR9300", AR9485: the 802.11n cards of 2008-2013 laptops), rtl8180/rtl8185
+  and Prism 2/2.5/3 (museum pieces). In iPXE the network name and the key are
+  the settings "ssid" and "key" of the network device, typed at iPXE's own
+  command line; a driver image (.efidrv) has no command line, and as it comes
+  from iPXE such an image could not serve the firmware's network stack at all:
+  * its Simple Network Protocol shows 802.11 + LLC frames (32 byte header),
+    while the firmware's MNP driver parses Ethernet headers itself;
+  * nothing runs iPXE's scheduler in a driver image, and scan, association
+    and the WPA handshake are scheduler processes;
+  * the EAPOL frames of the handshake would be handed to the firmware's stack
+    instead of iPXE's handshake code;
+  * the device joins the strongest OPEN network by itself as soon as the
+    firmware's IPv4 stack initialises it.
+  What r407 adds (GPL-2.0-or-later, shipped in source/ipxe/changes):
+  * interface/efi/efi_wifi.c (new): on the handle that carries Simple Network
+    it publishes EFI_WIRELESS_MAC_CONNECTION_II_PROTOCOL and
+    EFI_SUPPLICANT_PROTOCOL - exactly what Charon's Wi-Fi view already uses
+    for firmware Wi-Fi, so the view needs no second code path:
+      GetNetworks      passive scan on all bands of the card (iPXE
+                       net80211_probe_*), result in one pool block: name,
+                       quality 0-100, AKM 00-0F-AC:2 (pre-shared key) or :1
+                       (802.1X), cipher :4 CCMP / :2 TKIP / :1 WEP
+      Supplicant.SetData  takes the pass phrase (EfiSupplicant80211PskPassword,
+                       8-63 characters or 64 hex digits) and the name; AKM and
+                       cipher are accepted and ignored (iPXE reads them from
+                       the beacon); every other supplicant call is
+                       EFI_UNSUPPORTED - the handshake is iPXE's own (wpa.c)
+      ConnectNetwork   stores name and pass phrase as iPXE's "ssid"/"key"
+                       settings of that device and starts iPXE's association;
+                       success = associated + keys installed + link up;
+                       ConnectFailed after two failed attempts (iPXE itself
+                       retries for ever), ConnectFailureTimeout at the
+                       caller's timeout; on failure the settings are removed
+      DisconnectNetwork  removes the settings, closes and reopens the device
+    The pass phrase lives in RAM only (iPXE setting), never in an EFI variable.
+    The device never associates unasked (NET80211_NO_ASSOC). A 20 ms timer
+    (TPL_CALLBACK) runs iPXE's scheduler and sorts received frames: EAPOL to
+    iPXE's handshake, everything else to the Simple Network queue (at most 128
+    frames kept when nobody reads).
+  * interface/efi/efi_snp.c (patch 30): an 802.11 device is presented with
+    Ethernet framing (header 14 bytes; transmit converts Ethernet -> 802.11 +
+    LLC through the device's own push(), receive the other way), a receive
+    hook, and two small exports for efi_wifi.c. For Ethernet devices the code
+    path is unchanged (the hook pointer is NULL, the framing test is false);
+    this was checked by running the patched tree with an Ethernet card in
+    QEMU (section 6). The UNDI/NII face of iPXE is NOT adapted for 802.11.
+  State: built; images load in QEMU without such a card and bind nothing
+  (section 6). THE WI-FI FUNCTION HAS NEVER RUN: no scan, no association, no
+  frame was ever exchanged, because no emulator has an Atheros card. What is
+  proven is only that the code compiles against iPXE's and edk2's interfaces
+  and that it stays out of the way on other hardware.
+  Because Charon loads wifi-*.efi by rule, a computer with one of these cards
+  runs this never-run code when the Network view is opened. If that computer
+  then misbehaves there, delete wifi-10-atheros.efi and wifi-11-legacy.efi
+  from \EFI\HAK\drivers; nothing else depends on them.
+  Test plan for a computer with an Atheros card (lspci: 168c:xxxx, IDs in
+  manifest-net.json), firmware without its own Wi-Fi driver:
+    1. Whole pack in \EFI\HAK\drivers. Start Charon, Workspace, Network.
+       Expected speech: "Drivers loaded: N" (a "failed" count means the
+       firmware refused images: Secure Boot).
+    2. The adapter list has an entry "Wi-Fi, not connected". If the card is
+       listed as "Ethernet": the driver bound but the Wi-Fi protocol was not
+       installed (timer or protocol installation failed). If there is no
+       entry: the card's ID is not in the driver, or the firmware drives it.
+    3. Open the entry: "Scanning for Wi-Fi networks." A list within
+       30 seconds: name, signal percent, "password" or "open". "The scan
+       failed" (with a status code): the card could not be started, or the
+       scan gave no answer in 30 seconds.
+    4. Choose a network, type the password: "Connecting to the network."
+       Then either "Getting an address from DHCP" (association and handshake
+       succeeded), or "The network refused; check the password." (two failed
+       attempts), or "Not connected." (timeout, default 20 s).
+    5. "Connected. Address ..." = data path works (framing, CCMP both ways).
+       "No DHCP answer in 30 seconds" after a successful connect points at the
+       Ethernet framing code of efi_snp.c or at the group key.
+  For a first run use experimental\wifi-10-atheros-debug.efi INSTEAD of
+  wifi-10-atheros.efi (copy it up, remove the normal one): it prints the
+  messages of iPXE's 802.11 layer, of the handshake and of efi_wifi.c on the
+  firmware's text console ("802.11 ... associated with ...", "WPA ... "); a
+  photo or the serial console of the machine is the log to send.
+
+4. MODERN WI-FI CHIPS: A PORT OF OpenBSD'S STACK (experimental\, never run)
+
+4.1 Which stack, and why
+  Three sources of drivers for current chips exist:
+  * Linux: iwlwifi and rtw88/rtw89 are "GPL-2.0 OR BSD-3-Clause", mt76 is
+    "BSD-3-Clause-Clear" (SPDX headers of iwl-drv.c, rtw88/main.c,
+    rtw89/core.c, mt76/mac80211.c), but all of them are written against
+    mac80211/cfg80211 and the kernel around it, which is GPL-2.0 and far
+    larger than the drivers.
+  * FreeBSD runs exactly those Linux drivers (iwlwifi(4), rtw88, rtw89, mt76)
+    through its LinuxKPI compatibility layer on top of its own net80211:
+    permissive, but it means porting LinuxKPI as well.
+  * OpenBSD has its own small drivers on its own net80211: one C file per
+    chip family, ISC/BSD licensed, with the WPA2-PSK four-way handshake in the
+    kernel (net80211/ieee80211_pae_input.c, _pae_output.c) and CCMP/TKIP in
+    software (ieee80211_crypto_ccmp.c, _tkip.c) - no user-space supplicant is
+    needed for a home network, which is what a boot manager has.
+  OpenBSD is the only one of the three that fits into a UEFI driver without
+  dragging a second kernel along, and the rge port (1.1) shows the method
+  works for its Ethernet drivers: the driver file compiles unmodified on a
+  shim. Its Wi-Fi drivers (man pages and the pinned source, commit c02cc426):
+    iwx(4)   Intel AX200, AX201, AX210, AX211; if_iwx.c about 12900 lines
+             (ISC + Intel dual BSD/GPL block); no 802.11ax rates
+    iwm(4)   Intel 7260, 7265, 3160, 3165, 3168, 8260, 8265, 9260, 9560;
+             about 12200 lines
+    mwx(4)   MediaTek MT7920, MT7921, MT7921K, MT7922 (AMD RZ616), MT7925
+             (AMD RZ717); if_mwx.c 7754 lines, ISC; no 802.11n/ac/ax rates;
+             WPA1/WPA2 with the chip's crypto offload
+    qwx(4)   Qualcomm QCNFA765/WCN6855; qwz(4) WCN7850: about 27600 and
+             25200 lines each
+    rtwn(4), urtwn(4), rsu(4)  Realtek RTL8188CE/EE, 8192CE, 8723AE and the
+             USB RTL8188/8192 families (not the current RTL8852/RTL8922: no
+             OpenBSD driver exists for those)
+    athn(4), bwfm(4)  Atheros 802.11n, Broadcom FullMAC
+  First chip: MediaTek MT7921/MT7922 (mwx). Reasons: the user named MediaTek;
+  it is the smallest driver for a chip that is sold today (the usual Wi-Fi
+  card of AMD laptops since 2021); one source file; its firmware may be
+  redistributed (4.4). Intel AX2xx (iwx) is the obvious second: same shim,
+  same net80211, about twice the driver code, firmware in several files.
+
+4.2 The port: experimental\wifi-50-mediatek-mt7921-mwx.efi
+  THIS IMAGE HAS NEVER RUN WITH ITS CHIP. No emulator has an MT7921. It is
+  compiled, linked, checked as a PE32+ image and loaded in QEMU, where it
+  binds nothing. It is in experimental\, which Charon never reads.
+  What is in it: OpenBSD's if_mwx.c (rev 1.49 of 2026-10-27) and net80211
+  (ieee80211.c, _node.c, _input.c, _output.c, _proto.c, _crypto*.c,
+  _pae_input.c, _pae_output.c, _regdomain.c, rate adaptation) with the crypto
+  files they use (AES, CMAC, HMAC, SHA-1, SHA-2, MD5, key wrap, Michael,
+  RC4), all compiled UNMODIFIED from commit c02cc426 on the kernel-API shim
+  of the rge port extended for Wi-Fi (src/netdrv/wifi-uefi, about 5700
+  lines, ISC): bus_space and bus_dma over EFI_PCI_IO, a small mbuf
+  implementation, timeouts and tasks run from a poll loop, tsleep/wakeup as
+  a bounded poll of the driver's interrupt handler (interrupts are never
+  enabled; a 10 ms timer and the Simple Network calls poll), loadfirmware()
+  reading \EFI\HAK\firmware\<name>.
+  PCI IDs (the driver's table): 14c3:7961 MT7921 and 14c3:0608 MT7921K (AMD
+  RZ608), 14c3:7922 MT7922 and 14c3:0616 (AMD RZ616), 14c3:7920 MT7920,
+  14c3:7925 MT7925 and 14c3:0717 (AMD RZ717).
+  UEFI face, on a child handle (device path = parent + MAC node), the same
+  three protocols Charon's Wi-Fi view uses:
+    Simple Network with Ethernet framing (net80211 converts in
+      ieee80211_encap/decap); MediaPresent = associated and port valid
+    EFI_WIRELESS_MAC_CONNECTION_II: GetNetworks (scan, result in one pool
+      block with AKM/cipher lists from each node's RSN information, quality
+      from RSSI), ConnectNetwork (desired ESSID, RSN with the PSK, waits for
+      the RUN state and a valid port or the failure timeout),
+      DisconnectNetwork
+    EFI_SUPPLICANT: SetData for the pass phrase, the SSID and the suites; the
+      PSK is PBKDF2-HMAC-SHA1(pass phrase, SSID, 4096, 32) computed in the
+      driver; everything else EFI_UNSUPPORTED (the handshake is net80211's)
+  Stubbed kernel functions (the complete list is the file stubs.c, one
+  comment per function): ieee80211_ioctl, ieee80211_disable_wep,
+  ieee80211_disable_rsn, rtm_80211info, ether_output, ether_input,
+  ether_addmulti, ether_delmulti, if_addgroup, if_deactivate, m_tag_find,
+  copyin, copyout, suser - the BSD ioctl and routing-socket side, which the
+  UEFI face replaces.
+  (ieee80211_disable_wep and ieee80211_disable_rsn are real code copied from
+  ieee80211_ioctl.c, which is not compiled; the other twelve are stubs.)
+  Build switches: IEEE80211_STA_ONLY (no access point or ad-hoc code),
+  NBPFILTER 0. 30 OpenBSD source files and 32 headers, none changed.
+  Reduced, not stubbed: a sleep is a poll of the interrupt handler, at most
+  5 s; tasks run one at a time from the 10 ms timer, so a state change that
+  waits for the chip blocks the firmware at TPL_CALLBACK for that time
+  (Charon is silent meanwhile); locks, spl and atomics are no-ops; time has
+  10 ms resolution; multicast lists are ignored; m_pullup/m_split/m_prepend
+  copy into one 2048 byte cluster; one adapter only (global state); at most
+  32 networks per scan; the SSID list of the GetNetworks token is ignored;
+  station address change and receive filter changes are not supported;
+  without EFI_RNG_PROTOCOL the handshake nonce comes from a generator seeded
+  by the time stamp counter (a warning is logged) - a real weakness. The
+  shim is a modified copy of the rge port's (larger buffer pool: 1280
+  clusters); the two copies should become one.
+  PBKDF2 was reviewed by reading (U1 = HMAC(pass, SSID || block), 4096
+  rounds, 20 + 12 bytes) but never run against a test vector.
+  What was checked here (source\wifi\*.serial.txt, source\qemu-tests):
+  * PE32+, x86-64, subsystem 11, 7736 bytes of relocations, NX_COMPAT, no
+    undefined symbol.
+  * Loaded twice in one QEMU session (preferred address 100000, and
+    relocated): both "Success", both listed by "drivers", bind nothing.
+  * A test-only build (not shipped, deleted) that also binds QEMU's e1000 and
+    treats it as an MT7921: Start ran EFI_PCI_IO, the buffer pool, the BAR
+    mapping and mwx_attach() up to its first hardware step; the log held ten
+    lines "mwx0: poll timeout reg e0010 val 0 mask 4 cur 4" and "mwx0: driver
+    own failed"; everything was released and the shell came back, twice.
+  NOT reached by any test: net80211's attach, the firmware reader, scanning,
+  joining, the handshake, transmit and receive, the three protocols of the
+  UEFI face. Nothing behind the chip's first register answer has ever
+  executed.
+  Not done: Intel AX200/AX201/AX210/AX211 (iwx) on the same shim - not
+  started.
+  Test plan for a computer with an MT7921 or MT7922 (lspci 14c3:7961, 0608,
+  7922, 0616), firmware without its own Wi-Fi driver:
+    1. Secure Boot off (the image is unsigned). Charon r407 or later (the
+       scan needs the token fix of section 0).
+    2. Copy experimental\wifi-50-mediatek-mt7921-mwx.efi up into
+       \EFI\HAK\drivers (same name) and the chip's two firmware files into
+       \EFI\HAK\firmware under the names of 4.4.
+    3. Charon, Workspace, Network (or L). Expected: tones, "Drivers loaded:
+       N", then an adapter "Wi-Fi, not connected". The firmware upload can
+       take several seconds of silence. No Wi-Fi adapter although drivers
+       loaded = the attach failed: read the log (below).
+    4. Enter on the adapter: "Scanning for Wi-Fi networks.", after 1.5 to 10
+       seconds a list: name, signal percent, "password" / "open" /
+       "enterprise, not supported".
+    5. Choose a network: "Network password:", "Connecting to the network.",
+       within 20 s "Getting an address from DHCP", then "Connected. Address
+       ...". "The network refused; check the password." = associated, but
+       the key handshake did not finish (result code 2). "Not connected." =
+       the network never answered (code 3).
+    6. The log is the volatile variable CharonMwxLog, GUID
+       6B3A2F61-9D1C-4E7A-8F52-1C0E7D3A9521 (last 4 KB of the driver's text;
+       CharonMwxStat has counters). Charon's variable browser shows it; UEFI
+       shell: dmpstore -all CharonMwxLog. Lines to look for:
+         chip answered         "mwx0: ..., rev: MT7961.x"
+         firmware missing      "firmware file ... not found in \EFI\HAK\
+                               firmware", "mwx0: loadfirmware error 2",
+                               "mwx0: no hardware address: the firmware did
+                               not start"
+         chip silent           "mwx0: poll timeout reg ...", "driver own
+                               failed"
+         scan                  "mwx0: scan started", "scan finished", "scan
+                               finished, no network heard"
+         join                  "mwx0: joining started", "joined, keys
+                               installed", "associated but the key handshake
+                               failed (wrong password?)", "the network did
+                               not answer in time"
+         weak randomness       "WARNING: the firmware has no random number
+                               protocol"
+       Send that text with the computer model and the 14c3: line of lspci.
+
+4.3 What the stack can and cannot do (from the sources compiled)
+  Open networks and WPA2-PSK with CCMP: yes in the code (the port enables
+  RSN with PSK or PSK-SHA256 and CCMP only). WPA1/TKIP and WEP: linked, not
+  enabled by the UEFI face.
+  WPA3-SAE: NO. net80211 recognises the SAE suite in a beacon
+  (ieee80211_input.c, AKM type 8; enum IEEE80211_AKM_SAE) but has no SAE
+  authentication; OpenBSD's own manual says "WPA2 is currently the most
+  secure encryption standard for wireless networks supported by OpenBSD". A
+  network that offers WPA2 and WPA3 together (transition mode, the default of
+  most routers) can be joined with WPA2; a WPA3-only network cannot.
+  802.1X / enterprise: NO. The key handshake after EAP is there, the EAP
+  methods are not ("WPA-Enterprise networks require use of the
+  wpa_supplicant package", mwx(4), iwx(4)); Charon's view refuses such
+  networks.
+  Protected management frames (802.11w): net80211 has them
+  (ieee80211_crypto_bip.c, IEEE80211_C_MFP; OpenBSD states them for iwm, iwx,
+  qwx, qwz), but mwx does not set IEEE80211_C_MFP (if_mwx.c 1824-1840), so
+  they are not negotiated: a network that REQUIRES them cannot be joined.
+  6 GHz: no; mwx forces has_6ghz to 0 ("TODO 6GHZ SUPPORT", if_mwx.c 4086).
+  802.11n/ac/ax speeds: none with mwx (HT/VHT and A-MPDU are under "#if
+  NOTYET", if_mwx.c 1825, 1842; its manual says the same), so 802.11a/b/g
+  rates, 54 Mbit/s at best - enough for a network installer, slow for large
+  images.
+  Regulatory domain: mwx sends the fixed world domain "00" to the chip's
+  firmware (if_mwx.c 1816, 4927, 5011) and takes the channel list the
+  firmware reports; there is no country setting, and the port adds none.
+  iPXE's layer (section 3) for comparison: WEP, WPA-PSK/TKIP, WPA2-PSK/CCMP;
+  no WPA3, no 802.1X, no PMF, no 802.11n rates, 2.4 and 5 GHz as the card
+  allows, regulatory limits from the card's EEPROM (ath_regd.c).
+
+4.4 Firmware files (NOT in the pack; the chip does nothing without them)
+  mwx asks for these names; put them into \EFI\HAK\firmware (the driver looks
+  on the volume it was loaded from, then on every FAT volume). They are the
+  linux-firmware files under another name (OpenBSD's port takes them from
+  linux-firmware and renames them):
+    MT7921/MT7921K  mwx-mt7961_patch_mcu_1_2_hdr  = mediatek/WIFI_MT7961_patch_mcu_1_2_hdr.bin
+                    mwx-mt7961_ram_code_1         = mediatek/WIFI_RAM_CODE_MT7961_1.bin
+    MT7920          mwx-mt7961_patch_mcu_1a_2_hdr, mwx-mt7961_ram_code_1a
+    MT7922/RZ616    mwx-mt7922_patch_mcu_1_1_hdr  = mediatek/WIFI_MT7922_patch_mcu_1_1_hdr.bin
+                    mwx-mt7922_ram_code_1         = mediatek/WIFI_RAM_CODE_MT7922_1.bin
+    MT7925/RZ717    mwx-mt7925_patch_mcu_1_1_hdr  = mediatek/mt7925/WIFI_MT7925_PATCH_MCU_1_1_hdr.bin
+                    mwx-mt7925_ram_code_1_1       = mediatek/mt7925/WIFI_RAM_CODE_MT7925_1_1.bin
+  Licences (linux-firmware WHENCE and LICENSES/, read in the GitLab copy):
+    MediaTek  "Redistributable. See LICENCE.mediatek": "MediaTek Inc. grants
+              permission to use and redistribute aforementioned firmware ...
+              for the use with devices containing MediaTek chipsets, but not
+              as part of the Linux kernel or in any other form which would
+              require these files themselves" to fall under the GPL. So they
+              could be shipped beside the driver; they are left out only
+              because the driver that needs them has never run.
+    Intel     LICENCE.iwlwifi_firmware: "Redistribution and use in binary
+              form, without modification, are permitted", notice and
+              disclaimer to be reproduced, "No reverse engineering,
+              decompilation, or disassembly". (OpenBSD nevertheless calls
+              the files "not free".) Names for a later iwx port: iwx-cc-a0-77
+              (AX200), iwx-QuZ-a0-hr-b0-77 and iwx-Qu-*-hr-b0-77 (AX201),
+              iwx-ty-a0-gf-a0-77 + .pnvm (AX210), iwx-so-a0-gf-a0-77 + .pnvm
+              (AX211) - the chip-to-file mapping is from memory of the
+              driver, not verified here.
+    Realtek   LICENCE.rtlwifi_firmware.txt: binary redistribution without
+              modification permitted, no reverse engineering.
+    Qualcomm  LICENSE.QualcommAtheros_ath10k: redistribution "for use solely
+              in conjunction with a Qualcomm Atheros, Inc. chipset".
+    Broadcom  LICENCE.broadcom_bcm43xx: unmodified, "solely for use with
+              Broadcom proprietary integrated circuit product(s)", with a
+              copy of the agreement.
+
+5. ADDING A MAKER'S DRIVER BY HAND (may not be redistributed)
+
+  Realtek and Intel publish their own UEFI network drivers, but without a
+  licence that lets a third party pass them on (sources in section 9), so the
+  pack does not contain them (the BSD-licensed UNDI SOURCES of Intel are
+  another matter: 1.3). The owner of the computer may download and use them:
+    Realtek PCIe RTL8111/8125/8126/8127: realtek.com, Downloads, "PCIe FE /
+      GBE / 2.5G / 5G / 10G Ethernet Family Controller Software", entry "UEFI
+      UNDI Driver (X86/X64/ARM/LoongArch64)", version 2.081 of 2026-10-27
+      (https://www.realtek.com/Download/List?cate_id=584). The page shows no
+      licence text at all. Take the .efi of the X64 folder.
+    Realtek USB RTL8152/8153/8156/8157: same site, cate_id=585, "UEFI UNDI
+      Driver (32/64/ARM)", 2.048 of 2025-09-08.
+    Intel: "Intel Ethernet Connections Boot Utility, Preboot Images, and EFI
+      Drivers" 31.3 of 2026-10-16 (intel.com download 15755, PREBOOT.zip),
+      under the "Intel OBL Distribution (Commercial Use) License": passing on
+      is limited to the files a redist.txt names, inside the licensee's own
+      product; whether the E*X64.EFI drivers are named there was not checked
+      (the download needs the licence to be accepted). x64 drivers are in
+      APPS\EFI\EFIx64; the name is E<version>X<class>.EFI (E3603X3.EFI =
+      version 3.6.03, x64, class 3; classes 2 PCI gigabit, 3 PCI-E gigabit,
+      4 10 gigabit, per a copy of Intel's efi.htm; not checked in the
+      archive, and whether 31.3 has an I225/I226 driver is not known).
+  (File and folder names inside the makers' archives were NOT opened here.)
+  Steps:
+    1. Download from the maker (never from a driver collection).
+    2. Rename: nic-05-<anything>.efi for a PCI card, nic-usb-05-<anything>.efi
+       for a USB adapter. A low number loads the maker's driver first.
+    3. Copy to \EFI\HAK\drivers on Charon's stick (or any FAT volume).
+    4. Charon: Workspace, Network (L loads again and says how many drivers
+       loaded or failed).
+  These are UNDI drivers: they need SnpDxe above them. Firmware usually has
+  it; when not, Charon now loads the first pack's net-*.efi for them (section
+  0). Secure Boot: makers' drivers are signed with the Microsoft UEFI CA key
+  and load with Secure Boot on, IF the firmware trusts that key (some
+  "Secured-core" computers do not by default). Every driver built for this
+  pack is unsigned and is refused while Secure Boot is on.
+
+6. WHAT WAS VERIFIED HERE
+
+  Every *.efi of the pack: PE32+, machine 0x8664, subsystem 11 (EFI boot
+  service driver), relocations present, SHA-256 equal to manifest-net.json
+  (tools/make-charon-netpack.py verify: 13 images; the list with sizes is the
+  manifest).
+  Runs in QEMU 11.1 + OVMF, accel=tcg, -cpu max (OVMF's network stack needs
+  the CPU's random number source), UEFI shell, card option ROM off. The images
+  are loaded the way Charon does it: all of them in name order without
+  connecting (load -nc), then one connect pass, then DHCP through the
+  firmware's own IPv4 stack. Logs: source\qemu-tests\*.serial.txt in the pack
+  (made by tools/make-charon-netpack.py qemu-test).
+    net-pack-e1000e   this pack's nic-16, nic-18, wifi-10, wifi-11; e1000e
+                      (82574L): intel.efidrv of nic-16 manages the card, lease
+                      10.0.2.15, gateway 10.0.2.2
+    net-pack-e1000    same images, e1000 (82540EM): lease 10.0.2.15
+    net-pack-82545em  same images, e1000-82545em: lease 10.0.2.15
+    net-pack-igb      same images, igb (82576): the driver binds, "Media
+                      disconnected", no lease - NOT passed (the first pack's
+                      nic-10 shows the same with this emulated card)
+    net-pack-no-card  same images, no card: all four load ("Success"), bind
+                      nothing, the shell goes on
+    mwx-load-twice-no-wifi-card  experimental wifi-50-mediatek-mt7921-mwx.efi
+                      loaded twice (at its preferred address 100000 and
+                      relocated at 3DEDF000): both "Success", both listed in
+                      "drivers" as "Charon mwx (OpenBSD) MediaTek MT792...",
+                      bind nothing, the shell goes on. Nothing more can be
+                      shown without the card.
+    merged-packs-e1000e  all nic-*/nic-usb-* of the first pack plus this
+                      pack's nic-16, nic-18, nic-usb-29, wifi-10, wifi-11 (21
+                      images), e1000e: lease 10.0.2.15. The card is managed by
+                      nic-16-intel-newer.efi, NOT by nic-10-intel.efi: with
+                      every image loaded before the connect pass, the firmware
+                      asks the driver with the highest binding Version first,
+                      and iPXE derives that number from the build time
+                      (nic-10: 01AC0BA5, nic-16: 01AC0C36). So in a merged
+                      folder nic-16 serves every Intel card both know and
+                      nic-10 stays idle; the first pack's QEMU results for
+                      nic-10 (obtained with the shell's "load", which connects
+                      after each image) are repeated above for nic-16.
+  These runs also are the regression check of the patched efi_snp.c for
+  Ethernet (every iPXE image of this pack is built from the patched tree).
+  Further evidence, per driver: source\usbcfg\*.serial.txt (1.2),
+  source\rge\*.serial.txt (1.1), source\intelundi\*.serial.txt (1.3).
+  Charon itself: tools/build-charon-windows.py with the CharonWsNet.h changes
+  of section 0 -> work/charon-win-r407net5: PASS (compile and link only; the
+  changed loader code was not run in a machine).
+  NOT RUN, anywhere: any Wi-Fi function; RTL8125/8126/8127; Atheros/Killer
+  E2x00; Killer E3100 and the other IDs added to nic-16; every card of
+  nic-18; any physical USB adapter; anything on a physical computer.
+
+7. NOT COVERED, AND WHY
+
+Hardware / case                  State         Reason, what could be done
+-------------------------------  ------------  ----------------------------------------------------------
+Realtek's and Intel's own UEFI   BY HAND       No licence to pass them on (section 5). Realtek's download
+drivers                                        pages carry no licence text; the BSD-licensed Realtek
+                                               binaries in tianocore/edk2-non-osi (Drivers/Realtek) are
+                                               AArch64 only. Intel's PREBOOT package: "Intel OBL
+                                               Distribution (Commercial Use) License".
+Realtek RTL8125/8126/8127 in     NO            iPXE git master of 2026-11 (1fa3091d) still has no such
+iPXE                                           IDs in drivers/net/realtek.c (checked in the source). The
+                                               route taken instead is the rge port (1.1). Linux r8169 and
+                                               Realtek's r8125/r8126 are GPL-2.0: not used, not mixed.
+Motorcomm YT6801 (1f0a:6801;     NO DRIVER     No UEFI driver from the maker, an OEM or anyone; the only
+new Lenovo, Tuxedo laptops)                    drivers are Linux GPL-2.0 (mainline stmmac glue
+                                               dwmac-motorcomm.c; tuxedo-yt6801). A port means a DWMAC4
+                                               (stmmac) driver plus the Motorcomm glue: large, and a
+                                               GPL-only source.
+Qualcomm Atheros AR8131/8132/    EXPERIMENTAL  iPXE has only atl1e; edk2 nothing. The alc port (1.1,
+8151/8152, AR8161/8162/8171/                   experimental\nic-17-atheros-alc.efi) is built but never
+8172, Killer E2200/E2400/E2500                 ran on such a chip. Linux alx is GPL-2.0: not used.
+(1969:e091, e0a1, e0b1)
+Realtek USB RTL815x through      NOT DONE      nic-usb-29 uses the CDC configuration instead (1.2). A
+their own protocol (full speed                 native driver would be a port of OpenBSD ure(4) (ISC; it
+of RTL8156 2.5G, firmware whose                needs a usbd_* shim over EFI_USB_IO and the MII layer):
+USB stack ignores                              not started. Realtek's UNDI driver: by hand.
+SET_CONFIGURATION)
+Aquantia AQC111U/112U native     NOT DONE      Only Linux aqc111 (GPL-2.0-or-later) exists; covered
+                                               through the CDC configuration if the adapter has one as a
+                                               separate configuration (not verified on a device).
+Hyper-V synthetic adapter        NOT NEEDED    Generation 2 firmware contains its own driver (Microsoft
+                                               published that firmware: microsoft/mu_msvm, MsvmPkg/
+                                               NetvscDxe, BSD-2-Clause-Patent), and NetvscDxe needs the
+                                               VMBus protocol that only that firmware provides: a copy
+                                               in the pack could run nowhere else. Generation 1 is BIOS;
+                                               Charon does not start there. iPXE's own netvsc refuses
+                                               to run under Generation 2 firmware (hyperv.c,
+                                               hv_check_uefi: "We must not steal ownership from the
+                                               Gen 2 UEFI firmware").
+Xen para-virtual adapter         NOT BUILT     edk2's OvmfPkg has XenBusDxe and XenPvBlkDxe but no
+(netfront)                                     network front-end. iPXE has one, but as a resident image
+                                               it would open the Xen platform PCI device EXCLUSIVE and
+                                               so take it away from XenBusDxe - which serves the virtual
+                                               disk. Xen HVM guests get an emulated e1000 or rtl8139 by
+                                               default; those are covered by the first pack.
+Thunderbolt docks                DEPENDS       The Ethernet chip is an ordinary PCIe or USB device
+                                               (Intel I225-LMvP: nic-10/16; Realtek RTL8153/8156: 1.2;
+                                               Aquantia AQC107/113: nic-13), but it exists before the
+                                               operating system only when firmware set-up has
+                                               Thunderbolt boot / pre-boot support switched on.
+A second PCI card on a computer  NOT COVERED   nic-* is loaded only when no adapter is driven, and must
+whose firmware already drives                  stay so: iPXE opens devices EXCLUSIVE and would take the
+one                                            working card away from the firmware's driver. The rge
+                                               port and the Intel UNDI drivers do not do that, but no
+                                               rule for this case was added in r407.
+Mobile broadband (MBIM/QMI),     NO            No driver exists.
+Thunderbolt/USB4 networking
+
+8. MERGING THIS PACK INTO THE FIRST ONE
+
+  Copy the *.efi files of the TOP folder of charon-drivers-r407-net into
+  \EFI\HAK\drivers beside the first pack's files (no name collides; the
+  numbers interleave: nic-10..15 first pack, nic-16, nic-18 here, nic-20..40
+  first pack, nic-usb-29 here before nic-usb-31..36; wifi-10, wifi-11 are the
+  only wifi-* files). Copy experimental\ as a sub-folder and the four files
+  of manual\ into the first pack's manual\ (Charon never reads sub-folders).
+  In the merged folder nic-16-intel-newer.efi serves every Intel card that
+  nic-10-intel.efi knows (section 6); nic-10 may stay (it then does nothing)
+  or go. The merged set of 21 nic-/nic-usb-/wifi- images was loaded together
+  in QEMU: no load error, lease on e1000e. Keep
+  manifest-net.json, licences\ and source\ with the pack: the GPL (iPXE) wants
+  the corresponding source and the BSD/ISC files want their notices to travel
+  with the binaries; source\ has the pinned iPXE archive, every change, the
+  build scripts, and the OpenBSD files the experimental drivers are made of.
+  tools/make-charon-netpack.py verify <folder> re-checks every image against
+  manifest-net.json.
+
+9. SOURCES
+
+  iPXE, pinned commit 1fa3091dce0609b90e7b79fa16b57b1d11e6b7bd (git master of
+    2026-11-22): https://github.com/ipxe/ipxe ; archive SHA-256 3854c13e...
+    (full value in the tool and the manifest). Checked in it: drivers/net/
+    realtek.c (no RTL8125), drivers/net/intel.c (186 IDs), net/80211/*,
+    interface/efi/efi_snp.c, arch/x86/drivers/hyperv/hyperv.c (refuses under
+    Generation 2 firmware: "We must not steal ownership from the Gen 2 UEFI
+    firmware"), arch/x86/drivers/xen/hvm.c.
+  OpenBSD, pinned commit c02cc426d99791a205947bd7252d25c489605ff6:
+    https://github.com/openbsd/src (sys/dev/pci/if_rge.c, if_alc.c, if_mwx.c,
+    sys/net80211); manual pages https://man.openbsd.org/rge , /alc , /mwx ,
+    /iwx , /iwm , /qwx , /ure , /ifconfig.
+  Linux (IDs and licence headers only, nothing compiled): igc_hw.h, r8169_
+    main.c (GPL-2.0-only), r8152.c, aqc111.c, cdc_ether.c (v7.3), alx/main.c,
+    stmmac/dwmac-motorcomm.c (GPL-2.0-only), commit ec51fbd1b8a2 (r8152
+    configuration selector).
+  Realtek downloads: https://www.realtek.com/Download/List?cate_id=584 (PCIe:
+    UEFI UNDI Driver 2.081, 2026/10/27) and cate_id=585 (USB: 2.048,
+    2025/09/08); no licence text on either page. Realtek AArch64 binaries
+    with a BSD licence: https://github.com/tianocore/edk2-non-osi/tree/master/
+    Drivers/Realtek
+  Intel PREBOOT 31.3 and its licence: https://www.intel.com/content/www/us/
+    en/download/15755/intel-ethernet-connections-boot-utility-preboot-images-
+    and-efi-drivers.html ; Intel UNDI sources: https://github.com/tianocore/
+    edk2-staging/tree/Intel_UNDI , https://github.com/bexcran/IntelUndiPkg ,
+    and the edk2-devel message about the confidential headers:
+    https://mail-archive.com/devel@edk2.groups.io/msg74620.html
+  edk2: MdePkg/Include/Protocol/WiFi2.h, Supplicant.h; NetworkPkg/
+    WifiConnectionManagerDxe; MdeModulePkg/Bus/Usb/UsbBusDxe/UsbBus.c;
+    MdeModulePkg/Bus/Usb/UsbNetwork (the workspace work/ha and
+    https://github.com/tianocore/edk2). OvmfPkg has XenBusDxe, XenPvBlkDxe
+    and VirtioNetDxe, no Xen network front-end, no netvsc.
+  Hyper-V firmware: https://github.com/microsoft/mu_msvm (MsvmPkg/NetvscDxe,
+    VmbusDxe; BSD-2-Clause-Patent).
+  Firmware licences: linux-firmware WHENCE and LICENSES/ (read at
+    https://gitlab.com/kernel-firmware/linux-firmware); OpenBSD firmware
+    ports sysutils/firmware/mwx, iwx.
+  UEFI specification 2.10, chapter 27 "Network Protocols - VLAN, EAP, Wi-Fi
+    and Supplicant" (https://uefi.org/specs/UEFI/2.10/): title only, the
+    pages refused the fetch.
+  Thunderbolt pre-boot: Dell KB 000150882 "How to implement PXE booting from
+    USB-C and Thunderbolt Ethernet adapters" (search summary, not opened).

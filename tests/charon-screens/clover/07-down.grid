@@ -1,0 +1,15 @@
+CHARON grid 56 125 0 0 0 Clover
+G15 96*00,7*f0|96*0000,7*040e|                                                                                                Options
+G1a 66*00,12*90|66*0000,12*040e|                                                                  GUI tuning->
+G1c 66*00,15*f0|66*0000,15*040e|                                                                  ACPI patching->
+G1d 66*00,8*f0|66*0000,8*040c|                                                                  SMBIOS->
+G1e 66*00,19*f0|66*0000,19*040e|                                                                  Binaries patching->
+G20 66*00,22*f0|66*0000,22*040d|                                                                  Quirks mask [0xa041]->
+G21 66*00,19*f0|66*0000,19*040e|                                                                  Graphics Injector->
+G23 66*00,13*f0|66*0000,13*040c|                                                                  PCI devices->
+G24 66*00,12*f0|66*0000,12*040e|                                                                  CPU tuning->
+G25 66*00,14*f0|66*0000,14*040e|                                                                  Audio tuning->
+G27 66*00,22*f0|66*0000,22*040e|                                                                  Startup sound output->
+G28 66*00,19*f0|66*0000,19*040e|                                                                  System Parameters->
+G29 66*00,6*f0|66*0000,6*040c|                                                                  Return
+CHARON grid end

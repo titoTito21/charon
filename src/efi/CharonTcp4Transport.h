@@ -16,6 +16,7 @@
 // time. GPL-2.0-or-later.
 #include "CharonWsNet.h"
 #include "CharonHttps.h"
+#include "CharonDownloads.h"
 namespace hakefi {
 namespace ws {
 namespace net {
@@ -116,9 +117,26 @@ struct State {
     unsigned connectSeconds,ioSeconds;   // 0: defaults (20, 30)
 };
 inline State& S() {static State state;return state;}
+// r410 (agent 3): a transport's context is its State; null is the one connection of the single-file path (S()).
+// The download scheduler (CharonDownloads.h, CharonWsDownloads.h) gives every worker its own State.
+inline State& Of(void* context) {return context?*static_cast<State*>(context):S();}
 inline void EFIAPI OnDone(efi_event,void* context) {*static_cast<volatile bool*>(context)=true;}
 // Waits for `done` while polling the protocol; speech keeps playing; Escape ends the wait.
-inline bool Await(volatile bool& done,unsigned milliseconds,efi_status (EFIAPI *poll)(void*),void* self) {
+// Inside a scheduler worker it does not stall: it gives the turn back to the scheduler's loop (https::many::Pass),
+// which polls every connection, feeds the voice and watches Escape for all of them.
+inline bool Await(State& s,volatile bool& done,unsigned milliseconds,efi_status (EFIAPI *poll)(void*),void* self) {
+    if(https::many::InWorker()) {
+        const uint64_t start=https::many::NowMs();
+        for(;;) {
+            if(done)return true;
+            if(poll)poll(self);
+            if(done)return true;
+            https::many::Pass();
+            if(done)return true;
+            if(https::many::Cancelled()) {s.escaped=true;return false;}
+            if(https::many::NowMs()-start>=milliseconds)return false;
+        }
+    }
     auto* boot=U().host->boot;unsigned spins=0;
     for(uint64_t waited=0;;) {
         if(done)return true;
@@ -126,7 +144,7 @@ inline bool Await(volatile bool& done,unsigned milliseconds,efi_status (EFIAPI *
         if(done)return true;
         boot->Stall(500);waited+=500;++spins;
         if(spins%20==0)Pump();                                    // every 10 ms of waiting
-        if(spins%200==0 && EscapePressed()) {S().escaped=true;return false;}
+        if(spins%200==0 && EscapePressed()) {s.escaped=true;return false;}
         if(waited>=uint64_t(milliseconds)*1000)return false;
     }
 }
@@ -153,16 +171,22 @@ inline bool ParseIp(const char* text,uint8_t* out) {
     return !*text;
 }
 // ---- names: firmware DNS4 ----
-inline int ResolveFirmware(const char* host,uint8_t* address) {
+inline int ResolveFirmware(State& s,const char* host,uint8_t* address) {
     auto* boot=U().host->boot;efi_handle service=nullptr;
-    if(!FindService(dns4BindingGuid,service,nullptr))return errNoDns;
+    IpInfo info{};
+    if(!FindService(dns4BindingGuid,service,&info))return errNoDns;
     ServiceBinding* binding=nullptr;efi_handle child=nullptr;Dns4* dns=nullptr;
     if(boot->HandleProtocol(service,&dns4BindingGuid,(void**)&binding)!=EFI_SUCCESS || !binding || binding->CreateChild(binding,&child)!=EFI_SUCCESS || !child)return errNoDns;
     int result=errNoDns;efi_event event=nullptr;
     static volatile bool done;static char16_t name[https::hostUnits];
     do {
         if(boot->HandleProtocol(child,&dns4Guid,(void**)&dns)!=EFI_SUCCESS || !dns)break;
-        Dns4Config config{};config.UseDefaultSetting=true;config.EnableDnsCache=true;config.Protocol=17;   // UDP, servers from DHCP
+        Dns4Config config{};config.UseDefaultSetting=true;config.EnableDnsCache=true;config.Protocol=17;   // UDP
+        // r410 (agent 3): the server the adapter already knows (Ip4Config2, from DHCP) is GIVEN to DNS4. With no list,
+        // edk2's Dns4Configure asks DHCP again for it (DnsDhcp.c GetDns4ServerFromDhcp4, a DHCP request with a 5 s
+        // timeout, DnsImpl.h DNS_TIME_TO_GETMAP) - in VMware every lookup took 5.0 s, i.e. 10 s per downloaded file
+        // (a size probe and a GET, each with its own lookup): the 25 minutes of 151 packages.
+        if(info.hasDns) {config.DnsServerListCount=1;config.DnsServerList=info.dns;}
         if(dns->Configure(dns,&config)!=EFI_SUCCESS)break;
         size_t n=0;for(;host[n] && n+1<https::hostUnits;++n)name[n]=char16_t(uint8_t(host[n]));
         name[n]=0;
@@ -170,7 +194,7 @@ inline int ResolveFirmware(const char* host,uint8_t* address) {
         if(boot->CreateEvent(EVT_NOTIFY_SIGNAL,TPL_CALLBACK,OnDone,const_cast<bool*>(&done),&event)!=EFI_SUCCESS) {event=nullptr;result=errMemory;break;}
         token.Event=event;
         if(dns->HostNameToIp(dns,name,&token)!=EFI_SUCCESS) {result=errNameNotFound;break;}
-        if(!Await(done,10000,dns->Poll,dns)) {dns->Cancel(dns,&token);result=S().escaped?errEscape:errTimeout;break;}
+        if(!Await(s,done,10000,dns->Poll,dns)) {dns->Cancel(dns,&token);result=s.escaped?errEscape:errTimeout;break;}
         if(token.Status!=EFI_SUCCESS || !token.Answer || !token.Answer->IpCount || !token.Answer->IpList) {result=errNameNotFound;}
         else {memcpy(address,token.Answer->IpList,4);result=0;}
         if(token.Answer) {if(token.Answer->IpList)boot->FreePool(token.Answer->IpList);boot->FreePool(token.Answer);}
@@ -219,7 +243,7 @@ inline int ParseAnswer(const uint8_t* m,size_t size,uint16_t id,uint8_t* address
     }
     return errNameNotFound;
 }
-inline int ResolveOwn(const char* host,uint8_t* address) {
+inline int ResolveOwn(State& s,const char* host,uint8_t* address) {
     auto* boot=U().host->boot;efi_handle service=nullptr;IpInfo info;
     if(!FindService(udp4BindingGuid,service,&info) || !info.hasDns)return errNoDns;
     ServiceBinding* binding=nullptr;efi_handle child=nullptr;Udp4* udp=nullptr;
@@ -239,15 +263,15 @@ inline int ResolveOwn(const char* host,uint8_t* address) {
             if(!size) {result=errNameNotFound;break;}
             memset(&tx,0,sizeof(tx));tx.DataLength=uint32_t(size);tx.FragmentCount=1;tx.Table[0].Length=uint32_t(size);tx.Table[0].Buffer=query;
             Udp4Token send{};send.Event=txEvent;send.Packet=&tx;txDone=false;
-            if(udp->Transmit(udp,&send)!=EFI_SUCCESS || !Await(txDone,3000,udp->Poll,udp) || send.Status!=EFI_SUCCESS) {
+            if(udp->Transmit(udp,&send)!=EFI_SUCCESS || !Await(s,txDone,3000,udp->Poll,udp) || send.Status!=EFI_SUCCESS) {
                 if(!txDone)udp->Cancel(udp,&send);
-                if(S().escaped) {result=errEscape;break;}
+                if(s.escaped) {result=errEscape;break;}
                 continue;}
             // Answers that are not ours (late answers of an earlier attempt) are skipped until the time is up.
             for(unsigned packet=0;packet<4 && result==errTimeout;++packet) {
                 Udp4Token receive{};receive.Event=rxEvent;rxDone=false;
                 if(udp->Receive(udp,&receive)!=EFI_SUCCESS)break;
-                if(!Await(rxDone,3000,udp->Poll,udp)) {udp->Cancel(udp,&receive);if(S().escaped)result=errEscape;break;}
+                if(!Await(s,rxDone,3000,udp->Poll,udp)) {udp->Cancel(udp,&receive);if(s.escaped)result=errEscape;break;}
                 auto* data=static_cast<Udp4Receive*>(receive.Packet);
                 if(receive.Status!=EFI_SUCCESS || !data)break;
                 if(data->FragmentCount>=1 && data->Table[0].Buffer) {
@@ -264,22 +288,45 @@ inline int ResolveOwn(const char* host,uint8_t* address) {
     binding->DestroyChild(binding,child);
     return result;
 }
-inline int ResolveName(const char* host,uint8_t* address) {
+// r410 (agent 3): while a download batch runs, names are looked up one at a time (the lookups above keep their
+// state in statics) and remembered for the batch, so the other connections to the same server need no query.
+struct Names {char host[8][https::hostUnits];uint8_t address[8][4];unsigned count;bool busy;};
+inline Names& BatchNames() {static Names names;return names;}
+inline void ForgetNames() {BatchNames().count=0;BatchNames().busy=false;}
+inline int ResolveOnce(State& s,const char* host,uint8_t* address) {
     if(ParseIp(host,address))return 0;
-    const int firmware=ResolveFirmware(host,address);
+    charontrace::Text("CHARON net: name lookup begins");
+    const int firmware=ResolveFirmware(s,host,address);
     if(firmware==0 || firmware==errEscape)return firmware;
-    const int own=ResolveOwn(host,address);
+    charontrace::Value("CHARON net: firmware DNS failed, code",uint64_t(-firmware));
+    const int own=ResolveOwn(s,host,address);
+    charontrace::Value("CHARON net: own DNS query, code",uint64_t(-own));
     return own==errNoDns && firmware!=errNoDns?firmware:own;
 }
+inline int ResolveName(State& s,const char* host,uint8_t* address) {
+    if(!https::many::InWorker())return ResolveOnce(s,host,address);
+    auto& n=BatchNames();
+    for(;;) {
+        for(unsigned i=0;i<n.count;++i)if(https::many::SameText(n.host[i],host)) {memcpy(address,n.address[i],4);return 0;}
+        if(!n.busy)break;
+        https::many::Pass();   // another connection is asking for a name
+        if(https::many::Cancelled())return errEscape;
+    }
+    n.busy=true;
+    const int result=ResolveOnce(s,host,address);
+    n.busy=false;
+    if(result==0 && n.count<8 && https::Copy(n.host[n.count],https::hostUnits,host)) {memcpy(n.address[n.count],address,4);++n.count;}
+    return result;
+}
 // ---- the transport ----
-inline void Shut(void*) {
-    auto& s=S();auto* boot=U().host->boot;
+inline void Shut(void* context) {
+    auto& s=Of(context);auto* boot=U().host->boot;
     if(s.tcp) {
         if(s.connected && s.closeEvent) {
             // Abortive close: the HTTP exchange is over (Connection: close); a
             // graceful FIN handshake would only wait on the peer.
             Tcp4CloseToken token{};token.Event=s.closeEvent;token.AbortOnClose=true;s.closeDone=false;
-            if(s.tcp->Close(s.tcp,&token)==EFI_SUCCESS)Await(s.closeDone,2000,s.tcp->Poll,s.tcp);
+            if(s.tcp->Close(s.tcp,&token)==EFI_SUCCESS && !Await(s,s.closeDone,2000,s.tcp->Poll,s.tcp))charontrace::Text("CHARON net: close not confirmed in 2 s");
         }
         s.tcp->Configure(s.tcp,nullptr);   // also cancels pending tokens
     }
@@ -288,9 +335,9 @@ inline void Shut(void*) {
     if(s.binding && s.child)s.binding->DestroyChild(s.binding,s.child);
     s.child=nullptr;s.tcp=nullptr;s.binding=nullptr;s.connected=false;s.at=s.end=0;s.fin=false;
 }
-inline int Connect(void*,const char* host,uint16_t port) {
-    auto& s=S();auto* boot=U().host->boot;
-    if(s.tcp || s.child)Shut(nullptr);
+inline int Connect(void* context,const char* host,uint16_t port) {
+    auto& s=Of(context);auto* boot=U().host->boot;
+    if(s.tcp || s.child)Shut(context);
     s.escaped=false;s.at=s.end=0;s.fin=false;s.receives=0;
     if(!FindService(tcp4BindingGuid,s.service,&s.ip)) {
         efi_handle* handles=nullptr;size_t count=0;const bool any=boot->LocateHandleBuffer(ByProtocol,&tcp4BindingGuid,nullptr,&count,&handles)==EFI_SUCCESS && handles && count;
@@ -298,37 +345,40 @@ inline int Connect(void*,const char* host,uint16_t port) {
         return any?errNoAddress:errNoTcp;
     }
     uint8_t address[4];
-    const int resolved=ResolveName(host,address);
+    const int resolved=ResolveName(s,host,address);
     if(resolved!=0)return resolved;
+    charontrace::Text("CHARON net: name found");
     if(boot->HandleProtocol(s.service,&tcp4BindingGuid,(void**)&s.binding)!=EFI_SUCCESS || !s.binding || s.binding->CreateChild(s.binding,&s.child)!=EFI_SUCCESS || !s.child
-        || boot->HandleProtocol(s.child,&tcp4Guid,(void**)&s.tcp)!=EFI_SUCCESS || !s.tcp) {Shut(nullptr);return errNoTcp;}
+        || boot->HandleProtocol(s.child,&tcp4Guid,(void**)&s.tcp)!=EFI_SUCCESS || !s.tcp) {Shut(context);return errNoTcp;}
     Tcp4Config config{};config.TimeToLive=64;config.AccessPoint.UseDefaultAddress=true;config.AccessPoint.StationPort=0;   // any free local port
     memcpy(config.AccessPoint.RemoteAddress,address,4);config.AccessPoint.RemotePort=port;config.AccessPoint.ActiveFlag=true;
-    if(s.tcp->Configure(s.tcp,&config)!=EFI_SUCCESS) {Shut(nullptr);return errNoAddress;}
-    if(boot->CreateEvent(EVT_NOTIFY_SIGNAL,TPL_CALLBACK,OnDone,const_cast<bool*>(&s.connectDone),&s.connectEvent)!=EFI_SUCCESS) {s.connectEvent=nullptr;Shut(nullptr);return errMemory;}
-    if(boot->CreateEvent(EVT_NOTIFY_SIGNAL,TPL_CALLBACK,OnDone,const_cast<bool*>(&s.rxDone),&s.rxEvent)!=EFI_SUCCESS) {s.rxEvent=nullptr;Shut(nullptr);return errMemory;}
-    if(boot->CreateEvent(EVT_NOTIFY_SIGNAL,TPL_CALLBACK,OnDone,const_cast<bool*>(&s.txDone),&s.txEvent)!=EFI_SUCCESS) {s.txEvent=nullptr;Shut(nullptr);return errMemory;}
-    if(boot->CreateEvent(EVT_NOTIFY_SIGNAL,TPL_CALLBACK,OnDone,const_cast<bool*>(&s.closeDone),&s.closeEvent)!=EFI_SUCCESS) {s.closeEvent=nullptr;Shut(nullptr);return errMemory;}
+    if(s.tcp->Configure(s.tcp,&config)!=EFI_SUCCESS) {Shut(context);return errNoAddress;}
+    if(boot->CreateEvent(EVT_NOTIFY_SIGNAL,TPL_CALLBACK,OnDone,const_cast<bool*>(&s.connectDone),&s.connectEvent)!=EFI_SUCCESS) {s.connectEvent=nullptr;Shut(context);return errMemory;}
+    if(boot->CreateEvent(EVT_NOTIFY_SIGNAL,TPL_CALLBACK,OnDone,const_cast<bool*>(&s.rxDone),&s.rxEvent)!=EFI_SUCCESS) {s.rxEvent=nullptr;Shut(context);return errMemory;}
+    if(boot->CreateEvent(EVT_NOTIFY_SIGNAL,TPL_CALLBACK,OnDone,const_cast<bool*>(&s.txDone),&s.txEvent)!=EFI_SUCCESS) {s.txEvent=nullptr;Shut(context);return errMemory;}
+    if(boot->CreateEvent(EVT_NOTIFY_SIGNAL,TPL_CALLBACK,OnDone,const_cast<bool*>(&s.closeDone),&s.closeEvent)!=EFI_SUCCESS) {s.closeEvent=nullptr;Shut(context);return errMemory;}
     Tcp4Token token{};token.Event=s.connectEvent;s.connectDone=false;
-    if(s.tcp->Connect(s.tcp,&token)!=EFI_SUCCESS) {Shut(nullptr);return errConnect;}
-    if(!Await(s.connectDone,(s.connectSeconds?s.connectSeconds:20)*1000,s.tcp->Poll,s.tcp)) {
-        s.tcp->Cancel(s.tcp,nullptr);const int why=s.escaped?errEscape:errTimeout;Shut(nullptr);return why;}
-    if(token.Status!=EFI_SUCCESS) {Shut(nullptr);return errConnect;}
-    s.connected=true;
+    if(s.tcp->Connect(s.tcp,&token)!=EFI_SUCCESS) {Shut(context);return errConnect;}
+    if(!Await(s,s.connectDone,(s.connectSeconds?s.connectSeconds:20)*1000,s.tcp->Poll,s.tcp)) {
+        charontrace::Text("CHARON net: connect timed out");
+        s.tcp->Cancel(s.tcp,nullptr);const int why=s.escaped?errEscape:errTimeout;Shut(context);return why;}
+    if(token.Status!=EFI_SUCCESS) {Shut(context);return errConnect;}
+    s.connected=true;charontrace::Text("CHARON net: connected");
     return 0;
 }
-inline int Send(void*,const uint8_t* data,size_t size) {
-    auto& s=S();if(!s.tcp || !s.connected)return errIo;
+inline int Send(void* context,const uint8_t* data,size_t size) {
+    auto& s=Of(context);if(!s.tcp || !s.connected)return errIo;
     if(size>32768)size=32768;
     memset(&s.tx,0,sizeof(s.tx));s.tx.Push=true;s.tx.DataLength=uint32_t(size);s.tx.FragmentCount=1;
     s.tx.Table[0].Length=uint32_t(size);s.tx.Table[0].Buffer=const_cast<uint8_t*>(data);
     Tcp4Token token{};token.Event=s.txEvent;token.Packet=&s.tx;s.txDone=false;
     if(s.tcp->Transmit(s.tcp,&token)!=EFI_SUCCESS)return errIo;
-    if(!Await(s.txDone,(s.ioSeconds?s.ioSeconds:30)*1000,s.tcp->Poll,s.tcp)) {s.tcp->Cancel(s.tcp,nullptr);return s.escaped?errEscape:errTimeout;}
+    if(!Await(s,s.txDone,(s.ioSeconds?s.ioSeconds:30)*1000,s.tcp->Poll,s.tcp)) {s.tcp->Cancel(s.tcp,nullptr);return s.escaped?errEscape:errTimeout;}
+    if(token.Status==EFI_SUCCESS)https::many::Moved();
     return token.Status==EFI_SUCCESS?int(size):errIo;
 }
-inline int Receive(void*,uint8_t* out,size_t capacity) {
-    auto& s=S();if(!s.tcp || !s.connected)return errIo;
+inline int Receive(void* context,uint8_t* out,size_t capacity) {
+    auto& s=Of(context);if(!s.tcp || !s.connected)return errIo;
     if(s.at>=s.end) {
         if(s.fin)return 0;
         memset(&s.rx,0,sizeof(s.rx));s.rx.DataLength=uint32_t(receiveUnits);s.rx.FragmentCount=1;
@@ -337,13 +387,16 @@ inline int Receive(void*,uint8_t* out,size_t capacity) {
         const efi_status started=s.tcp->Receive(s.tcp,&token);
         if(started==connectionFin) {s.fin=true;return 0;}
         if(started!=EFI_SUCCESS)return errIo;
-        if(!Await(s.rxDone,(s.ioSeconds?s.ioSeconds:30)*1000,s.tcp->Poll,s.tcp)) {s.tcp->Cancel(s.tcp,nullptr);return s.escaped?errEscape:errTimeout;}
+        if(!Await(s,s.rxDone,(s.ioSeconds?s.ioSeconds:30)*1000,s.tcp->Poll,s.tcp)) {
+            charontrace::Value(s.escaped?"CHARON net: receive stopped by Escape, receives so far":"CHARON net: receive timed out, receives so far",s.receives);
+            s.tcp->Cancel(s.tcp,nullptr);return s.escaped?errEscape:errTimeout;}
         if(token.Status==connectionFin) {s.fin=true;return 0;}
-        if(token.Status!=EFI_SUCCESS)return errIo;
+        if(token.Status!=EFI_SUCCESS) {charontrace::Value("CHARON net: receive failed, status",uint64_t(token.Status));return errIo;}
         s.at=0;s.end=s.rx.DataLength<=receiveUnits?s.rx.DataLength:receiveUnits;
         if(!s.end)return errIo;
-        // Data that arrives without any waiting must not starve speech.
-        if(++s.receives%8==0)Pump();
+        // Data that arrives without any waiting must not starve speech (in a scheduler worker the loop pumps).
+        if(https::many::InWorker()) {https::many::Moved();++s.receives;}
+        else if(++s.receives%8==0)Pump();
     }
     size_t n=s.end-s.at;if(n>capacity)n=capacity;
     memcpy(out,s.buffer+s.at,n);s.at+=n;
@@ -386,8 +439,8 @@ inline bool Entropy(void*,uint8_t* out,size_t size) {
     return true;
 }
 // The transport for https::Client::transport. `progress` may be set by the caller afterwards.
-inline https::Transport Transport() {
-    https::Transport t{};t.context=nullptr;t.connect=Connect;t.send=Send;t.recv=Receive;t.close=Shut;t.clock=Clock;t.entropy=Entropy;t.progress=nullptr;
+inline https::Transport Transport(State* state=nullptr) {
+    https::Transport t{};t.context=state;t.connect=Connect;t.send=Send;t.recv=Receive;t.close=Shut;t.clock=Clock;t.entropy=Entropy;t.progress=nullptr;
     return t;
 }
 }  // namespace tcp

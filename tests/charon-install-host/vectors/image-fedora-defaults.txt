@@ -1,0 +1,8 @@
+# Ready image (Fedora: no speech), the confirmation answered yes, then Enter at every question.
+lang=en
+flow=image
+mode=quick
+arg entry=3
+keys="y"
+keys=ENTER ENTER "test" ENTER "test" ENTER
+keys=ENTER ENTER

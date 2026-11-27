@@ -1,0 +1,13 @@
+# r409: Windows Server evaluation image, express mode, the last profile in the list: "Windows Server as a workstation" (-Profile ServerDesktop).
+lang=en
+flow=windows
+mode=quick
+arg wversion=server
+arg windex=2
+arg language_asked=1
+arg wlocale=en-US
+keys=ENTER "test" ENTER "test" ENTER
+keys=ENTER END ENTER
+put diskmode=whole
+arg partition=3
+arg esp=0

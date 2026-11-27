@@ -1,0 +1,6 @@
+# Ready image (Fedora: no speech), the confirmation answered no: nothing is asked or written.
+lang=en
+flow=image
+mode=quick
+arg entry=3
+keys="n"

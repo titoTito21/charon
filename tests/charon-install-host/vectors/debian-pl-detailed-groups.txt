@@ -1,0 +1,17 @@
+# r410. Debian, Polish, detailed mode with the groups: answers changed in several groups, the typed word for a risky
+# answer, F3 search, F2 and Delete in a question, D in the list. The carried answers.env and a saved set follow the preseed.
+lang=pl
+flow=debian
+mode=detailed
+keys=ENTER ENTER ENTER ENTER "Jan Kowalski" ENTER BS BS BS BS "jan" ENTER
+keys="test" ENTER "test" ENTER
+keys="m" SPACE ENTER ENTER DOWN ENTER UP ENTER ENTER ENTER
+keys=DOWN ENTER
+keys=ENTER DOWN DOWN DOWN ENTER DOWN ENTER ENTER ENTER
+keys=DOWN ENTER UP ENTER "rozumiem" ENTER DOWN ENTER SPACE ENTER
+keys=DOWN ENTER DOWN DOWN DOWN ENTER UP ENTER UP ENTER
+keys=DOWN ENTER DOWN DOWN DOWN ENTER ENTER ENTER DOWN DOWN DOWN ENTER ENTER DOWN ENTER DOWN ENTER ENTER
+keys=F3 "zapor" ENTER ENTER DOWN ENTER
+keys=DOWN ENTER UP F2 DEL UP ENTER ENTER ENTER SPACE ENTER ENTER
+keys="d" F10 ENTER ENTER
+put diskmode=free

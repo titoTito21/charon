@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+  <settings pass="windowsPE">
+    <component name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <SetupUILanguage><UILanguage>en-US</UILanguage></SetupUILanguage>
+      <InputLocale>en-US</InputLocale><SystemLocale>en-US</SystemLocale><UILanguage>en-US</UILanguage><UserLocale>en-US</UserLocale>
+    </component>
+    <component name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <RunSynchronous>
+        <RunSynchronousCommand wcm:action="add"><Order>1</Order><Path>cmd.exe /q /c (for %d in (C D E F G H I J K L M N) do if exist %d:\charon\pe\nvda-setup.cmd call %d:\charon\pe\nvda-setup.cmd) &amp; if not exist X:\CharonNvdaConfig\charon.log start X:\Windows\System32\Narrator.exe</Path></RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add"><Order>2</Order><Path>reg.exe add &quot;HKLM\SYSTEM\Setup\LabConfig&quot; /v BypassTPMCheck /t REG_DWORD /d 1 /f</Path></RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add"><Order>3</Order><Path>reg.exe add &quot;HKLM\SYSTEM\Setup\LabConfig&quot; /v BypassSecureBootCheck /t REG_DWORD /d 1 /f</Path></RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add"><Order>4</Order><Path>reg.exe add &quot;HKLM\SYSTEM\Setup\LabConfig&quot; /v BypassRAMCheck /t REG_DWORD /d 1 /f</Path></RunSynchronousCommand>
+      </RunSynchronous>
+      <DiskConfiguration><WillShowUI>OnError</WillShowUI>
+        <Disk wcm:action="add"><DiskID>0</DiskID><WillWipeDisk>false</WillWipeDisk>
+          <ModifyPartitions>
+            <ModifyPartition wcm:action="add"><Order>1</Order><PartitionID>3</PartitionID><Format>NTFS</Format><Label>Windows</Label></ModifyPartition>
+          </ModifyPartitions>
+        </Disk>
+      </DiskConfiguration>
+      <ImageInstall><OSImage><InstallTo><DiskID>0</DiskID><PartitionID>3</PartitionID></InstallTo><WillShowUI>OnError</WillShowUI></OSImage></ImageInstall>
+      <UserData><AcceptEula>true</AcceptEula></UserData>
+    </component>
+  </settings>
+  <settings pass="specialize">
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <ComputerName>charon-pc</ComputerName>
+        <TimeZone>Central European Standard Time</TimeZone>
+    </component>
+    <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <RunSynchronous>
+        <RunSynchronousCommand wcm:action="add"><Order>1</Order><Path>reg.exe add &quot;HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\OOBE&quot; /v BypassNRO /t REG_DWORD /d 1 /f</Path></RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add"><Order>2</Order><Path>reg.exe add &quot;HKLM\Software\Microsoft\Windows NT\CurrentVersion\Accessibility&quot; /v Configuration /t REG_SZ /d narrator /f</Path></RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add"><Order>3</Order><Path>reg.exe load HKU\CharonDefault C:\Users\Default\NTUSER.DAT</Path></RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add"><Order>4</Order><Path>reg.exe add &quot;HKU\CharonDefault\Software\Microsoft\Windows NT\CurrentVersion\Accessibility&quot; /v NarratorAfterSigninResetCompleted /t REG_DWORD /d 1 /f</Path></RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add"><Order>5</Order><Path>reg.exe unload HKU\CharonDefault</Path></RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add"><Order>6</Order><Path>reg.exe add &quot;HKLM\SYSTEM\CurrentControlSet\Control\BitLocker&quot; /v PreventDeviceEncryption /t REG_DWORD /d 1 /f</Path></RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add"><Order>7</Order><Path>reg.exe add &quot;HKLM\SYSTEM\CurrentControlSet\Control\TimeZoneInformation&quot; /v RealTimeIsUniversal /t REG_DWORD /d 1 /f</Path></RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add"><Order>8</Order><Path>reg.exe add &quot;HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection&quot; /v AllowTelemetry /t REG_DWORD /d 1 /f</Path></RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add"><Order>9</Order><Path>reg.exe add &quot;HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent&quot; /v DisableWindowsConsumerFeatures /t REG_DWORD /d 1 /f</Path></RunSynchronousCommand>
+      </RunSynchronous>
+    </component>
+  </settings>
+  <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <InputLocale>en-US</InputLocale><SystemLocale>en-US</SystemLocale><UILanguage>en-US</UILanguage><UserLocale>en-US</UserLocale>
+    </component>
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <OOBE><HideEULAPage>true</HideEULAPage><HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+        <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE><ProtectYourPC>3</ProtectYourPC></OOBE>
+      <UserAccounts><LocalAccounts><LocalAccount wcm:action="add"><Name>user</Name><Group>Administrators</Group><Password><Value>test</Value><PlainText>true</PlainText></Password></LocalAccount></LocalAccounts></UserAccounts>
+      <AutoLogon><Enabled>true</Enabled><LogonCount>1</LogonCount><Username>user</Username><Password><Value>test</Value><PlainText>true</PlainText></Password></AutoLogon>
+      <FirstLogonCommands>
+        <SynchronousCommand wcm:action="add"><Order>1</Order><CommandLine>cmd.exe /c for %d in (D E F G H I J K L M N) do if exist %d:\charon\Install-Charon.ps1 xcopy /E /I /Y /Q %d:\charon %ProgramData%\Charon</CommandLine></SynchronousCommand>
+        <SynchronousCommand wcm:action="add"><Order>2</Order><CommandLine>cmd.exe /c for %d in (D E F G H I J K L M N) do if exist %d:\charon\Install-Charon.ps1 powershell.exe -NoProfile -ExecutionPolicy Bypass -File %d:\charon\Install-Charon.ps1 -Mode Manager -Yes -Source %d:\charon\EFI\HAK -FirstEntry &quot;Windows Boot Manager&quot;</CommandLine></SynchronousCommand>
+        <SynchronousCommand wcm:action="add"><Order>3</Order><CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -File %ProgramData%\Charon\Charon-Readers.ps1 -Readers nvda,narrator -First nvda -Language en-US -Source %ProgramData%\Charon -Yes</CommandLine></SynchronousCommand>
+        <SynchronousCommand wcm:action="add"><Order>4</Order><CommandLine>cmd.exe /c bcdedit /set {current} bootmenupolicy legacy</CommandLine></SynchronousCommand>
+        <SynchronousCommand wcm:action="add"><Order>5</Order><CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -File %ProgramData%\Charon\Charon-MediaCleanup.ps1 -Guid 0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0</CommandLine></SynchronousCommand>
+        <SynchronousCommand wcm:action="add"><Order>6</Order><CommandLine>reg.exe add &quot;HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon&quot; /v AutoLogonCount /t REG_DWORD /d 0 /f</CommandLine></SynchronousCommand>
+        <SynchronousCommand wcm:action="add"><Order>7</Order><CommandLine>reg.exe add &quot;HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon&quot; /v AutoAdminLogon /t REG_SZ /d 0 /f</CommandLine></SynchronousCommand>
+        <SynchronousCommand wcm:action="add"><Order>8</Order><CommandLine>reg.exe delete &quot;HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon&quot; /v DefaultPassword /f</CommandLine></SynchronousCommand>
+        <SynchronousCommand wcm:action="add"><Order>9</Order><CommandLine>powercfg.exe /h off</CommandLine></SynchronousCommand>
+        <SynchronousCommand wcm:action="add"><Order>10</Order><CommandLine>reg.exe add &quot;HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Power&quot; /v HiberbootEnabled /t REG_DWORD /d 0 /f</CommandLine></SynchronousCommand>
+        <SynchronousCommand wcm:action="add"><Order>11</Order><CommandLine>cmd.exe /c powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;%ProgramData%\Charon\Install-Charon.ps1&quot; -Mode Manager -Default -Yes -Source &quot;%ProgramData%\Charon\EFI\HAK&quot; &amp;&amp; powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;%ProgramData%\Charon\Install-Charon.ps1&quot; -PlanResult done -PlanStep 1 || powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;%ProgramData%\Charon\Install-Charon.ps1&quot; -PlanResult failed -PlanText &quot;Charon could not be put first in the boot order&quot; -PlanLog &quot;%ProgramData%\Charon\install-charon.log&quot; -PlanStep 1</CommandLine></SynchronousCommand>
+        <SynchronousCommand wcm:action="add"><Order>12</Order><CommandLine>shutdown.exe /r /t 20 /c &quot;Charon: this system is ready; the computer restarts and the plan goes on.&quot;</CommandLine></SynchronousCommand>
+      </FirstLogonCommands>
+    </component>
+  </settings>
+</unattend>

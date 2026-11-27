@@ -1,0 +1,7 @@
+# CharonDOS, Windows 95 profile from a disc, first reader of the list, Setup answers left as offered.
+lang=en
+flow=dos
+arg profile=WIN95
+arg reader=jfw331
+arg medium=SETUP.ISO
+arg setup_auto=1

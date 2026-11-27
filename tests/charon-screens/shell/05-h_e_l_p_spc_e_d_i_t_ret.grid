@@ -1,0 +1,29 @@
+CHARON grid 31 100 30 7 1 Program
+G00 14*8f,44*87|58*0000|reconnect     - Reconnects drivers to the specific device.
+G01 14*8f,20*87|34*0000|reset         - Resets the system.
+G02 14*8f,43*87|57*0000|rm            - Deletes one or more files or directories.
+G03 14*8f,30*87|44*0000|sermode       - Sets serial port attributes.
+G04 14*8f,56*87|70*0000|set           - Displays or modifies UEFI Shell environment variables.
+G05 14*8f,29*87|43*0000|setsize       - Adjusts the size of a file.
+G06 38*87|38*0000|Press ENTER to continue or 'Q' break:q
+G07 7*8e,3*87|10*0000|Shell> map
+G08 13*8e|13*0000|Mapping table
+G09 10*8e,1*87,9*8f,16*87|36*0000|      FS1: Alias(s):F1a65535a:;BLK1:
+G0a 57*87|57*0000|          PciRoot(0x0)/Pci(0x1F,0x2)/Sata(0x0,0xFFFF,0x0)
+G0b 10*8e,1*87,9*8f,16*87|36*0000|      FS2: Alias(s):F1b65535a:;BLK2:
+G0c 57*87|57*0000|          PciRoot(0x0)/Pci(0x1F,0x2)/Sata(0x1,0xFFFF,0x0)
+G0d 10*8e,1*87,9*8f,9*87|29*0000|      FS0: Alias(s):F0:;BLK0:
+G0e 49*87|49*0000|          MemoryMapped(0x2,0x12633000,0x16E32FFF)
+G0f 7*8e,9*87|16*0000|Shell> help edit
+G10 60*87|60*0000|Provides a full screen text editor for ASCII or UCS-2 files.
+G12 11*87|11*0000|EDIT [file]
+G14 85*87|85*0000|  file - Specifies the name of file to be edited. If none is specified, an empty file
+G15 45*87|45*0000|         is created with a default file name.
+G17 6*87|6*0000|NOTES:
+G18 51*87|51*0000|  1. This command enables full screen file editing.
+G19 57*87|57*0000|  2. The editor supports both UCS-2 and ASCII file types.
+G1b 9*87|9*0000|EXAMPLES:
+G1c 33*87|33*0000|  * To edit the 'shell.log' file:
+G1d 25*87|25*0000|    fs0:\> edit shell.log
+G1e 6*8e|6*0000|Shell>
+CHARON grid end

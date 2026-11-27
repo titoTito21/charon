@@ -1,4 +1,6 @@
 // r382: text controls of boot managers and firmware forms (host test).
+// CharonSystemTools.h (r409 clock.txt) uses efi_file_protocol before CharonResident.h includes its header.
+#include <efi/protocol/file.h>
 #define private public
 #include "../src/efi/CharonResident.h"
 #undef private

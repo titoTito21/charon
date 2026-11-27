@@ -1,0 +1,7 @@
+# CharonDOS, Windows 95 from a disc with the user's own boot floppy image: Setup starts from the floppy and is not automatic.
+lang=pl
+flow=dos
+arg profile=WIN95
+arg reader=hal103demo
+arg medium=SETUP.ISO
+arg floppy=BOOT95.IMG

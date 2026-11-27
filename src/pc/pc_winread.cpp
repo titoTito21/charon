@@ -4163,6 +4163,39 @@ const Words kPolish = {
 	"okno", "okno dialogowe"
 };
 
+// r410 (user point 6h, "a blind person has the right to know when to type the key"): Setup's product-key
+// page - its text names the key and it has a row of three or more edit fields. The key itself is never
+// logged or kept; the fields are read as any edit field is, with the field and the count of typed characters.
+bool HasNoCase(const char* text, const char* word)
+{
+	for (; *text; text++) {
+		size_t i = 0;
+		while (word[i] && text[i] && ((text[i] | 0x20) == (word[i] | 0x20) || (text[i] == word[i])))
+			i++;
+		if (!word[i])
+			return true;
+	}
+	return false;
+}
+
+int KeyFieldCount(const Screen& s)
+{
+	bool named = false;
+	int fields = 0;
+	for (unsigned i = 0; i < s.count; i++) {
+		const Element& e = s.items[i];
+		const char* text = s.pool + e.text;
+		if (e.role == kRoleText && (HasNoCase(text, "product key") || HasNoCase(text, "product id")
+			|| HasNoCase(text, "cd key") || HasNoCase(text, "klucz produktu")))
+			named = true;
+		if (e.role == kRoleEdit && !(e.flags & kFlagMultiline) && e.count >= 3 && e.count > fields)
+			fields = e.count;
+	}
+	if (!named && s.title[0] && HasNoCase(s.title, "product key"))
+		named = true;
+	return named ? fields : 0;
+}
+
 void PutElement(Writer& w, const Screen& s, const Element& e, unsigned flags)
 {
 	const Words& words = (flags & kSpeakPolish) ? kPolish : kEnglish;
@@ -4226,6 +4259,18 @@ void PutElement(Writer& w, const Screen& s, const Element& e, unsigned flags)
 				PutText(w, text);
 			else
 				Put(w, words.blank);
+			if (e.role == kRoleEdit && e.count >= 3 && e.position > 0 && KeyFieldCount(s) > 0) {   // r410 (6h)
+				Put(w, (flags & kSpeakPolish) ? ", pole klucza " : ", key field ");
+				PutNumber(w, e.position);
+				Put(w, words.of);
+				PutNumber(w, e.count);
+				Put(w, (flags & kSpeakPolish) ? ", wpisane znaki: " : ", characters typed: ");
+				PutNumber(w, (int)strlen(text));
+				if (e.count == 5) {
+					Put(w, words.of);
+					PutNumber(w, 5);
+				}
+			}
 			break;
 		case kRoleProgress:
 			if (e.percent >= 0) {
@@ -4241,7 +4286,7 @@ void PutElement(Writer& w, const Screen& s, const Element& e, unsigned flags)
 		Put(w, ", ");
 		Put(w, words.disabled);
 	}
-	if (e.position > 0 && e.count > 1) {
+	if (e.position > 0 && e.count > 1 && !(e.role == kRoleEdit && e.count >= 3 && KeyFieldCount(s) > 0)) {
 		Put(w, ", ");
 		PutNumber(w, e.position);
 		Put(w, words.of);
@@ -4275,6 +4320,20 @@ bool SameRect(const Element& a, const Element& b)
 		&& Abs(a.rect.w - b.rect.w) <= 4 && Abs(a.rect.h - b.rect.h) <= 4;
 }
 
+// r410 (6h): a page with a product-key row says so before the page's own text
+void PutKeyIntro(Writer& w, const Screen& now, unsigned flags)
+{
+	int fields = KeyFieldCount(now);
+	if (fields == 0)
+		return;
+	Separate(w);
+	Put(w, (flags & kSpeakPolish) ? "Instalator prosi teraz o klucz produktu: p\xC3\xB3l " : "Setup now asks for the product key: fields ");
+	PutNumber(w, fields);
+	if (fields == 5)
+		Put(w, (flags & kSpeakPolish) ? ", w ka\xC5\xBC" "dym 5 znak\xC3\xB3w" : ", 5 characters in each");
+	Put(w, ".");
+}
+
 }	// namespace
 
 size_t SpeakElement(const Screen& now, unsigned index, unsigned flags, char* out,
@@ -4297,6 +4356,7 @@ size_t SpeakAll(const Screen& now, unsigned flags, char* out, size_t capacity)
 	out[0] = 0;
 	Writer w = { out, capacity, 0 };
 	PutTitle(w, now, flags);
+	PutKeyIntro(w, now, flags);
 	bool outside = (flags & kSpeakOutside) || now.dialog.w == 0;
 	for (unsigned i = 0; i < now.count; i++) {
 		const Element& e = now.items[i];
@@ -4348,6 +4408,7 @@ size_t SpeakChange(const Screen& before, const Screen& now, unsigned flags, char
 	if (newPage) {
 		if (titleChanged || !(flags & kSpeakTerse))
 			PutTitle(w, now, flags);
+		PutKeyIntro(w, now, flags);   // r410 (6h, r410a-me3): a wizard page change speaks it too, not only SpeakAll
 		for (unsigned i = 0; i < now.count; i++) {
 			const Element& e = now.items[i];
 			if (e.flags & (kFlagOutside | kFlagUnread))

@@ -147,7 +147,7 @@ for f in "$src"/audio/*.pcm; do [ -f "$f" ] && run cp "$f" "$hak/audio/"; done
 if [ "$mode" != reader ]; then for d in tools drivers packages addon; do [ -d "$src/$d" ] && run cp -r "$src/$d" "$hak/"; done; fi
 [ -f "$hak/audio-language" ] || { case "${CHARON_LANGUAGE:-en}" in pl) l=pl;; *) l=en;; esac;[ $dry = 1 ] || printf %s $l > "$hak/audio-language"; }
 if [ "$mode" = shim ]; then [ $dry = 1 ] || printf 'reader-only\r\n' > "$hak/reader-only"; else run rm -f "$hak/reader-only"; fi
-[ $dry = 1 ] || printf 'Charon r391; installed by zainstaluj-charona.sh, mode %s\r\n' "$mode" > "$hak/installed-by.txt"
+[ $dry = 1 ] || printf 'Charon r410; installed by zainstaluj-charona.sh, mode %s\r\n' "$mode" > "$hak/installed-by.txt"
 # Continue target: HAKCONT1, id (u16), size (u32), the Boot#### option, HEND.
 if [ "$mode" != reader ] && [ -n "$first" ] && [ ! -f "$hak/continue-set" ] && [ $dry = 0 ]; then
     v="$vars/Boot$first-$g"
@@ -156,7 +156,7 @@ if [ "$mode" != reader ] && [ -n "$first" ] && [ ! -f "$hak/continue-set" ] && [
         lo=$(( 0x$first & 255 ));hi=$(( 0x$first >> 8 ))
         { printf 'HAKCONT1';printf "\\$(printf %03o $lo)\\$(printf %03o $hi)"
           for s in 0 8 16 24; do printf "\\$(printf %03o $(( (size >> s) & 255 )))"; done
-          tail -c +5 "$v";printf 'HEND'; } > "$hak/continue.bin"
+          cat "$v" | tail -c +5;printf 'HEND'; } > "$hak/continue.bin"   # r409: tail cannot seek in efivarfs ("Illegal seek"), so it reads a pipe
         printf '\001' > "$hak/continue-set"
         say "„Kontynuuj” ustawione na Boot$first."
     fi

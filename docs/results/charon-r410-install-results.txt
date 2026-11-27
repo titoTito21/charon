@@ -1,0 +1,1760 @@
+=== r410 4-PART RELEASE STAGED LOCALLY + COPIED TO ..\outputs (2026-11-26, agent 1 session 11) — NOT PUBLISHED ===
+The four parts + the GitHub tree are staged in work/charon-release-r410-outputs/ (source of truth) and
+copied, with the r409-style names, into ..\outputs next to the earlier r4xx archives (the conventional
+LOCAL release location; NOT publishing — nothing goes external). verify-release-r410.py = ALL PASS;
+scan-private-r409.py = 0 private strings in every zip, the ISO, the GitHub tree and the test-VM folder
+(r410 is scrubbed, unlike the leaky r408-and-older archives, which were left untouched). The reused r409
+sound driver, driver pack and 13-voice synth set are unchanged; the four r410 EFIs were already clean
+(release-inputs-r410.json, 0 scrub replacements).
+SELF-CONSISTENCY: this results file is byte-identical to the copy embedded in the two zips and the GitHub
+tree (verify checks it). The two zips and the tree EMBED this file in their corresponding-source, so their
+own sha256 cannot also live inside it without circularity; those three sha256 are in the external manifest
+work/charon-release-r410-outputs/SHA256SUMS.txt (not embedded in any artifact) and in the session report.
+The ISO and the test VM do NOT embed this file, so their sha256 are recorded inline here:
+  BOOTABLE ISO    Charon-r410.iso                      104425472  16a920c9aa3dc0d6e7c16b1a3d73a7d95e43f03b4edb923bf8454086e55ebf4d
+                  (+ Charon-r410.iso.sha256)
+  TEST VM         Charon-testvm-r410-all-managers.zip 2012286437  c2c5e9711fcc08bf188c20c90df16d12f1abc568a39f46c18c61e71ad15de132
+                  (all managers; carries host Windows Boot files; DO NOT PUBLISH)
+THE FOUR PARTS: (a) INSTALL/UPDATE Charon-r410.zip; (b) INSTALLER Charon-Installer-r410.zip; (c) BOOTABLE
+ISO Charon-r410.iso (+ .sha256); (d) TEST VM Charon-testvm-r410-all-managers.zip; plus the GITHUB TREE
+charon-github-r410/ (directory, not an archive). All four packages' sha256: SHA256SUMS.txt.
+Triple preset "Windows, Debian, instalator, i Charon Hypervisor" ships VISIBLE-BUT-HONEST: offered=TRUE,
+proven=FALSE (no fabricated VM-proven claim), as built into the shipped CHARON.EFI below. NOTHING is
+published/uploaded — the final publish waits for the user's explicit go-ahead.
+r410 staging tooling (work/): package-charon-r410.py, make-charon-iso-r410.py, make-charon-installer-r410.py,
+make-charon-testvm-r410all.py, make-charon-github-r410.py, verify-release-r410.py; inputs created this
+session: charon-release-r410-install/ (stage), pkg-r410-dos/, readme-r410/, charon-github-README-r410.md,
+release-inputs-r410.json.
+=====================================================================================================================
+
+=== FINAL RELEASE STATE (2026-11-26, agent 1 session 10) — SOURCE FINAL + triple preset SHIPPED VISIBLE (honest) ===
+USER DECISION (2026-11-26): "release WITH the triple boot, I'll test it myself." So the preset "Windows, Debian,
+ instalator, i Charon Hypervisor" is now OFFERED in the normal list, WITHOUT any fabricated VM-verified claim.
+HOW (honest, verified): CharonWsPlanDialogue.h — the Preset struct now has TWO independent flags: `offered` (shown in
+ the release list, a shipping decision) and `proven` (full end-to-end install run in a VM and passed). Visibility is
+ now `offered || test` (was `proven || test`), in both Presets()-list (~line 2233) and Offered() (~line 97). The
+ triple preset = {proven=FALSE, offered=TRUE}; all others {proven=true, offered=true}. The honest proof scope is in
+ tests/charon-r409-multiboot-results.txt (new r410 section) and above in SESSION 10: PROVEN(VM)=full plan Q&A drive +
+ windows-iso-url override + download-failure-leaves-disk-unchanged; PROVEN(standalone, agent2)=HV target boots+speaks
+ (apkovl ovl22); NOT YET VERIFIED=the end-to-end triple install, to be verified by the user on real hardware (blocked
+ in the harness only by host Wi-Fi/NAT EFI-DHCP + the HV needing Alpine's official HTTPS servers — not a Charon bug).
+REBUILT from the ONE final tree WITH this change (paths rel. to charon-src-r395; -Werror clean):
+  charon-win-r410-rel/CHARON.EFI          22401152  sha256 71959d612ac36c6728ff13527b431f60bcaa4e93d11c81cae5bbe6b664e10506
+  charon-win-r410-rel-drv/CHARONVOICE.EFI 18349952  sha256 11aaeeb7fb611eaea19269a73ec7fe22c64b7dae2a9501a84c602bfb7bd66e8a
+  charonpc-r410rel/CHARONPC.EFI            2022272  sha256 6a5b3d9ce1c6ef5d7446369efa7b040eb8b54350c08ccc3f27cf9533f7c477e7
+  charondos-r410rel/CHARONDOS.EFI           218368  sha256 9ddbfc5a34fad76c81bb68b06b876999cb6bb9b3fcdf309f0c8de110db5774ac  + charondos-host.exe
+  (CHARONVOICE.EFI sha unchanged: the driver variant does not embed the plan dialogue.)
+HOST TESTS on this tree — ALL GREEN: golden 406/0, reasons 447/0 (82/82), personal 496/0 (git bash), plan core 358/0
+  + plan host 5/5, WinRead product-key 4/0, hypervisor host 0 failed (138 PASS), charon-os 134/0, CharonDosTests 68/68.
+SCAN/CLEANUP: scan-private-r409.py over src/ + tools/charon-addon + tools/charon-install + the 4 rebuilt EFIs = 829
+  files, 0 hits. All __pycache__ + build.log deleted. src/hypervisor/LICENSES.txt complete (agent2; all required
+  entries, Python PSF-2.0 = CPython). Stage torn down: triple-s10 VM + .iso deleted, ISO servers killed, ~283 GB free,
+  hvxp1 stopped, the Haiku project's VMs untouched.
+REMAINING: the 4-part release PACKAGING is NOT yet staged (handed to a lean successor — it is a large, high-stakes
+  release-engineering port). PLAN for the successor:
+   - Stage LOCALLY into work/ (NOT ..\outputs — CLAUDE.md forbids modifying outputs). The existing r409 scripts write
+     to ..\outputs; redirect their `out=` to a work/ dir (e.g. work/charon-release-r410-outputs/).
+   - INSTALL/UPDATE zip: adapt work/package-charon-r409.py -> package-charon-r410.py. prev=charon-release-r409-install
+     /Charon (base), stage=charon-release-r410-install/Charon, efi/voice=the two r410 EFIs above, audio=charon-audio-
+     driver-r409/AudioDxe-r409.efi (REUSE — no r410 audio driver; adjust the licence note's version text), dosefi/pcefi
+     =the r410 CharonDOS/CharonPC, drivers=charon-drivers-r409 (REUSE), synths=package-synths-r409 (synth-modules-r410a
+     is the built synth set). Handle the r409-results-file gates (lines 40,188 assert charon-r409-results.txt + 7 files)
+     -> point at the r410 results/tests files or relax for r410. Update manifest release='r410', COMPONENTS-AND-SOURCES,
+     charon-source-r410.zip, and a readme-r410/ dir (create from readme-r409 with versions bumped).
+   - BOOTABLE Charon-only ISO: adapt make-charon-iso-r409.py -> r410 (uses the r410 EFIs + synth-modules-r410a; the
+     working r410 ISO recipe already exists as r410a-vm/bw-make-iso.py / make-charon-iso-r408.py chain).
+   - SEPARATE installer zip + all-managers test VM zip + GitHub tree: adapt the r409 equivalents (package-charon-
+     testvm-r399.py for the test VM; find the installer-zip script). verify-release-r409.py -> r410 to check every
+     member's sha + no account name (must be 0 hits) + licences present.
+   - Report every artifact path + size + sha256. DO NOT upload/publish — the final publish waits for the user's
+     explicit go-ahead (older archives leak the account name; touch nothing old).
+=====================================================================================================================
+
+=== SESSION 10 (2026-11-26, agent 1, tenth session) — BLOCK 5 of the release ===
+  RESUME (latest on top): agent 2 said SOURCE FINAL (hypervisor host 145/0, apkovl ovl22 md5 6666d934). Step 1 DONE:
+   full host-test set on the FINAL tree all GREEN -> golden 406/0, reasons 447/0 (82/82), personal 496/0 (git bash;
+   PowerShell skips personal.sh), plan core 358/0 + plan host 5/5 (--skip-dos, git bash), WinRead product-key 4/0,
+   CharonDosTests 68/68, charon-os 131/0, hypervisor host 138 PASS lines / 0 failed (agent 2 counts 145/0).
+  Step 2 DONE — RELEASE PAIR + CharonPC + CharonDOS built from the ONE final tree (paths rel to charon-src-r395):
+   charon-win-r410-rel/CHARON.EFI        22400320  sha256 d93987daa6214fcc414998779e932ea079cf560690ca9d9f6ab7c4f81fd543e3
+   charon-win-r410-rel-drv/CHARONVOICE.EFI 18349952 sha256 11aaeeb7fb611eaea19269a73ec7fe22c64b7dae2a9501a84c602bfb7bd66e8a
+   charonpc-r410rel/CHARONPC.EFI          2022272  (442 Bochs sources, 17 constructors)
+   charondos-r410rel/CHARONDOS.EFI         218368  + charondos-host.exe
+  Step 3 BLOCKED (environmental networking) — audible TRIPLE BOOT (preset "Windows, Debian, instalator, i Charon
+   Hypervisor", HIDDEN proven=false line 82 CharonWsPlanDialogue.h). Charon medium r410a-vm/triple-s10.iso built with
+   bw-make-iso.py (PLANTEST=1 test switch, WURL=http://192.168.0.196:8861/win11ent-26h2-eval.iso, WLANG=pl). VM
+   r410a-vm/agent-bw/triple-s10 (bw.py up medium=usb gb=200 mem 8192 VNC 5975 serial 5985; sound re-enabled hdaudio).
+   PROVEN SO FAR (evidence r410a-evidence/bw/triple-boot-*.png): test switch exposes the hidden preset (item 10 of 12
+   "Który zestaw?"); Charon drives the WHOLE triple-preset plan Q&A correctly under bridged — express mode, polski,
+   user/password, Win11 Enterprise eval (3 z 7), NVDA+Narrator, Profil bez zmian, TPM-skip (T), GNOME+Orca+Speakup,
+   graphical login, default boot Win11, disk 1 (200 GB), answer-file note; confirmed; "Używam adresu obrazu z pliku
+   windows iso url na dysku Charona" (WURL override ACTIVE). The up-front pre-flight "Sprawdzam adresy i rozmiary
+   plików" then ABORTED back to the menu with the DISK UNCHANGED (this cleanly PROVES the user's "download failure
+   before any partition is touched" design). Also PROVEN: genuine limit #3 message (DHCP timeout after a reset).
+   NETWORK BLOCKER (needs admin): Charon's EFI e1000 DHCP gets NO lease on NAT (vmnet8) — fails on 4 clean boots incl.
+   a FRESH VM AFTER main cleared leases + restarted VMnetDHCP/NAT (regression; prior sessions downloaded fine over
+   NAT). It DOES get a lease on BRIDGED (got LAN IP 192.168.0.206), but bridged over the host's Wi-Fi can't route
+   outbound internet to the external official sources (Debian installer, Charon Hypervisor's Alpine+QEMU), so the
+   size-check aborts. NAT is the only topology giving BOTH host-ISO reach AND internet, but its EFI DHCP is dead.
+   WHY HOST-SERVING THE EXTERNALS WON'T WORK (investigated per main's request): the triple preset inherently needs
+   real outbound INTERNET. The Charon Hypervisor is fetched from Alpine's OFFICIAL HTTPS servers with signed indexes,
+   by design (user point 2b; CharonPlanFetch.h:189 "bez połączenia z siecią nie da się go zainstalować"); the source
+   is hardcoded to https://dl-cdn.alpinelinux.org/alpine/v3.24/ over HTTPS (CharonWsHypervisor.h:43-46) with NO
+   mirror/URL-override, and a source comment records plain HTTP was already tried and failed. Only the Windows ISO has
+   a host-override (windows-iso-url.txt, in use). So the HV cannot be host-mirrored; the preset needs a network with
+   BOTH EFI DHCP and internet.
+   THE THREE OPTIONS (surfaced to main for the USER to choose, 2026-11-26):
+   (A) USER plugs an Ethernet cable into the host's wired Realtek PCIe GbE adapter (currently DISCONNECTED; host
+       internet is Wi-Fi only) -> I switch triple-s10 to bridged-over-wired (both EFI DHCP + internet) and complete
+       the live install + HV boots+speaks. No admin; needs the user's physical action. (vnetlib NAT reset is
+       classifier-blocked; plain VMnetDHCP restart did not revive NAT EFI DHCP.)
+   (B) admin (no classifier block) does a full VMware vmnet reset to revive NAT EFI DHCP -> complete on NAT.
+   (C) RELEASE-WITHOUT-LIVE-INSTALL: ship r410 with this ONE preset left HIDDEN (proven=false, as the tree already is
+       -> NO source change, NO rebuild; the already-built release pair ships as-is). Everything else proven.
+   DRIVE SEQUENCE when network is fixed: start VM via `python3.15 r410a-vm/bw.py start triple-s10`; boot; ret ->
+   main menu (item 1); down5 ret -> Środowisko; down4 ret -> Instalacja; down1 ret -> kilka systemów -> DHCP;
+   in "Który zestaw?" (PLANTEST shows 12) down9 -> item 10 "Windows, Debian, instalator, i Charon Hypervisor", ret;
+   then: express (ret) / polski (ret) / username user (ret) / password Charon2026 (type, ret) / repeat (type, ret) /
+   Win11 Enterprise eval = down2 ret / screen readers NVDA+Narrator (ret) / Profil bez zmian (ret) / TPM skip = t /
+   Debian desktop GNOME (ret) / Debian readers Orca+Speakup (ret) / login graphical (ret) / default boot Win11 (ret) /
+   disk 1 (ret) / answer-file note continue = t / then "Sprawdzam adresy i rozmiary" -> up-front download (win11 ISO
+   GETs on 192.168.0.196:8861) -> Windows ~12 min -> Debian installer -> Charon Hypervisor target. Ping main at the HV
+   target boot for the boots+speaks confirmation. On PASS set proven=true line 82 + record in multiboot-results, then
+   REBUILD release pair + CharonPC + CharonDOS + re-run host tests + re-scan + re-del __pycache__, THEN package.
+   DRIVE SEQUENCE when server is up: (1) start VM via `python3.15 r410a-vm/bw.py start triple-s10` (spawns pw-serial
+   logger on 5985 -> agent-bw/triple-s10/serial-ts.txt; VNC 5975). (2) Hard reset once (first cold boot loses early
+   trace): `python3.15 vnc-keys.py 5975 wait:3` then reset via vmrun, or just let it boot. (3) `python3.15
+   r410a-vm/ag-nav.py triple-s10` navigates Charon boot -> "Który zestaw?" (several-systems). agk.py is its key tool.
+   (4) In the preset list (PLANTEST shows all 13 + own list), down-arrow while reading serial "ws say:" lines until
+   "Windows, Debian, instalator, i Charon Hypervisor", ret. (5) Answer plan: Windows version, Debian installer opts,
+   boot-order (detailed asks order), ONE shared hostname, typed confirmation word. (6) Up-front download fetches the
+   win11 ISO from 192.168.0.196:8861 (hypervisor agent watches server.log) -> Windows install (~12 min) -> Debian
+   installer -> Charon Hypervisor target. (7) Hypervisor agent confirms Charon Hypervisor boots+speaks (ovl22). PASS
+   evidence = serial trace of ws-say + partition table + server request log + hypervisor agent's audible confirm.
+   AFTER PASS: flip proven=true line 82, REBUILD release pair + CharonPC + CharonDOS (proven flag changes the EFI),
+   re-run golden + plan host + reasons + hypervisor host, re-scan, re-delete __pycache__, THEN package 4-part layout.
+   IF FAIL: leave hidden, record why, package the current build.
+  Step 4 PENDING — scan-private-r409.py, delete __pycache__ + build.log, LICENSES check, 4-part release layout (local,
+   NO publish). Release tools in work/: scan-private-r409.py, scrub-private-r409.py, prepare-release-inputs-r409.py,
+   verify-release-r409.py, package-charon-r409.py, make-charon-iso-r409*.py, package-charon-release.py.
+=====================================================================================================================
+
+=== RELEASE STATE (rewritten 2026-11-25 ~23:00 by agent 1, session 9; PRE-FINAL: the release pair waits for agent 2's
+    "source final" + its audible TRIPLE-BOOT run; everything of agent 1's side is below) ===
+TREE: buildable (-Werror). Agent 1's last source changes (session 9): src/efi/CharonWsPlanDialogue.h (Windows version
+ cursor kept when coming back; preset comment), src/pc/pc_winread.cpp (PutKeyIntro: key-page intro also on a page
+ change), tests/CharonWinReadTests.cpp (+1 check). Agent 2 since a96: src/hypervisor/** and src/efi/CharonWsHypervisor.h
+ (Polish ISO-stream failure text) - NOT final yet.
+LATEST BUILDS: app charon-win-r410a97t (trace; a96 tree + version-cursor fix), proof pair of the VM runs a96t + a96-drv;
+ CharonPC charonpc-r410s9, CharonDOS charondos-r410s9 (both with the key-page intro fix; CHARONDOS.EFI size unchanged).
+RELEASE PAIR: NOT BUILT. Build it ONLY after agent 2 says "source final", from ONE tree:
+   python3.15 charon-src-r395/tools/build-charon-windows.py charon-win-r410-rel          (reader control release 411)
+   python3.15 charon-src-r395/tools/build-charon-windows.py charon-win-r410-rel-drv --driver
+ then: CharonPC/CharonDOS from the same tree (tools/build-charon-bochs.py, tools/build-charondos.py), all host tests,
+ scan-private-r409.py over src/, tools/charon-addon, tools/charon-install, the release EFI files; delete every
+ __pycache__ (tools/, tools/charon-install/, src/hypervisor/overlay/usr/lib/charonhv) and build.log before packaging.
+HOST TESTS (last full set on the a85-a96 tree; plan host re-run on the session-9 tree 5/5): golden
+ (tests/charon-install-answers-host.py) 406/0; plan core 358/0 + plan host 5/5 (charon-r409-plan-host.py --skip-dos,
+ from Git bash); reasons (charon-r410-plan-reasons-host.py) 450/0 (82 reasons); personal (charon-r410-personal-host.py)
+ 496/0; product-key reader (tests/CharonWinReadTests.cpp, no fonts) 4/0 (session 9); CharonDosTests 68/68;
+ tools/charon-os/tests/run-tests.py 134/0; hypervisor host (charon-r410-hypervisor-host.py) PASS.
+ SESSION 9 tree (01:4x, after S9.6): golden 406/0, reasons 450/0 (82), personal 496/0, hypervisor host 0 failed,
+ CharonDosTests 68/68 (charondos-r410s9), charon-os 134/0, plan host 5/5, WinRead 4/0; private-path scan of src/,
+ tools/charon-addon, tools/charon-install + charonpc-r410s9, charondos-r410s9, a97t EFI files: 818 files, 0 hits;
+ every __pycache__ deleted. -> all to be re-run on the release tree.
+OFFERED (shown without the test switch; each RAN AND PASSED in a VMware machine, nothing on real hardware):
+  CharonDOS i Debian, gotowy obraz | CharonDOS i Debian, instalator (S8.12) | Debian, instalator, i Ubuntu, gotowy
+  obraz (T5, vr S8.4) | Windows i Debian, instalator | CharonDOS i Windows | CharonDOS, Windows i Debian, instalator
+  (s7 run A S7.6) | Windows i Charon Hypervisor (h8 4c S8.17) | Debian, instalator, i Charon Hypervisor (S8.6/S8.8) |
+  Debian, gotowy obraz, i Charon Hypervisor (S8.13 3b) | CharonDOS i Charon Hypervisor (S7.5, S8.8, S8.14 audible);
+  own list with two Windows (test switch only: S8.13 RUN G, S9.4); Charon Hypervisor alone (kept disk, empty disk,
+  refusal: S8.15, S9.1).
+HIDDEN: "Windows, Debian, instalator, i Charon Hypervisor" (proven=false until agent 2's audible triple-boot run;
+ set it true in CharonWsPlanDialogue.h Presets() only if that run passes); the own list (test switch); es rows
+ u_mirror, u_codecs, u_drivers, w_key (evaluation edition refuses a volume key, 0xC004F069).
+PROVEN IN SESSIONS 8-9 (RAN AND PASSED): S8.1 step time across the clock switch; S8.4(1)/S8.14 hear-out (silent and
+ audible); S8.5 Escape back at system 1 and 2 and at Windows' table (S9.3); S8.6 hostname; S8.7/S8.10 own volume after
+ reconnect + memory copy (RUN G); S8.9 hypervisor memory above 4 GiB (3b, 4c, J); S8.12 Orca at the greeter after a
+ console (audible 6/6); S8.13/S9.4 free space promised stays free with two Windows; S8.14 "i jeszcze N" (package
+ list, audible); S8.15 hypervisor boot entry with options; S9.1 hypervisor-alone refusal before any question; S9.2
+ SayRefusals wording + site file for a system's own questions; S9.5/S9.6 Windows Me key page under CharonPC (intro
+ sentence + every field, charonpc-r410s9).
+COMPILED / HOST-TESTED ONLY (say so in the notes):
+ - S9.3 Windows version cursor kept on coming back (one-line, a97).
+ - plan-level "Pobrano: <file>, i jeszcze N" / "Pobrano jeszcze: N" (CharonWsPlanDialogue.h): needs several up-front
+   files finishing inside one sentence with a voice - agent 2's audible triple-boot lines decide; host logic only.
+ - S5.5 stop text "Zapisane, jeszcze nie uruchomione" (needs a plan stopped after a written step; plan host only).
+ - earlier S3/S4 rows labelled COMPILED ONLY that no later run covered (S3.6 boot-entry order details, S4.3b reader
+   layout limits of run 23 - S5.7 ran the dialogue fixes, S4.11 network-failure sentence).
+GENUINE LIMITS (evidence):
+ 1 VMware gives every NVMe disk the serial "VMware NVME_0000": a set made in one VMware machine matches another (S5.3;
+   a different serial is refused, S9.2). Real disks differ.
+ 2 A VMware guest cannot hibernate: the Charon-MakeRoom.ps1 hibernation refusal was proven with the file it checks
+   (S5.4).
+ 3 VMware's EFI e1000e gets no DHCP answer after a reset until power off/on (S4.11, s7 S7.6 note); Charon says so after
+   the DHCP time-out.
+ 4 No vTPM in this harness: VMware Workstation 17.6.3 adds a vTPM only to an encrypted machine (GUI only); the TPM-present
+   path (no skip question) is NOT VERIFIED in a VM (S8.11).
+ 5 w_key: the Windows evaluation edition refuses a volume licence key (0xC004F069) - row hidden.
+ 6 T8 as one run (shrink Windows, then a plan in the freed space) not done in one machine; its parts are proven
+   separately (S5.4 shrink, S8.15 plan on a kept disk) (S8.16).
+PACKAGING NOTES: agent 2's hypervisor list (its results file) goes with the release; HV-only cosmetic notes are its
+ own (English detail in CharonWsHypervisor.h FailWith, "Setting hostname to charon-hypervisor" at boot).
+LEFT ON THE HOST: work/win11ent-dl-r410 (agent 2's triple boot needs it; the :8862 server is STOPPED - start
+ r410a-vm/range-http.py again for that run). No keep-awake process. Machines of agent 1: none.
+RESUME: read SESSION 9 (S9.0-S9.6) first, then SESSION 8.
+=====================================================================================================================
+
+=== RESUME (agent 1 session 8 handed back ~21:25, INTERIM - release pair NOT built: agent 2 source not final) ===
+  Latest pair charon-win-r410a96t + a96-drv (all session-8 fixes S8.1-S8.17; plan host 5/5, reasons 450/0).
+  Open for the successor, in order:
+   1 6h Windows Me key page under CharonPC: my machine r410a-me2 (reached Setup's "Windows Product Key" page,
+     evidence r410a-evidence/s8/me2-12.png) was deleted by someone ~20:30-21:22; rebuild with
+     scratchpad-style make-me2.py (empty MBR partition in DISK.IMG -> interactive Setup; add debugserial=1 to
+     CHARONPC.CFG so "CharonPC reader says:" goes to the serial; logger r410a-vm/pw-serial.py DIR VNC+10), OEM Me asks
+     the key after the copy (User Information -> License (Alt+A) -> Product Key); type "abc" only, never a key.
+   2 Triple preset "Windows, Debian, instalator, i Charon Hypervisor": hidden until agent 2's triple-boot run.
+   3 a96 fix (HV-alone refusal before questions) compiled only; S8.13 placeholder lines not seen in trace (4c passed).
+   4 Release pair after agent 2's explicit "source final": build, all host tests (golden, plan host, reasons,
+     personal, WinRead, CharonDosTests, charon-os, hypervisor host), scan-private-r409.py, delete __pycache__
+     (tools/, tools/charon-install/, src/hypervisor/overlay/usr/lib/charonhv), FINAL RELEASE STATE.
+   5 Unknown machine r410a-vm/agent-h8/r410a-a9w running at 21:22 (not agent 1's; asked the coordinator).
+=== RESUME UPDATE 19:05 === latest pair a94 (S8.13 free-space placeholders). Proven since 18:20: RUN G two Windows,
+  3b Debian image+HV (preset proven), RUN J audible "i jeszcze N" + hear-out with voice. Scan 19:04 of src/,
+  tools/charon-addon, tools/charon-install, a94 EFI folders: only __pycache__ + build.log hits (delete pycache before
+  the release; build.log is not shipped). Waiting: h8 run 6 (HV alone kept disk/refusal) + run 4 on a94 (Windows+HV,
+  260 GB, free space stays free) + run 7 (Windows Me key page); next agent 2 session's "last source change".
+=== RESUME UPDATE 18:20 === RUN H done (S8.12: Orca greeter, Escape at system 2, hear-out all PASSED). Tree after
+  a93: speech.sh no-op kill removed (header regenerated) - next pair = release pair. Agent 2 is now a551c9a1a7c113840
+  (fourth session); wait for its "last source change" + triple-boot "Pobrano" lines. h8 still running (3b, G, 5-7).
+=== RESUME UPDATE 17:35 (agent 1 session 8) === latest pair charon-win-r410a93t + a93-drv (S8.7-S8.10 fixes). s7 has
+  ENDED. h8 (a4513a36572ac3832) now runs two machines: its HV list (run 3 again on a93, runs 4-7) + RUN G (two Windows
+  + MPFAIL on a93) + RUN H (Orca greeter on a93; AUDIBLE only after agent 2 gives the slot). Still to prove: S8.4(1)
+  hear-out trace, S8.5 Escape back at system 2, S8.9, S8.10, 6e kept disk/refusal, 6h Windows Me key page, "i jeszcze N".
+=== RESUME (agent 1 session 8, ~16:20; supersedes the session-7 block below) ===
+  Tree: buildable; latest pair charon-win-r410a87t + a87-drv (S8.1 step time, S8.2 Orca WirePlumber re-probe, S8.4
+  SpeechIdle without sound stream, S8.5 Escape back in the plan dialogue). Host on a85-a87: golden 406/0, plan core
+  358/0 (plan host 5/5), reasons 444/0, personal 496/0, CharonDosTests 68/68, charon-os 134/0, hypervisor host PASS.
+  Running: helper h8 (agent a4513a36572ac3832; r410a-evidence/h8/SUMMARY.txt, ends "H8 FINISHED"): HV runs 1-6 +
+  run 7 Windows Me key page under CharonPC (6h). Helper s7 (a20736f5a74643ff4): runs C (two Windows, r410a-s7c) and D
+  (MPFAIL carried address, r410a-s7d), then RUN E (Orca greeter on a87 + Escape-back proof; waits for the sound slot,
+  which agent 2 holds for ~40 min of its triple boot; agent 2 sends "Pobrano/i jeszcze" lines after it).
+  Open for agent 1: vTPM harness check on a throwaway machine (S8.4 (2)) when a machine slot frees; vr (4)/(5) from
+  s7 C/D evidence; then proven=true per passing HV set; release pair + scan + __pycache__ + FINAL RELEASE STATE.
+
+=== RESUME (agent 1 session 7 handed back ~15:45 at a block boundary, context) ===
+  Tree: buildable; last pair charon-win-r410a83t + a83-drv (S7.2-S7.8); CharonDOS charondos-r410s7, CharonPC
+  charonpc-r410s7 (both with the 6h product-key reader). Host tests on this tree: golden 406/0, plan core 357/0 (plan
+  host 5/5 --skip-dos), reasons 444/0, personal 496/0, WinRead key page 3/3. NOT yet: CharonDosTests on charondos-r410s7,
+  charon-os run-tests, scan, __pycache__ delete, release pair.
+  Running: helper s7 (agent id a20736f5a74643ff4; work/r410a-evidence/s7/SUMMARY.txt, ends "S7 FINISHED"): RUN C two
+  Windows WITHOUT MPFAIL on r410a-s7c (media copy, NVDA once, menu default), then RUN D own list Debian installer ->
+  Windows with MPFAIL=1 (CarryAddress after a restart). Its report reaches nobody once agent 1 is gone - read SUMMARY.
+  Agent 2 is now its THIRD session (a165e05a2d7ad17b3); it owns the sound slot again; asked of it: chunked Alpine ISO
+  download (RAM defect S7.7), the setterm crash-loop of the overlay (S7.9), the audible triple run with a disc made
+  after its fix (send "Pobrano"/"i jeszcze" lines), the hostname question.
+  Agent 2 at ~15:45: setterm crash-loop FIXED in src/hypervisor/overlay/usr/lib/charonhv/hvdisplay.py (host 15/15) and
+  the Alpine ISO streamed in <=64 MB pieces in CharonWsHypervisor.h (compiled in its hv8t, NOT run) - both in the
+  tree now: rebuild the pair and the hv-make-iso disc before any HV rerun. It will write hostname= (the plan's shared
+  name, ask::Get("hostname")) into charonhv.cfg itself.
+  NEXT for agent 1's successor, in order:
+   1 Fix the report's "61 minut" for a system whose step straddles the UTC switch (S7.9), host case.
+   2 Orca greeter fix in src/linux/speech.sh (S7.10 remedy), then an audible rerun (ask agent 2 for the slot).
+   3 After agent 2's overlay fix: rerun Debian installer+HV (hypervisor must reach "Nowa maszyna wirtualna"), then
+     Windows+HV, own list with HV, Debian image+HV (after the chunked ISO); HV ALONE on a KEPT disk (S7.8; e.g. a
+     Windows machine shrunk with Charon-MakeRoom.ps1, or own-list typed sizes leaving free space) and its refusal on a
+     full disk. Discs: hv-make-iso.py (hypervisor files on the medium), WURL :8862 server PID in r410a-vm/ag-img.pid.
+     Machine tool r410a-vm/h7.py (+h7k.py keys): after "up" do a hard reset once (first cold start loses the early
+     trace), Space stops Charon's 5 s wait, menus: home+5 downs = workspace, 4 downs = "Instalacja systemu z sieci".
+   4 "i jeszcze N": only an audible run can show it (silent machines: speech idle at every completion) - agent 2's
+     triple run lines, or a plan with several small up-front files on a machine with sound.
+   5 proven=true in CharonWsPlanDialogue.h Presets() ONLY for sets that passed: CharonDOS+HV passed (S7.5) - set it
+     after the overlay fix is confirmed not to break it; the others only after their reruns.
+   6 Release pair from one tree after agent 2's last EFI change (reader control release 411), all host tests incl.
+     CharonDosTests, scan-private-r409.py on shippable sources + EFI files, delete __pycache__ (tools/,
+     tools/charon-install/, src/hypervisor/overlay/usr/lib/charonhv), FINAL RELEASE STATE at the top.
+   7 Kill keep-awake PID 40388 (r410a-vm/bd-awake.pid is already dead) when no long run remains; keep
+     work/win11ent-dl-r410 and the 8862 range server until agent 2 says.
+
+=== SESSION 9 (2026-11-25, agent 1, ninth session) ===
+  S9.0 ~20:58 resumed. vmrun: hvxp1 (agent 2, audible, holds the sound slot), r410a-me2. 345 GB free. Stale kd agent
+       server :8879 (PID 17680) stopped; :8862 range server (PID 25140) kept for the two-Windows rerun. Agent 2: source
+       NOT final (overlay + CharonWsHypervisor.h Polish ISO-stream failure text after a96); triple boot is its last item;
+       keep work/win11ent-dl-r410 until its triple boot.
+  S9.1 S8.17(a) HypervisorRoomAnywhere (pair a96, r410a-a9r, NVMe 20 GB whose GPT holds one basic-data partition
+       filling the disk, 4 GB, silent, VNC 5973): workspace -> "Instalacja systemu z sieci" -> "Charon Hypervisor ...
+       3 z 3" -> 21:09:14 copy to memory, DHCP, 21:09:21 the refusal "Charon Hypervisor instaluje się tylko w wolnym
+       miejscu ... Potrzebuje 12 GB, a największe wolne miejsce ... to 1007 KB. ... Charon-MakeRoom.ps1 ... ZMNIEJSZ ...
+       Nic nie zostało zmienione." and back to the workspace menu - NO language/user/password question before it; the
+       disk's GPT unchanged afterwards (r410a-evidence/s8/a9r-serial-ts.txt, a9r-refusal.png)      RAN AND PASSED
+       Machine destroyed, disc deleted.
+  S9.2 r410a-a9s (a96, NVMe 40 GB, silent, VNC 5970; disc = s6a's site medium + a hand-made unattended set a9neg.ini
+       with [disk.1] serial=VMware NVME_0009, made by s7-make-iso.py ESFILES):
+       - S5.3 SayRefusals wording: 21:15:35 "Zestaw nie pasuje do dysków tego komputera; nic nie zostało zmienione.
+         Żaden podłączony dysk nie ma numeru seryjnego VMware NVME_0009 albo nie spełnia pozostałych warunków." - the
+         closing sentence once (before: twice), nothing written                                RAN AND PASSED
+       - S7.4 PreloadSite (a system's own main questions start from the site file): detailed "CharonDOS i Debian,
+         instalator", Debian: "Ustawienia miejsca: wczytano odpowiedzi jako wartości początkowe: 15 ..." then 21:19:41
+         "Zainstalować serwer SSH? tak, 1 z 2" (site ssh=yes; without a site file it is "nie, 2 z 2", S8.12)
+                                                                                                 RAN AND PASSED
+       (r410a-evidence/s8/a9s-serial-ts.txt, a9s-ssh.png). Note: the site's [secrets] password is not a starting value
+       of the shared password question (it is asked; by design of the secret). Machine destroyed, disc deleted.
+  S9.3 a9w finding (S8.5 at Windows' table): Escape at the first question after the version -> "Wracam do poprzedniego
+       pytania." + "Która wersja Windows? ..." RAN AND PASSED, but the cursor came back at 1 z 7, not the version chosen.
+       FIXED CharonWsPlanDialogue.h (version index kept outside the loop). Build a97t PASS.    COMPILED ONLY (trivial)
+  S9.4 helper a9w (pair a96, r410a-a9w, NVMe 200 GB, 12 GB, silent): two Windows (own list Windows 11 + Windows 11 (2),
+       detailed, Enterprise eval 3 z 7, 99 + 99 GB), summary "Wolne zostaje 1006 megabajtów"; 21:46:33.9 "Plan
+       zakończony. Zainstalowane systemy: 2 z 2." (12 minutes each; media copied from the previous Windows, no second
+       download). Read in Windows 11 at the end: p1 ESP, p2 MSR, p3 C: + p4 Recovery, p5 D: + p6 Recovery (each Windows
+       exactly 99 GiB), partition 6 ends at 213692448768 of 214748364800, LargestFreeExtent 1054867456 = 1006 MiB at the
+       end, no placeholder or unknown partition left (RUN G on a93: a 1006 MB Recovery partition there). S8.13
+       CoverFreeForWindows/UncoverFree                                                        RAN AND PASSED
+       (r410a-evidence/a9w/SUMMARY.txt, a9w-01-partitions.png, a9w-serial-full.txt; no trace line names the
+       placeholders - the partition table is the proof). Clean shutdown, machine and disc deleted. :8862 range server
+       (PID 25140) stopped 21:5x (agent 2 does not use it; win11ent-dl-r410 KEPT for agent 2's triple boot).
+       Agent 2 21:52: sound slot FREE; its source NOT final (src/hypervisor/** + CharonWsHypervisor.h since a96); next
+       agent 2 session continues (6s-6za, then the triple boot on agent 1's newest pair).
+  S9.5 6h Windows Me key page under CharonPC. r410a-me2 (predecessor's) was found at 20:59 NOT at the key page: a power
+       restart at 20:28 (to attach debugserial=1) had left Me in Safe mode, blank; one hard reset -> "registry/
+       configuration error" -> Normal -> hardware wizard -> blank again; its serial never held the key page (CHARONPC.CFG
+       had no debugserial=1 before 20:28; the predecessor confirmed) - deleted by me at ~21:24 (evidence
+       s8/me2-2100..2122.png, me2-serial-ts-final.txt). Fresh r410a-me3 (same recipe: make-me2.py + cfgpatch.py
+       debugserial=1 from power-on, charonpc-r410s7, silent, usb.generic.autoConnect FALSE; user's Windows Me OEM disc):
+       text Setup -> wizard (each page spoken: Setup Options, Components, Network Identification, Country/Region, Time
+       Zone, "enough information to start copying") -> copy 21:36-22:30 -> restart -> hardware -> 22:35:08.9 "User
+       Information ... Name, pole edycji, puste" -> License (Alt+A) -> 22:36:02.7 "Windows Millennium Edition Setup,
+       okno. Windows Product Key. You must enter the product key ... Type the product key, excluding the dashes, in the
+       boxes below. pole edycji, puste, pole klucza 1 z 5, wpisane znaki: 0 z 5". "abc" typed in field 1 (no key):
+       Tab -> "pole edycji, puste, pole klucza 2 z 5, wpisane znaki: 0 z 5", Shift+Tab -> "pole edycji, ABC, pole
+       klucza 1 z 5, wpisane znaki: 3 z 5" (s8/me3-serial-ts.txt, me3-7.png).
+       Per-field announcement                                                                  RAN AND PASSED
+       Page announcement "Instalator prosi teraz o klucz produktu: pól 5, w każdym 5 znaków." MISSING      RAN, FAILED
+       Cause: the intro was only in SpeakAll; a wizard reaching the page is a page change (SpeakChange). FIXED
+       src/pc/pc_winread.cpp PutKeyIntro used by both; tests/CharonWinReadTests.cpp new check "product key page reached
+       by a page change, Polish": 4 checks, 0 failed (LLVM clang++ -D_CRT_SECURE_NO_WARNINGS). CharonPC/CharonDOS
+       rebuilt as charonpc-r410s9 / charondos-r410s9. me3 stopped hard inside Setup (no clean shutdown exists there)
+       and deleted; a rerun r410a-me4 on charonpc-r410s9 proves the intro.
+  S9.6 r410a-me4 (charonpc-r410s9, same recipe, silent): 01:34:30.6 "Windows Millennium Edition Setup, okno. Instalator
+       prosi teraz o klucz produktu: pól 5, w każdym 5 znaków. Windows Product Key. You must enter ..."; "abc" in
+       field 1 only (no key): 01:35:17.3 "pole edycji, puste, pole klucza 2 z 5, wpisane znaki: 0 z 5", 01:35:22.6
+       "pole edycji, ABC, pole klucza 1 z 5, wpisane znaki: 3 z 5" (s8/me4-serial-ts.txt, me4-key.png, me4-key2.png)
+       6h key page announcement and every field under CharonPC                                 RAN AND PASSED
+       (harness: the first driver script stopped one page early at "enough information to start copying" because a
+       Startup Disk page appeared; no Charon defect). me4 stopped hard inside Setup and deleted.
+
+=== SESSION 8 (2026-11-25, agent 1, eighth session) ===
+  S8.0 15:41 resumed. vmrun: r410a-s7c only (s7 run C). 205 GB free. Agent 2 (15:5x): hvdisplay.py without setterm
+       (an indentation error of ~15:40 fixed 15:5x), Alpine ISO streamed once in <=64 MB pieces (CharonWsHypervisor.h),
+       overlay carries tvox-src.tar.gz (TVox built at the hypervisor's first start), charonhv.cfg hostname= the plan's
+       shared name (RunPlanStep; prepare.sh sets it). It does not use win11ent-dl-r410 nor the :8862 server.
+  S8.1 S7.9 step-time defect FIXED: CharonPlanState.h ClockSwitcher skips Kind::hypervisor (written by Charon, never
+       started in the plan; it was taken as the switcher, got +3600 s = "61 minut", and Debian got none). Host case
+       "Debian installer + hypervisor across the clock switch" (hypervisor 1 minute, Debian 20 minutes): plan core
+       358 passed, 0 failed; plan host 5/5.                                            HOST-TESTED
+  S8.2 S7.10 Orca greeter remedy in src/linux/speech.sh (charon-audio-share watch): when the session in front has the
+       card (target = its socket), nobody holds a playback PCM and its PipeWire lists no alsa_output node (pw-cli ls
+       Node, else pactl), its WirePlumber is restarted as that user (setpriv + systemctl --user restart
+       wireplumber.service, else pkill), checked every 5 s, at most once in 20 s, logged "... its WirePlumber was
+       restarted to look at the card again". sh -n OK (script and the embedded watcher); CharonLinuxScripts.h
+       regenerated; pair charon-win-r410a85t + a85-drv (--trace).          COMPILED ONLY (audible rerun pending)
+  S8.3 Host tests on the a85 tree: CharonDosTests charondos-r410s7 68/68; tools/charon-os 134/0; hypervisor host PASS;
+       reasons 444/0 (81); personal 496/0; golden 406/0/0. Helper h8 started (HV reruns + Windows Me key page under
+       CharonPC, work/r410a-evidence/h8/SUMMARY.txt); s7 queued RUN E (Orca greeter with a85, audible after agent 2).
+  S8.4 Helper vr resurfaced (vr/SUMMARY.txt "VR FINISHED"): T5 "Debian, instalator, i Ubuntu, gotowy obraz" on ag5
+       RAN AND PASSED every check (zero keys, automatic restart into Debian, growth room covered and freed, hostname,
+       Ubuntu root grown, exFAT /media/data shared, BootOrder, ssh) + media-write retry -> T5 may become proven=true.
+       vr's guest-agent server (PID 21952, :8781) stopped. Its defects:
+       (1) restart sentence 180 s after the report on a machine without sound: FIXED CharonVoiceProvider.h
+           SpeechIdleThunk (no stream at all = idle; resting stream = speaking). Pair a86.   COMPILED ONLY
+       (2) vTPM runs not valid: bw.py tpm=1 writes only managedvm.autoAddVTPM="software" and VMware added no TPM
+           (Workstation 17.6.3; vmcli has no TPM/encryption module; VMware documents vTPM only on an encrypted VM; the
+           community recipe is: start once so VMware adds it, then start again). To check on a throwaway machine.
+       (3) two-Windows CopyTree: s7 run C covers it.
+       (4)+(5) Windows 11 (2) after restarts: 12:47:16.1 "Kopiuję Charona na nośnik" and the add-on warning in the same
+           0.0 s (ag6, OLD code): CopyCharonTree from selfDevice failed at once; CharonOnto (CharonWsImages.h) copies
+           the whole \EFI\HAK (addon included) to the plan's ESP, so missing add-on files are NOT the obvious cause;
+           windows-iso-url.txt is carried by CarryAddress (S7.1, run D). Windows 11 (2) then never returned to Charon
+           after start 5 (it waited at its sign-in) - likely because its first logon had no Install-Charon.ps1 (the
+           warning). s7 run C/D on the current tree decide; if the warning repeats, the ESP is read there.
+  S8.5 s7 finding (runs A and D): Escape at a system's FIRST question left the whole plan dialogue. FIXED
+       CharonWsPlanDialogue.h: AskSystem sets SystemBack() when it returns false because the user left at its first
+       question (DOS programs, hypervisor disks, Windows version, image/Ubuntu/Debian tables); Windows' own table goes
+       back to "Która wersja Windows?" ("Wracam do poprzedniego pytania."); the caller goes back to the previous
+       system ("Wracam do poprzedniego systemu.") or, at the first system, to the shared answers ("Wracam do wspólnych
+       odpowiedzi."); any other false ends the dialogue as before. Pair a87 (+golden, plan host).   COMPILED ONLY
+       s7 note (design, kept): an own list is ordered by the plan's rules (Windows before Linux).
+  S8.6 h8 RUN 1 "Debian, instalator, i Charon Hypervisor" (r410a-h8a, a85): plan 2 z 2, report "Charon Hypervisor
+       ... 1 minuta", Debian 6 minut (S8.1 RAN AND PASSED); hypervisor starts from Charon's list, no setterm loop,
+       "Nowa maszyna wirtualna. Który tryb?" (h8/h8a-09-hv.png)                            RAN AND PASSED
+       6m hostname RAN, FAILED: charonhv.cfg hostname=charon-hypervisor (h8/h8a-14-cfg.png). Cause mine:
+       CharonWsPlanDialogue.h WriteHypervisor called hv::RunPlanStep without Restore(system) - ask::Get("hostname")
+       empty. FIXED (Restore before RunPlanStep). Pair a88.                                 COMPILED ONLY (rerun)
+       Agent 2's: TVox build at the first start fails "patch-2.8.1-r0: package mentioned in index not found" (sent).
+       s7 RUN C (a83): the add-on warning REPEATED for Windows 11 (2) (16:02:54.1, same 0.0 s after "Kopiuję
+       Charona na nośnik"), Charon started from the plan's ESP; s7 lists that ESP's \EFI\HAK after the run.
+  S8.7 s7 RUN C RESULT (a83, s7/SUMMARY.txt 16:40): media copy (one GET of the image) RAN AND PASSED; NVDA once, on
+       both media RAN AND PASSED; Windows 11 back to Charon after starts 2-4 PASS; Windows 11 (2): add-on warning, starts
+       2-5 back to Charon, after start 5 NEVER returned (the lock screen was Windows 11 (1); no "Plan zakończony") -
+       RAN, FAILED. The plan ESP DOES hold \EFI\HAK\ADDON with all 19 files (s7/s7c-esp-hak.txt).
+       CAUSE (mine): images::Reconnect (CharonWsImages.h) refreshed Charon's own volume handle only when Charon ran from
+       memory; started from the plan's ESP after a restart, winpart::Prepare's reconnect of that same disk left
+       U().host->selfDevice stale, so CopyCharonTree to the media failed at once -> no Install-Charon.ps1 on Windows 11
+       (2)'s media -> nothing returned it to Charon (vr defects 4/5 are this). FIXED: Reconnect remembers the GPT GUID of
+       Charon's own partition and finds its new handle (trace "CHARON own volume after reconnect found"). The same
+       stale handle made CharonWsPlan.h "ownPartition" false after a reconnect - also covered. Pair a89. COMPILED ONLY
+  S8.8 s7 RUN D (a83, MPFAIL): Windows 11 (2)'s media fetched after restarts from :8862 with the carried address,
+       nothing from Microsoft - carried windows-iso-url RAN AND PASSED (s7/SUMMARY.txt 16:41); stopped there (a83 bug
+       S8.7). s7 RUN F = two Windows + MPFAIL on a89 started 16:49. s7 RUN E (a87): Escape at system 1's first question
+       -> "Wracam do wspólnych odpowiedzi." RAN AND PASSED (16:37:17).
+       h8 RUN 2 "CharonDOS i Charon Hypervisor" (a88): HV starts, "charon-pc login:", TVox built ("TVox jest gotowy i od
+       teraz mówi"), second start without rebuilding, hostname = plan name                RAN AND PASSED (6m PASSED)
+       Still: restart sentence 3 min after "Plan zakończony" on a silent machine (a88): the S8.4 thunk fix did not
+       catch it; a90 traces the hear-out (effects present / idle / tenths) and does not wait without a voice.
+  S8.9 h8 RUN 3 "Debian, gotowy obraz, i Charon Hypervisor" (8 GB, a89): RAN, FAILED, disk untouched - after the 3 GB
+       image "Obrazu Alpine nie da się odebrać w częściach po 64 MB: not enough RAM for a 64 MB piece". Cause: VMware
+       gives AllocateAnyPages only below 4 GiB; held::Make took that first for the image; hv's Reserve had no high path.
+       FIXED: (agent 2) hv::ReserveHigh for every hv allocation; (mine) held::Make takes the highest free ranges of the
+       map FIRST (CharonWsWinUsb.h; keeps memory below 4 GiB for buffers), and the plan reserves the hypervisor's
+       PlanBytes first as a placeholder (CharonWsPlanDialogue.h kHvPlaceholder), given back right before
+       hv::FetchUpfront. Pair a92.                                                          COMPILED ONLY (rerun)
+       proven=true set for "Debian, instalator, i Charon Hypervisor" (S8.6) and "CharonDOS i Charon Hypervisor" (S8.8).
+  S8.10 s7 RUN E (a87, AUDIBLE 17:1x-17:20, slot from agent 2 and handed back): Orca at the greeter after a console
+       RAN, FAILED (silent 6 of 6 back on F1; Speakup 6/6; greeter before any console heard). The S8.2 re-probe LOOPED
+       (24 restarts, every 20-25 s); wpctl then showed the ALSA sink, but the greeter's speechd streams stayed on the
+       card's node in state [init] (s7/s7e-audio-state-1/2.txt). FIXED speech.sh: once per return of the session to the
+       front, then the session's speech-dispatcher is ended (Orca starts it again; journal "... was started again on
+       the sound card's output").                                                         COMPILED ONLY (rerun H)
+       s7 RUN F (a89, two Windows + MPFAIL): "CHARON own volume after reconnect found=1" (the S8.7 fix works), then
+       "nie udało się skopiować Charona do pamięci" on 12 GB: the open root of the old volume stayed in host.root, which
+       selfcopy::Step reads. FIXED (Reconnect reopens the root). Pair a93 (both fixes).     COMPILED ONLY (rerun G)
+  S8.11 vTPM (vr defect 2): a throwaway UEFI machine with only managedvm.autoAddVTPM="software" started twice with
+       vmrun nogui (17:22-17:24): VMware added no vtpm.present line and logged nothing about a TPM; vmcli 17.6.3 has no
+       TPM or encryption module and vmrun only opens already encrypted machines (-vp); VMware documents a vTPM only
+       on an encrypted machine (encryption is made in the GUI, which the rules exclude). So the "vTPM" runs had no TPM
+       and Charon's TPM-present path (no skip question) is NOT VERIFIED in a VM - GENUINE LIMIT of the harness. bw.py
+       tpm=1 now refuses with that reason instead of pretending. Machine deleted.
+       s7 FINISHED (17:22; no machines left; G and H given to h8).
+  S8.12 RUN H by agent 1 (r410a-a1h, a93, "CharonDOS i Debian, instalator", detailed, NVMe 60 GB, 4 GB, e1000):
+       - Escape at system 2's first question (Debian desktops): 17:30:41.4 "Wracam do poprzedniego systemu." then
+         "System 1 z 2, CharonDOS." (S8.5 at system 2)                                       RAN AND PASSED
+       - plan 2 z 2 at 18:00:18.7; hear-out trace "effects, idle at start=4" (no voice on this silent machine),
+         "tenths waited=0xe"; "Za 15 sekund ..." 18:00:20.2, 1.5 s after the report (S8.4(1))  RAN AND PASSED
+       - AUDIBLE 18:08-18:14 (slot from agent 2, handed back): GDM greeter heard before any console; 6 rounds
+         Ctrl+Alt+F2 (Speakup heard at Enter 6/6) -> Ctrl+Alt+F1 -> two arrow keys: Orca HEARD after 6 of 6 returns
+         (2-4 s of sound per key, peak 0.036-0.065; r410a-evidence/s7/s8h-audible-log.txt, s8h-sound.txt).
+         Journal: "its WirePlumber was restarted to look at the card again" exactly 6 times (once per return, no
+         loop; r410a-evidence/s8/a1h-journal.png). The speech-dispatcher kill of S8.10 never matched (process name is
+         cut to 15 characters) and was removed afterwards; behaviour identical. Orca at the greeter after a text
+         console (S5.11 / S7.10 / S8.10)                                                     RAN AND PASSED
+       - noted: CharonDOS's banner on VMware's screen lacks Polish letters ("rodowisko", "pozna list polece")
+         (a1h-2.png) - the firmware console font, not Charon's text.
+       Machine destroyed, disc deleted.
+  S8.13 h8 RUN 3b "Debian, gotowy obraz, i Charon Hypervisor" (8 GB, a93): RAN AND PASSED (S8.9 fixes) -> preset
+       proven=true. h8 RUN 4 (Windows + HV) on a90 failed like run 3 (before the fix); rerun on a94 asked.
+       h8 RUN G two Windows + MPFAIL (a93, h8/SUMMARY.txt): "own volume after reconnect found=1", carried address
+       sentence for Windows 11 (2) after the restarts (:8862), NO add-on warning, NO memory failure, both Windows back
+       to Charon, "Plan zakończony. Zainstalowane systemy: 2 z 2." (23 + 22 minut), hear-out 1.4 s, both Windows start
+       (Windows' text menu with both, h8g-04-winmenu.png)                                    RAN AND PASSED
+       (S8.7 + S8.10 root fix proven; vr defects 4/5 closed; carried address proven again).
+       h8 finding: the summary's "Wolne zostaje 1006 megabajtów" was taken by Windows 11 (2) Setup's Recovery partition
+       (end of disk). FIXED: CharonWsPlanDialogue.h CoverFreeForWindows/UncoverFree (placeholders "Charon plan: kept
+       free" over free ranges outside the installing Windows' range; removed in CleanAfterWindows and at the finish,
+       CharonWsPlan.h; new reason text in CharonPlanState.h). Pair a94; reasons 450/0 (82), plan host 5/5. COMPILED ONLY
+  S8.14 RUN J by agent 1, AUDIBLE (slot free after agent 2's hand-back; r410a-a1j, a94 + hv-make-iso disc, 8 GB,
+       NVMe 140 GB, hdaudio, meter r410a-evidence/s7/s8j-sound.txt), preset "CharonDOS i Charon Hypervisor", express:
+       18:45:56.9 "CHARON upfront: memory reserved for the hypervisor, MiB=0x230" (S8.9 placeholder); 18:47:07.3 "Plik 1
+       z 1: Charon Hypervisor ... 560 megabajtów"; 18:51:21.4 "Pakietów do pobrania: 151."; then while speech was busy:
+       18:51:25.8 "kbd", 18:51:26.9 "libcrypto3, i jeszcze 3", 18:51:30.0 "tesseract-ocr-data-pol, i jeszcze 6",
+       18:51:33.4 "freetype, i jeszcze 15", ... 18:52:05.5 "qemu, i jeszcze 21", 18:52:27.1 "python3-pycache-pyc0, i
+       jeszcze 20" - "i jeszcze N" with a real voice                                          RAN AND PASSED
+       (the plan-level "Pobrano: <file>, i jeszcze N" / "Pobrano jeszcze: N" of CharonWsPlanDialogue.h uses the same
+       rule but needs several up-front files finishing inside one sentence; not reached by any plan here: NOT VERIFIED
+       on its own, host logic only).
+       18:59:51.2 "Plan zakończony. Zainstalowane systemy: 2 z 2."; hear-out "effects, idle at start=2" (voice present,
+       speaking), "tenths waited=0x238" (56.8 s: the report was spoken to its end; meter loud 18:59:51-19:00:46, a 1 s
+       gap 19:00:47-48), 19:00:48.3 "Za 15 sekund uruchamiam komputer ponownie" heard right after RAN AND PASSED.
+       Machine destroyed (its serial file went with the folder; the lines above are copied from it).
+       Harness lesson: bw.py serial port = VNC+10; VNC 5978 collided with h8's VNC 5988 (no trace) - use VNC 5970.
+  S8.15 h8 RUN 6 (a93): Charon Hypervisor ALONE on a KEPT disk (6e): p1-p3 untouched, hypervisor in the 98.5 GB free
+       space, Debian and CharonDOS still start                                                RAN AND PASSED
+       refusal on a full disk: need 12 GB, largest free 1008 KB, Charon-MakeRoom.ps1 / ZMNIEJSZ said, nothing changed
+                                                                                               RAN AND PASSED
+       DEFECT: the first restart into the hypervisor as the default system hung in Alpine's kernel (no initramfs):
+       Charon's NVRAM entry "Charon Hypervisor" = HD(4)/\boot\vmlinuz-lts WITHOUT load options (the device-list entry
+       "(nowa maszyna wirtualna)" works). FIXED: CharonWsPlan.h HypervisorOptions (same options as CharonHypervisor.h
+       AddEntries: initrd, modules, modloop, alpine_dev=UUID=<FAT serial>, quiet, charonhv.lang) passed to both
+       PutOption calls of the finish. Pair a95, plan host 5/5.                       COMPILED ONLY (h8 run 6b asked)
+       h8 RUN 6b (a95, HV alone on an empty 60 GB disk): "Plan zakończony. Zainstalowane systemy: 1 z 1." 19:32:49,
+       restart into the default system, the hypervisor starts BY ITSELF through Charon's new entry   RAN AND PASSED
+  S8.16 19:5x cleanup (coordinator): r410a-bw1 (57 GB, kd's two-Windows disk for T8) deleted - T8 as one run is NOT
+       done; its parts are proven separately (Charon-MakeRoom ZMNIEJSZ shrink S5.4; a plan on a kept disk using only
+       free space, existing systems untouched and still starting S8.15). 28 obsolete discs deleted. 283 GB free.
+       6h Windows Me key page under CharonPC (r410a-me2, silent; charonpc-r410s7; user's Windows Me OEM disc): the
+       unattended CharonPC path (state=install, empty disk) never shows a key page (MSBATCH.INF); a profile disk with an
+       empty MBR partition keeps Setup interactive (scratchpad make-me2.py): the OEM wizard went Welcome -> Directory ->
+       Setup Options -> Components -> Network Identification -> ... -> "Ready to Begin Copying Files" with NO key page;
+       the OEM disc asks for the key after the copy and the restart - waiting for it.
+  S8.17 h8 FINISHED (h8/SUMMARY.txt "H8 FINISHED"; all its machines and its 9 discs deleted):
+       RUN 4c Windows + Charon Hypervisor (a94, own list, 260 GB, typed 100+100, "Wolne zostaje 59 gigabajtów"): 2 z 2,
+       Windows desktop, hypervisor from Charon's list, and the free space IS free at the end (Windows: LargestFreeExtent
+       59 GiB, no Recovery partition in it)                                                   RAN AND PASSED
+       -> preset "Windows i Charon Hypervisor" proven=true (same systems and steps; RUN 5 "own list with HV" = 4c).
+       (4b on a93 invalid: h8 chose 26H2 with the English evaluation image - Setup stopped at its language page; harness.)
+       h8 notes: (a) the HV-alone refusal came after the language/user/password questions - FIXED: CharonWsPlanDialogue.h
+       HypervisorRoomAnywhere checked before any question (same rule as ChooseHypervisorTarget, which then says the
+       refusal); pair a96, plan host 5/5 - COMPILED ONLY. (b) the refusal does not mention a hypervisor already on the
+       disk - not a defect of placement (a second hypervisor is refused for room only); left. (c) Polish failure
+       sentences of CharonWsHypervisor.h FailWith carry an English detail - agent 2's file, sent. (d) "Setting
+       hostname to charon-hypervisor" at every boot - agent 2's overlay, cosmetic, sent.
+       Triple preset "Windows, Debian, instalator, i Charon Hypervisor" stays HIDDEN until agent 2's triple-boot run.
+
+=== SESSION 7 (2026-11-25, agent 1, seventh session) ===
+  S7.0 13:19 resumed. vmrun list: r410a-ag6 (vr, Windows 11 (2) installing, old a69q-less code), r410a-s6a1 (s6a), hvxp1
+       (agent 2). vr SUMMARY last written 12:47 (no address reachable). kd building akd1 for its kd6 rerun. 146 GB free.
+       Agent 2 13:2x: CharonHttps.h opt-in keep-alive LANDED (Client::keepAlive, default = old behaviour; used only by
+       hv::DownloadKnown; compiled hv7t, not yet run); the plain-HTTP stall NOT fixed (cause unknown).
+  S7.1 CarryAddress cannot be reached in a normal plan (step 0 always places the Windows media; the after-restart
+       download is only the failure path). NEW test-disc switch \EFI\HAK\media-place-fail-test (CharonWsPlanDialogue.h
+       PlaceWindows: step 0 leaves every Windows without media, the held image is dropped; trace "CHARON test: Windows
+       media of step 0 left out"; same precedent as write-fail-test; a release medium does not carry it) and env
+       MPFAIL=1 in r410a-vm/ag-make-iso.py. Pair charon-win-r410a78t + charon-win-r410a78-drv (both --trace) PASS 13:3x.
+       Helper s7 (work/r410a-evidence/s7/SUMMARY.txt, ends "S7 FINISHED"): run A = preset "CharonDOS, Windows i Debian,
+       instalator" with MPFAIL=1 - several up-front files ("Pobrano"/"i jeszcze N"/"Pobrano jeszcze") + the Windows step
+       after a restart must use the carried address (port 8862, not Microsoft). Run B (Orca greeter with sound) only
+       after agent 2 frees the slot.
+  S7.2 s6a F1 FIXED (CharonWsPlanDialogue.h AskShared): a detailed plan reads the site file (Begin('s','s'), SetMain(
+       commonQuestions), FindSoftFile, LoadSite) BEFORE the shared main questions, so [shared] hostname/fullname/user and
+       [secrets] password are their starting values as in a single installation; the shared detailed rows follow
+       without a second Begin (it would close the administration groups). Pair charon-win-r410a79t + a79-drv (--trace)
+       PASS. s7 run A switched to a79 + s6a's site medium, detailed plan, check (3) = site values heard and Debian
+       hostname lab-s6a.                                                         COMPILED ONLY (s7 run A)
+       s7 13:33-13:34 (a79): "Ustawienia miejsca: wczytano ... 4" said BEFORE the first shared question; starting values
+       heard "Nazwa komputera: lab-s6a", "Twoje imię i nazwisko: S6a Tester", "Nazwa użytkownika: jan". SPOKEN PART RAN
+       AND PASSED (s7/SUMMARY.txt 13:34); Debian hostname read-back follows in s7's a80 run.
+  S7.3 Helper s6a run 1 (s6a/SUMMARY.txt "STEP 4 run 1 READ BACK", CharonDOS + Debian image + site file + own list):
+       RAN AND PASSED components, extra_langs, tz_other, shell, help_tool, popcon, private folder not copied; RAN, FAILED:
+       (a) sudo_nopw (cloud-init's 90-cloud-init-users sorts after 90-charon-nopasswd, sudoers takes the last rule);
+       (b) every administration row and soft_file missing from answers.env (StepDetails' detailed::Begin reset
+       ask::AdminOpen and SoftFileOn, Env()/Ini() filter on them - Windows steps the same); (c) ssh_key (F1).
+       FIXED: (a) src/linux/personal.sh writes 99-charon-nopasswd, removes 90-, checks "runuser -u USER -- sudo -n true"
+       before "applied" (sh -n OK; CharonLinuxScripts.h regenerated; questions text in charon_questions.py and
+       tests/charon-r410-questions.txt); (b) SystemDetails records admin_open / soft_file_on with the system's answers,
+       StepDetails sets both gates again; (c) by S7.2. Pair charon-win-r410a80t + a80-drv (--trace) PASS. s7 asked to
+       switch to a80 and read back all of it (check 4).                          COMPILED ONLY (s7 run A on a80)
+       Agent 2: its run-3 one-system HV report had "Note: the system that starts by itself could not be set" with hv5t
+       (12:48, before kd5-1's fix) - that note is why no automatic restart came; fixed in the tree by kd5-1.
+  S7.4 (14:40, after the usage-limit pause) helpers s6a FINISHED (coordinator: CHARONPC.CFG lang= RAN AND PASSED; its
+       failures are S7.3), s7 stopped at the limit and was resumed, vr and kd silent since 12:47 / 13:24 (treated as
+       ended; kd6 and T8 kept disk never ran). Disk was 90 GB free: r410a-ag6 (vr's old-code two-Windows run; Windows 11
+       (2) installed and waiting at its sign-in, the plan's finish never came back to Charon) shut down CLEANLY from the
+       sign-in screen's power menu and destroyed (serial kept as vr/ag6-serial-final.txt) -> 142 GB free.
+       s6a's cosmetic finding FIXED: CHARONPC.CFG's first comment line had a trailing "=" (CharonWsDosSystem.h CfgLine
+       writes no "=" for a "#" key); goldens re-recorded with --update after checking that only that line changed (a
+       Git-bash sed had dropped their CR; the --update restored the exact bytes); the host test accepts "#" lines and
+       expects the one-line change against before-r409. Golden 406/0; personal 496/0.
+       s7 finding S7-F1 FIXED: a plan system's own main questions (Debian's SSH server, Windows' rows, image rows)
+       ignored the site file - CharonWsPlanDialogue.h PreloadSite reads it once per system BEFORE those questions
+       (Begin + SetMain(that table)); SystemDetails then neither begins again nor reads it twice.  COMPILED ONLY
+  S7.5 CharonDOS + Charon Hypervisor (preset 11 with the test switch), machine r410a-h7a (NVMe 140 GB, 8 GB, silent),
+       pair a80, disc r410a-vm/iso/charon-h7hv80-pl.iso (agent 2's hv-make-iso.py: hypervisor files on the medium),
+       express: 14:01:49 up front "Plik 1 z 1: Charon Hypervisor: Alpine Linux 3.24 i QEMU, 560 MB", 151 packages
+       signed and checked, 14:03:12 disk changed, CharonDOS written (38 programs), 14:10:36 "Zapisuję Charon Hypervisor
+       na partycji Hypervisor", 14:10:39 "Plan zakończony. Zainstalowane systemy: 2 z 2." (no note), 14:13:54
+       restart by itself into CharonDOS (the default). Charon's boot devices list "Charon Hypervisor (nowa maszyna
+       wirtualna), 7 z 7" -> Alpine 3.24 up 14:51 on tty1 and ttyS0: "Przygotowano partycję danych ... Maszyny: 0. Nowa
+       maszyna wirtualna. Który tryb?" (s7/h7a-hv.png, s7/h7a-serial-full.txt).                RAN AND PASSED
+       DEFECT FOUND AND FIXED: the summary said "W nim polecenie LINUX uruchamia Linuksa" but CharonDOS's LINUX answers
+       "Nie znaleziono Linuksa" (s7/h7a-linux.png): CharonPlanState.h DosCommandsText counted the hypervisor as a
+       Linux; now it says "Charon Hypervisor uruchamia się z listy urządzeń rozruchowych Charona; polecenie EXIT w
+       CharonDOS wraca do Charona." (EXIT -> Charon -> list -> hypervisor proven in the same run). COMPILED (a81).
+       NOTE for agent 2: the hypervisor's hostname is "charon-hypervisor", not the plan's shared name charon-pc.
+       Pair charon-win-r410a81t + a81-drv (--trace) PASS; disc charon-h7hv81-pl.iso. r410a-h7a destroyed.
+  S7.6 s7 RUN A (s7/SUMMARY.txt, a80, detailed "CharonDOS, Windows i Debian, instalator", MPFAIL=1, site medium):
+       4 files up front, each said "Pobrano: <name>." RAN AND PASSED; "i jeszcze N" / "Pobrano jeszcze: N" NOT VERIFIED
+       (no sound card: speech idle at every completion - needs an audible run with several files; asked agent 2 to send
+       the lines of its audible triple run). Windows step without media downloaded from :8862, not Microsoft - but in this
+       preset it ran in the same session (no restart), so CarryAddress was NOT reached: NOT VERIFIED (run D). Plan 3 z 3
+       RAN AND PASSED. Site values (lab-s6a / S6a Tester / jan) RAN AND PASSED (S7.2). S7.3 fixes: administration rows +
+       soft_file in answers.env and their effects (anna/piotr, NTP, motd, CA, post script, sox/tree/rsync), 99-charon-
+       nopasswd with sudo -n RAN AND PASSED. s7 notes: e1000e lost DHCP after power cycles (known issue 3), first cold
+       power-on writes no early trace (the logger connects after VMware starts the machine - harness).
+  S7.7 HV sets on my machines: "Debian, gotowy obraz, i Charon Hypervisor" (r410a-h7b, a81, 8 GB): RAN, FAILED - after the
+       3 GB image, the hypervisor's Alpine ISO (~300 MB) needs ONE contiguous block (CharonWsNet Download -> Reserve) and
+       an 8 GB map has none left: "Za mało pamięci RAM na ten plik." x3, plan did not start, disk untouched
+       (s7/h7b-serial-ramfail.txt). Agent 2 asked to download the ISO in 64 MB range pieces (its file); preset stays
+       hidden until rerun. "Debian, instalator, i Charon Hypervisor" running on r410a-h7c (a83 disc charon-h7hv83-pl.iso).
+  S7.8 User point 6e (via agent 2): Charon Hypervisor ALONE never erases a disk - CharonWsPlanDialogue.h
+       ChooseHypervisorTarget: largest free space beside existing systems (kept disk: its ESP used, other partitions
+       untouched) or an empty disk; otherwise the need, the largest free space and Charon-MakeRoom.ps1 (ZMNIEJSZ) are
+       said and nothing changes.                                                 COMPILED ONLY (needs a kept-disk run)
+       User point 6h (via agent 2, product key): Charon's EFI reader never sees Windows Setup (WinPE) and Charon's own
+       Windows flow gives the key in the answer file; the reader that sees Setup is CharonPC's (src/pc/pc_winread.cpp):
+       a page whose text names the product key and has a row of 3+ edits now starts "Instalator prosi teraz o klucz
+       produktu: pól 5, w każdym 5 znaków." and each field says "pole klucza N z 5, wpisane znaki: K z 5"; nothing logged.
+       Host test tests/CharonWinReadTests.cpp TestProductKey (screen built by hand, runs without fonts) 3/3; CharonDOS
+       rebuilt charondos-r410s7 (PASS), CharonPC rebuilt charonpc-r410s7 (PASS).      HOST-TESTED, not run in a VM
+       Pair charon-win-r410a83t + a83-drv (--trace) PASS (S7.2-S7.8 tree); plan host core 357/0 (2 new DOS-commands
+       cases), golden 406/0, reasons 444/0, personal 496/0.
+       Harness: h7.py/bw.py write usb.generic.autoConnect = "FALSE" (coordinator rule: no USB device to a guest).
+  S7.9 "Debian, instalator, i Charon Hypervisor" (r410a-h7c, a83, disc charon-h7hv83-pl.iso, express, no desktop):
+       3 files up front (Debian kernel, initrd, hypervisor 560 MB), "Plik 1 z 3"...; new summary sentence "Charon
+       Hypervisor pochodzi z oficjalnych serwerów Alpine Linux, a ich podpisy są sprawdzane" heard; 15:20:09 hypervisor
+       written, Debian installed, 15:25:15 "Plan zakończony. Zainstalowane systemy: 2 z 2." (no note), 15:28:31 restart
+       into Debian (login charon-pc). Charon (Space opens the menu during its 5 s wait) -> boot devices "Charon Hypervisor
+       (nowa maszyna wirtualna), 7 z 7" -> Alpine boots, BUT the overlay of ~15:0x loops: "Charon Hypervisor failed:
+       [Errno 2] No such file or directory: 'setterm'. It starts again." (s7/h7c-hv.png) - agent 2's overlay (sent to it).
+       Charon side of the plan RAN AND PASSED; the set stays hidden until the hypervisor itself starts on a rerun.
+       DEFECT (mine, NOT fixed yet): the report says "Charon Hypervisor: 99 GB, zainstalowany, 61 minut" for a 6 s step
+       (CharonPlanState.h ~1664-1682: only the switcher's time is corrected for the UTC switch; a system whose step
+       timestamps straddle the switch gets |shift| added) - fix: mark such a system "czas nie został zmierzony" or
+       correct it; add a host case. Evidence s7/h7c-serial-full.txt.
+  S7.10 s7 RUN B (Orca at the GDM greeter after a text console, AUDIBLE 15:25:59-15:33:59, a80, meter): RAN, FAILED -
+       greeter heard before any console; Speakup heard on tty2 every round; back on the greeter Orca heard in 2 of 6
+       rounds. While silent: the card is FREE (nobody holds pcmC0D0p) but the greeter's WirePlumber chose the card
+       profile "input:analog-stereo" (no output profile offered - it probed while root's espeakup held the PCM), so the
+       default sink is the Dummy Output; the S5.11 branch of charon-audio-share never fired. Next fix to try in
+       src/linux/speech.sh watcher: on return to the greeter, when the card is free and the session's PipeWire has no
+       ALSA sink, make the session's WirePlumber re-probe (restart its wireplumber.service as that user, or wpctl
+       set-profile <card> output:analog-stereo+input:analog-stereo), then re-prove audibly (ls/SUMMARY TASK 2 method;
+       s7/SUMMARY.txt RUN B RESULT has the full state).
+  S7.11 15:40: machines on agent 1's side: r410a-s7c (s7 run C, two Windows). r410a-h7a/b/c, s7a, s7b, ag6 destroyed.
+       192 GB free. Sound slot handed back to agent 2 (third session, a165e05a2d7ad17b3) at 15:4x.
+
+=== SESSION 6 (2026-11-25, agent 1, sixth session) ===
+  S6.0 12:40 resumed from this file. Machines: r410a-ag6 (vr), r410a-kd5 (kd), hvxp1 (agent 2, audible). Disk 167 GB free.
+  S6.1 Hypervisor range (agent 2's hvxp1 stop, S5.13): fix confirmed in CharonPlanLayout.h (loop after the images adds
+       Kind::hypervisor). NEW host cases in tests/charon-r409-plan-tests.cpp: layout "hv alone 120 GB" esp=1024
+       system:hv=121854; Win11+HV 200 GB; Debian+HV 120 GB; Win11+Debian+HV 256 GB; CharonDOS+HV 120 GB; order "prepare >
+       write-dos:hv > finish" and HV in a three-system plan -> plan core 355 passed, 0 failed.            HOST-TESTED
+       Pair charon-win-r410a76t (--trace) + charon-win-r410a76-drv (--driver) built 12:42 (a69o/a69p started before the
+       edit landed - not to be used); agent 2 told 12:43 (SendMessage). VM proof = agent 2's next audible run.
+  S6.2 User answers 2026-11-25 (binding): (1) the shared data partition stays formatted by Charon itself as exFAT
+       (CharonPlanExfat.h) - the USER APPROVED this over the multiboot spec's "no formatter" rule (spec 2.x D7 text is
+       superseded on that point). (2) CHARONPC.CFG lang= follows the installer's CharonDOS language answer (dos_lang),
+       not Charon's interface language. DONE: CharonWsDosSystem.h ProfileText - lang = dos_lang en/pl when the
+       detailed mode asked it ("charon"/express = Charon's language as before, so every older golden file is unchanged);
+       host vectors dos-win98-pl-doslang-en (Charon Polish -> lang=en) and dos-win98-en-doslang-pl (-> lang=pl);
+       CharonInstallAnswersHost.cpp FlowDos applies the vector's put lines. Golden 406 passed, 0 failed.  HOST-TESTED
+       (VM proof: see later entries).
+  S6.3 Code (build a77t + a77-drv, both --trace, compile PASS 12:48):
+       (a) everything-first download speaks each file as it completes: "Pobrano: <name>." / "Downloaded: <name>."; when
+           speech is busy the name is counted and the next said name adds "i jeszcze N" / "and N more"; leftover at the
+           end "Pobrano jeszcze: N." (CharonWsPlanDialogue.h FetchUpfront; agent 2's hv::FetchPackages pattern; bounded
+           HearOut(30) so the next file's line does not cut it).                              COMPILED ONLY (s6a run 1)
+       (b) helper vr's 12:40 finding: windows-iso-url.txt ignored by a Windows step after a restart (the plan's ESP has no
+           copy; the file is deliberately not carried to installed systems) -> CharonWsWinUsb.h ReadOverride +
+           CarriedAddress/CarriedSplitMb (used after the file, before the preset); CharonWsPlanDialogue.h CarryAddress
+           records wurl / wurl_split in the system's answers in the pre-flight and hands them over in PlaceWindows and
+           InstallWindows.                                                  COMPILED ONLY (needs a two-Windows run)
+       (c) es's open item: Charon-Personal.ps1 Apply-w_post_script reported exit 0 for a script ending in a
+           non-terminating error -> the script runs through -EncodedCommand with $ErrorActionPreference=Stop in a
+           try/catch, its own exit N kept. Host check with Windows PowerShell 5.1 (scratch scripts): non-terminating
+           Get-Item error -> 1, "exit 5" -> 5, clean -> 0, a path with an apostrophe -> 0.   HOST RAN AND PASSED
+       Helper s6a started ~12:55 (work/r410a-evidence/s6a/SUMMARY.txt, ends "S6A FINISHED"): run 1 plan CharonDOS +
+       Debian image with site file + own software list (read back) + the "Pobrano:" lines; run 2 single CharonDOS
+       detailed, dos_lang=angielski, Windows 98 profile -> CHARONPC.CFG lang=en read offline. Pair a77t/a77-drv.
+       NOTE: helper vr (no address reachable from this session) runs its ag7 two-Windows rerun with a69q, which lacks
+       (b): its Windows 11 (2) is expected to fetch from Microsoft again; (b) needs its own run.
+       Agent 2 (13:0x): keep work/win11ent-dl-r410 until it says; it holds the sound slot ~3 h (XP + NVDA proof);
+       it asks agent 1 to prove the multi-system HV sets silently once its one-system HV run has written P1 and
+       started the hypervisor; its HTTPS revert for Alpine packages is in the tree after 13:05.
+
+  S6.4 Host tests on the tree ~13:20: golden 406/0 (392 + the 2 dos_lang vectors' checks), plan reasons 444/0
+       (81 reasons), personal 496/0 (Git bash), plan host 5/5 (core 355, seed disk 126, sh hooks 11), charon-os 134/0.
+       Private-path scan of src, tools/charon-addon, tools/charon-install, a77 EFI files: only the __pycache__ .pyc
+       (tools/charon-install/__pycache__); __pycache__ also in tools/ and src/hypervisor/overlay/usr/lib/charonhv -
+       delete before the release pair. T5 preset "Debian, instalator, i Ubuntu, gotowy obraz" set proven=true
+       (vr ag5 run 2 RAN AND PASSED, S5.12); every Charon Hypervisor set still false.
+       s6a interim: "Pobrano: <name>." RAN AND PASSED (13:10:52.7, with "file complete"); "i jeszcze N" NOT VERIFIED
+       (one up-front file in that preset). kd: Ubuntu installer in a plan RAN AND PASSED; kd fixed kd5-1 (CharonWsPlan.h
+       Finish: the image's entry made before the default is set) and kd5-2 (CoverGrowthRoom covers partial gaps; the
+       installers refuse a gap longer than the range) -> its kd6 rerun.
+  RESUME (agent 1 session 6 handed back ~13:30): running - s6a (work/r410a-evidence/s6a/SUMMARY.txt, ends "S6A
+       FINISHED"; run 1 site file + own list read back, run 2 CHARONPC.CFG lang=en), kd (kd6 rerun, then T8 kept disk on
+       bw1), vr (ag6 then ag7 two-Windows rerun with a69q - lacks S6.3b, so CarryAddress needs its own two-Windows run),
+       agent 2's audible hvxp1 (sound slot ~until 16:00; it will message when P1 is written -> then prove the HV sets
+       Windows+HV, Debian+HV, CharonDOS+HV, own list silently; the triple is agent 2's). Then: Orca greeter proof with
+       sound, "and N more" with a plan of several up-front files, proven=true for passed sets, release pair from one tree
+       (after agent 2's HTTPS revert and any keep-alive change it announces), host tests, scan, delete __pycache__, FINAL
+       RELEASE STATE. Keep-awake PIDs 40388 and r410a-vm/bd-awake.pid: kill when all long runs are over.
+
+=== SESSION 5 (2026-11-25, agent 1, fifth session) ===
+  S5.0 06:40 state as found. CAUSE OF THE STALL: the HOST went to sleep at about 23:18 (VMware log "PowerNotify: System
+       suspend detected", resumed 03:13 for seconds, then 06:35) - not Charon, not the machines. Session 5 keeps the
+       host awake with a process using SetThreadExecutionState (no setting changed). Machines: `vmrun list` at 06:36 =
+       1 (r410a-bw1); at 06:40 = 2 (bw1 + r410a-bd1, see below).
+       bw  (interrupted): DONE: UniqueName fix (second Windows "Windows 11 (2)"; RAN: list said so), Charon-MakeRoom.ps1
+           refusals BitLocker/hibernation/dirty + typed ZMNIEJSZ/SHRINK (parse check only), finding F1 (NVMe serial:
+           EDK2 NvmExpressDxe DiskInfo.Identify returns the NAMESPACE data -> Charon never sees an NVMe serial) and F2
+           (two Windows fetch NVDA twice). T7 machine r410a-bw1 (NVMe 200 GB, no TPM, hardware-check skip, a46t+a46-drv):
+           plan typed 22:58, both 7.7 GB Windows media written 22:59-23:06 (NOTE: the image is downloaded TWICE, once per
+           Windows), Windows 1 installed through start 4 (23:16), the host slept, at 06:36 step 2 "Windows 11 (2)"
+           began by itself - the plan is STILL RUNNING; result read back by agent 1 (S5.1). NOT DONE: T8, vTPM, profile,
+           T9 serial disk, R3 write-fail-test.
+       bd  ALIVE (its stream resumed after the host woke; it started r410a-bd1 at 06:37: T5 + data partition, 6 GB,
+           a43t + a43-drv). Code done and host-tested by bd (its SUMMARY.txt 1.1-1.7): exFAT data partition
+           (CharonPlanExfat.h), Ubuntu installer in the own list / plan (use_gap), typed sizes, Fedora image in a plan
+           (PlanBiggerEsp). Agent 1 told it to continue bd1 (T5), bd2 (T10 alone), bd3 (own list Ubuntu + Fedora image
+           with typed sizes), then T10 in a plan, and to append to SUMMARY.txt after every step.
+       rr  (interrupted): run23 with a38t + a38t-drv, QEMU with sound: dlgpl COMPLETE before the sleep - RAN AND PASSED
+           for the dialogue fixes of S4.3b: (a) "Pozycja 1 z 3: sam czytnik ekranu ..." (was "Pozycja 1 z 2: Escape
+           cofa"), elements list now the three options; (c) "Pozycja 6 z 15" in the workspace (was 7 z 16); the echo
+           row without "strzałka w lewo". dlgen was cut by the host sleep (said.txt 2330 bytes, keys lost) - to be run
+           again with the final pair. Its QEMU (pid 40472, orphaned) stopped by agent 1. Known issue 3: sources read
+           only (rr/SUMMARY.txt), nothing tried.
+       er  (interrupted): nothing done (only the before-er copies).
+       pv-verification helper: interrupted, nothing recorded.
+       HOST SLEEP CAUSE: System log Kernel-Power 506 "Przyczyna: Lid" (22:36, 23:18) - the laptop lid; keep-awake cannot
+       stop a lid-close standby. Coordinator (user's permission): lid action on AC = do nothing since ~10:40.
+       Helper bd handed back at 09:57 (bd/SUMMARY.txt "BD FINISHED"); helper "es" started 06:5x for er's items.
+  S5.1 T7 "two Windows" (machine r410a-bw1, a46t + a46-drv, 8 GB, NVMe 200 GB, no TPM, hardware-check skip):
+       plan typed 22:58 -> "Plan zakończony. Zainstalowane systemy: 2 z 2" 09:59:54 (host slept 23:18-06:35 and
+       06:40-09:49 in between; no key pressed). RAN AND PASSED: both read back through the test agent
+       (work/r410a-evidence/ag/t7-readback-win1.txt, t7-readback-win2.txt): hostname charon-pc, charon-pc\user,
+       Central European Standard Time, RealTimeIsUniversal=1, no hiberfil.sys, HiberbootEnabled=0, NVDA running;
+       firmware order Charon (Boot0004 HAKBOOT.EFI) first, then Windows Boot Manager; ONE boot store with
+       "Windows 11" and "Windows 11 (2)", bootmenupolicy Legacy, timeout 10; after Charon's menu Windows' own text menu
+       appears with both lines (ag/t7boot/t7-033-100325.png).
+       DEFECT 1 found: Windows' menu started "Windows 11 (2)" by itself although the plan's default was "Windows 11"
+         (Setup makes the newest Windows the default of the shared store). FIXED: CharonWsPlanWindows.h Logon.menuDefault
+         + FirstLogon: the LAST Windows of a plan runs, at its first logon, bcdedit /default {current} or a PowerShell line
+         that finds the other Windows by its description in "bcdedit /enum osloader /v" (language-independent) and runs
+         bcdedit /default {GUID}; CharonWsPlanDialogue.h WindowsStep puts "planwindefault"; CharonWsInstall2.h passes it.
+         The exact command line, run through cmd.exe in Windows 11 (2): default {82edc029...} = "Windows 11"
+         (ag/t7-default-cmd.txt); after a restart Windows' menu highlighted "Windows 11" and started it
+         (ag/t7boot2/t7b-006-101505.png).                     command RAN AND PASSED; whole first-logon path COMPILED ONLY
+       DEFECT 2 found: NVDA's installer fetched twice up front AND the second Windows' step downloaded it again
+         ("Pobieram NVDA na nośnik instalacyjny" 06:36:09): the second fetch item took the first one's reservation
+         (held::Reserved matches by address), the first Windows then dropped the only complete copy. FIXED
+         (CharonWsPlanDialogue.h MakeFetchList: one NVDA item for every Windows; PlaceWindows: the shared item, dropped
+         after the last Windows).                                                                   COMPILED ONLY
+       NOTE (not changed): two Windows download the 7.7 GB image twice after the disk is prepared (one media partition
+         each; announced in the summary). With enough memory the image is held once (Find by address) - see S5.3.
+       Report durations 450/204 min include the host's sleep (wall clock, correct as measured).
+  S5.2 NVMe serial (helper bw's finding F1): CharonWsDisks.h NvmeControllerIdentity - EFI_NVM_EXPRESS_PASS_THRU_PROTOCOL
+       (GUID 52c78312-8edc-4233-98f2-1a1aa5e388a5, layout from edk2 MdePkg/Include/Protocol/NvmExpressPassthru.h:
+       https://raw.githubusercontent.com/tianocore/edk2/master/MdePkg/Include/Protocol/NvmExpressPassthru.h), admin
+       Identify (opcode 06h, CDW10 CNS=1, NSID 0) on the controller handle found by LocateDevicePath; serial bytes 4-23.
+       VMware NVMe: trace "CHARON disk: NVMe controller identify, serial found=1" (r410a-ag1, a63t)   RAN AND PASSED
+       -> the unattended save option ("tak, do instalacji bez pytań na dysku o tym numerze seryjnym, 3 z 3") is offered
+       on VMware NVMe now (S5.3).
+  S5.3 T9 unattended plan from an answer set + block D memory (machine r410a-ag1, 4 GB, 60 GB NVMe, Charon on a
+       writable USB medium, a63t + a63-drv, no sound). Detailed "CharonDOS + Debian ready image"; at "Zapisać ten plan
+       jako zestaw" chose "tak, do instalacji bez pytań na dysku o tym numerze seryjnym", name t9, password in clear
+       text after ROZUMIEM; Escape at the typed word; power reset; "Wczytać zapisany plan?" -> "t9, bez pytań": NO
+       question but the typed word (disk found by serial "VMware NVME_0000", no disk question); TAK 10:25:22 -> zero
+       keys -> "Plan zakończony. Zainstalowane systemy: 2 z 2" 10:37:56 -> restart into CharonDOS.   RAN AND PASSED
+       (ag/t9-ag1-serial-ts.txt, ag/r410a-ag1-key-log.txt).
+       Memory: the 3 GB Debian image was RESERVED before the summary ("memory reserved, MiB=0xc00", free 3815 MiB),
+       downloaded into memory ("file complete, bytes=0xc0000000") and written from it ("image from memory, no
+       download"): a file above 1.3 GB IS held now (S4 AllocateFromMap / reservation).                RAN AND PASSED
+       Negative: the same medium in a NEW machine was ACCEPTED - VMware gives every NVMe disk the serial "VMware
+       NVME_0000" (not unique; the match is by serial as the user decided). With the set's serial changed to
+       NVME_0009: "Zestaw nie pasuje do dysków tego komputera ... Żaden podłączony dysk nie ma numeru seryjnego VMware
+       NVME_0009 ... Nic nie zostało zmienione." and nothing written.                                RAN AND PASSED
+       (ag/t9-neg-ag3-serial-ts.txt). Wording defect there ("nic nie zostało zmienione" twice) FIXED in SayRefusals
+       (the reason's own closing sentence is cut).                                                    COMPILED ONLY
+  S5.4 T8 part 1 - Charon-MakeRoom.ps1 in a real Windows 11 (r410a-bw1's "Windows 11", through the test agent):
+       C dirty volume (fsutil dirty set C:): exit 2, "Wolumin C: jest oznaczony jako wymagający sprawdzenia ... Nic nie
+         zmieniono", size unchanged.                                                                 RAN AND PASSED
+       D hibernation: a VMware guest cannot hibernate ("The system firmware does not support hibernation"), so the
+         file the script checks (C:\hiberfil.sys) was made by hand: exit 2, refusal names powercfg /hibernate off.
+         RAN AND PASSED (simulated file; real hibernation impossible in this VM)
+       E BitLocker: FVE policy for no TPM + Enable-BitLocker -PasswordProtector -UsedSpaceOnly ->
+         "EncryptionInProgress 85%": exit 2, refusal names manage-bde -off and -status; size unchanged; decrypted after.
+         RAN AND PASSED
+       typed word: "tak" -> "Nie wpisano słowa ZMNIEJSZ. Nic nie zmieniono."; "zmniejsz" -> C: 88.6 -> 83.6 GB
+         (95154077696 -> 89785368576 bytes); restart: Windows to its lock screen in ~25 s without a disk check, dirty
+         bit not set (ag/t8-refusals-1.txt, -2.txt, t8-12-wrongword.png, t8boot/).                   RAN AND PASSED
+       (with -Yes and nothing to refuse it shrinks at once - run B of t8-refusals-1.txt, intended.)
+       Wording fixed: "Windows, dysk C:: rozmiar" -> "dysk C:, rozmiar" (3 lines; parse check).    RAN AND PASSED (t8-refusals-2)
+       T8 part 2 (the plan that KEEPS that Windows and adds Linux in the 15 GB freed): helper "kd" (needs a kept-disk
+       path in the dialogue: today a plan always erases the whole disk). Machine r410a-bw1 kept POWERED OFF for it.
+  S5.5 T5 "Debian installer + Ubuntu image" (bd's run bd1, a43t): RAN, FAILED at step 2: "dysk nie ma dokładnie
+       jednego wolnego zakresu dla instalatora Debiana" - the Ubuntu image (written in step 1) fills only the start and
+       end (seed) of its range; the room between waits for the image's first start (step 3) to grow into it, so the
+       installer saw two free ranges (and would have taken the image's if bigger). FIXED (CharonWsPlanDialogue.h
+       CoverGrowthRoom before the Debian and Ubuntu installer steps: free room inside ANOTHER system's range gets a
+       placeholder; UncoverGrowthRoom in SeedBack before the image's first start). Rerun r410a-ag4 with a66t: S5.6.
+       Also seen: the stopped plan said "Nietknięte: Ubuntu 26.04" although its image was written (not yet started).
+         FIXED (CharonPlanState.h stop text: "Zapisane, jeszcze nie uruchomione: ..." for a system with a step done;
+         detail::AnyStepDone).                                                                       host-tested (plan host)
+  S5.5b T5 rerun 1 (r410a-ag4, a66t + a66-drv, 8 GB, 100 GB NVMe, detailed, data partition exFAT 10 GB, boot order
+       "Ubuntu 26.04, potem Debian" (non-default), default Debian, SSH + password SSH): TAK 11:18:4x -> zero keys ->
+       "Plan zakończony. Zainstalowane systemy: 2 z 2" 11:34:04. Trace "growth room covered, MiB=46591" before the
+       Debian installer. READ BACK (ag/t5-readback-debian.txt, t5-readback-ubuntu.txt): hostname charon-pc in both;
+       /media/data = exFAT "DATA" 10 GiB mounted rw uid 1000 in both (Debian fstab LABEL=..., Ubuntu cloud-init
+       /dev/disk/by-label/DATA); a file written by each system read by the other; fsck.exfat "clean" (Charon's own
+       exFAT formatter, CharonPlanExfat.h); Debian GNOME + gdm, ssh active, speechd pl/some; Ubuntu 26.04.1 started
+       (through a test BootNext).                                         T5 + data partition RAN AND PASSED (first part)
+       DEFECTS found and FIXED: (1) the Ubuntu image had no boot entry, the chosen order could not place it ("Uwaga:
+       nie znaleziono wpisu rozruchowego ... Ubuntu 26.04") and that note kept Charon waiting for a key instead of the
+       automatic restart -> CharonWsPlan.h finish step makes the missing entry (dossys::PutOption on the loader the
+       registry found) before ordering; (2) the "growth room" placeholder was NOT removed before Ubuntu's first start
+       (Ubuntu's root stayed 2.5 GB; p2 "Charon: growth room" 45.5 GiB left) -> UncoverGrowthRoom reloads the disk and
+       layout first (after a restart nothing had) + trace "growth room freed". Both COMPILED (a69v); proof = rerun 2
+       (r410a-ag5, below).
+  S5.6 Charon Hypervisor hook for agent 2 (coordinator 11:2x; contract: work/charon-hypervisor-design.md and agent 2's
+       messages). CharonPlanModel.h Kind::hypervisor ("hypervisor", "Charon Hypervisor", range min 10 / default 66 GiB =
+       P1 2 GiB + data 8/64, not TakesGap, one Charon step StepKind::writeDos, a one-system plan allowed only for it);
+       CharonWsPlanDialogue.h WriteHypervisor (P1 "Hypervisor" basic data FAT32 CHARONHV 2 GiB + P2 "Hypervisor data"
+       Linux, the rest, first MiB zeroed -> hv::RunPlanStep(disk, bootUnique, dataUnique, P1 volume); esp_guid = P1 for
+       LoaderOf), Offers() "hv" (own list), third choice of the install entry -> one-system plan (ForcedSystem), both
+       behind the test switch until a VM run; FetchWhat::hypervisor (hv::PlanBytes, hv::FetchUpfront in the up-front
+       phase, no held reservation); CharonPlanFetch.h summary sentences (Alpine servers / network; Secure Boot);
+       CharonPlanState.h loader \boot\vmlinuz-lts, phase text, 3 reasons + Polish. `#if __has_include` keeps the tree
+       building without agent 2's header. Builds a68v/a68w compile; golden 392, plan host 5/5, reasons 81/81.
+       COMPILED ONLY (agent 2's RunPlanStep is a stub until its own block).
+  S5.7 run23 (agent 2's r410-run23.sh, QEMU with sound, pair a68w + a68w-drv, corpus work/r410-run23s8): dlgpl
+       IDENTICAL to s7 (fixes a and c of S4.3b); dlgen complete this time: "Entry 1 of 3: the screen reader alone ...",
+       the elements list = the three options ("element 5 of 8"), "Entry 6 of 15" in the workspace.   RAN AND PASSED
+       (ag/run23s8.out, r410-run23s8/dlgen/said.txt).
+  S5.8 Two Windows of one image: the second no longer downloads it - PlaceWindows makes its media partition to the
+       first one's size (winpart::ProvidePlan) and copies the first media's files (CopyTree); trace "CHARON plan:
+       Windows media copied from the previous Windows, files=N"; on any failure it downloads as before.  COMPILED ONLY
+       (a68z/a69w; proof = the T7 rerun).
+  S5.9 Helper "es" FINISHED (work/r410a-evidence/es/SUMMARY.txt, sources es/verify-es.txt; proofs on a56t + a56-drv,
+       final pair a57t + a57-drv). Offered rows: Linux 41 -> 61 (10 administration), Windows 41 -> 56 (12
+       administration), CharonDOS: dosq 19 unchanged. VM es1 Debian installer detailed and es2 Windows 11 detailed,
+       READ BACK: RAN AND PASSED - extra_langs, tz_other, speech_lang, components, upgrade_now, popcon, ssh_key,
+       help_tool, soft_file (own software list file); block E Linux: users, proxy, ntp_server, repo_mirror,
+       ssh_keys_admin, asset_tag, root_ca, post_script, phone_home, install-report.txt; Windows: w_ssh_key,
+       w_help_tool, w_soft_file, w_net_static, w_proxy, w_ntp_server, wsus, no_wu_drivers, kms, telemetry_dest,
+       w_asset_tag, w_root_ca, w_reader_cfg_file, w_phone_home, install-report; site file \EFI\HAK\answers\site\site.ini
+       incl. [machine serial=] (match on Windows). Re-run in the guest (RAN AND PASSED, re-run): net_static (Linux),
+       w_post_script. NOT VERIFIED: first_msg spoken part (no sound card). HIDDEN: u_mirror, u_codecs, u_drivers, w_key
+       (evaluation edition refuses a GVLK: 0xC004F069). Left out with reasons in es/SUMMARY.txt (root_pw, layout, lvm,
+       sys_size, esp_size, soft_when, w_menu, profile/profile_url, owner, organisation, w_first_msg, w_users; domain
+       join / lock-down / kiosk / BitLocker escrow specified only). es's open item fixed by agent 1: the site file and
+       the own software list are read in plans too (CharonWsPlanDialogue.h AskShared / SystemDetails:
+       sets::FindSoftFile + sets::LoadSite) - COMPILED ONLY. Open (es): Charon-Personal.ps1 Apply-w_post_script reports
+       exit 0 for a script ending in a non-terminating error.
+       Host tests now: golden 392, personal 496, reasons 81/81, plan host 5/5, charon-os 134, CharonDosTests 68/68
+       (charondos-r410a1fin, its EFI byte-identical to charondos-r410os1).
+  S5.10 13:05 handed to helper "vr" (two VM proofs, no code edits; evidence r410a-evidence/vr/SUMMARY.txt):
+       r410a-ag5 = T5 rerun 2 with a69v (automatic restart, Ubuntu entry made, growth room freed, data partition);
+       r410a-ag6 = two Windows + vTPM + Windows profile + R3 write-fail N=2 + NVDA once + media copy + Windows' menu
+       default (disc charon-ag69vw-pl.iso). Helper kd: T10 / own list / Fedora in a plan / T8 kept disk (bw1).
+  S5.11 Known issue 3 (Orca silent at the greeter after a text console): cause found by reading the watcher
+       (src/linux/speech.sh charon-audio-share watch): on the console target() is "" and root's Speech Dispatcher plays
+       straight to the card; back at the greeter target() waits for the greeter's PipeWire to HOLD the card, which it
+       cannot while root's speechd keeps the PCM open (speechd src/audio/alsa.c keeps it open between messages;
+       PipeWire's alsa-udev retries a busy card only on a close/attrib event of /dev/snd) - a deadlock, so the greeter
+       stays silent. FIX: when the session in front may open the card and has a sound server but does not hold the card,
+       the watcher stops root's speech (quiet) after 2 s and every 10 s while that lasts; then target() names the
+       greeter's socket and the readers are restarted through it. sh -n of speech.sh and of the generated watcher OK,
+       CharonLinuxScripts.h regenerated, golden 392, plan host 5/5, build a69s compiles.
+       COMPILED ONLY - the proof needs a VM with sound, and the one sound slot is agent 2's audible hypervisor run
+       (2-3 h from about 12:00). Method for the proof: ls's (work/r410a-evidence/ls/SUMMARY.txt TASK 2, vm-audio-meter.py).
+  S5.12 Interim from helper vr (vr/SUMMARY.txt, 12:24): T5 run 2 "growth room covered" seen; two-Windows run:
+       NVDA ONE file up front; R3 RAN AND PASSED ("CHARON media write failed, trying again" twice, then the 7.7 GB
+       media completed); the media COPY for Windows 11 (2) RAN, FAILED: CopyTree failed at once (cause: ProvidePlan
+       reconnects the disk, the first media's volume handle taken before it was stale) and the fallback then failed
+       ("Nie udało się utworzyć partycji Windows w jej zakresie": winpart::Undo removes only the media partition, the
+       Windows partition stayed). FIXED (CharonWsPlanDialogue.h PlaceWindows): source handle looked up after
+       ProvidePlan; status + files traced on failure; on failure the whole range is freed (FreeRange) and reloaded
+       before the download. COMPILED (a69r) - needs one more two-Windows run (vr's current ag6 run continues with the
+       old code: Windows 11 (2) without media, its step must fetch by itself - watch whether it recovers).
+       vr later: T5 run 2 (a69v) RAN AND PASSED so far - (a) "2 z 2" + AUTOMATIC restart (after the 180 s hear-out cap:
+       no synthesizer in the VM), (b) growth room covered and freed, Ubuntu root grown to 51.4 GB, Debian read back,
+       boot order Charon, Ubuntu, Debian as chosen; Ubuntu read-back was in progress -> T5 preset may become proven
+       when vr/SUMMARY.txt confirms. vTPM: NOT VERIFIABLE with the harness - bw.py tpm=1 only writes
+       managedvm.autoAddVTPM="software", VMware added no vTPM (needs vtpm.present + VM encryption); Charon correctly
+       asked the hardware-check question. To prove: give the harness a real vTPM (encrypted VM) or record as a limit.
+  S5.13 12:39 agent 2's audible run stopped in WriteHypervisor: "the range of this system is not in the layout" -
+       CharonPlanLayout.h ComputeLayout added no range for Kind::hypervisor. FIXED (range added after the images);
+       plan host 5/5, a69o compiles; agent 2 reruns. OPEN user request (via agent 2/coordinator): in the everything-
+       first download speak each file's name as it completes, "and N more" when names come faster than speech
+       (agent 2's hv::FetchPackages shows the pattern) - not done.
+  S5.14 kd interim 13:27 (kd/SUMMARY.txt): T10 Ubuntu installer alone RAN AND PASSED (2 defects fixed); Ubuntu
+       installer in a plan + own list with typed sizes + Fedora image in a plan RAN AND PASSED in kd5 (fixes: kernel
+       arg subiquity-storage-version=2 for use_gap, error-commands report plan-failed, Fedora reader question); 2 more
+       defects fixed (default = image entry, CoverGrowthRoom partial gaps; edits in CharonWsPlan.h Finish and
+       CharonWsPlanDialogue.h CoverGrowthRoom - keep them), one re-run pending; T8 kept disk not yet run. kd waits for
+       a machine slot (4 VMware machines up: ag6, hvxp1, s6a1, s7a). kd's builds: charon-win-r410akdN*.
+  RESUME (11:25): running: r410a-ag4 = T5 rerun (a66t, TAK 11:18; wait "Plan zakończony", then read back both
+       systems over SSH: user/test1234, /media/data exFAT 10 GB in both, boot order Charon, ubuntu, debian; bd's
+       r410a-vm/bd-ip.py + b2ssh.py + bd-readback-linux.sh); run23s8 (QEMU with sound, a68w pair) -> compare with
+       r410-run23s6/s7 said.txt. Helpers: es (er's items, evidence es/), kd (T10, own list, Fedora in a plan, T8 kept
+       disk; may use the powered-off r410a-bw1). NEXT for agent 1: combined Windows run (vTPM + Windows profile + R3
+       write-fail N=2 + 7.7 GB image in memory at 12 GB: disc r410a-vm/iso/charon-ag67w-pl.iso, WURL port 8862 served
+       by python.exe) and the T7 rerun for DEFECT 1/2 fixes; known issue 3 (Orca at the greeter) still open; final
+       build + host tests + scan + RELEASE STATE.
+       Known issue 3, hypothesis for the next try (from ls/SUMMARY.txt TASK 2 and rr/SUMMARY.txt sources): on the
+       console Charon's watcher (src/linux/speech.sh charon-audio-share) plays root's Speech Dispatcher straight to the
+       card; speechd's ALSA output keeps the PCM open between messages (speechd src/audio/alsa.c), and PipeWire's
+       alsa-udev retries a busy card only on an inotify close/attrib of /dev/snd/* (spa/plugins/alsa/alsa-udev.c). So at
+       the return to the greeter the card stays busy until root's speechd closes the PCM. ls killed the GREETER's
+       speechd; the untried step is to stop ROOT's speechd (or switch its output module off the card) at the moment the
+       watcher leaves card mode, then (if needed) "udevadm trigger -s sound -c change"; measure with ls's meter method.
+
+=== SESSION 4 (2026-11-24 evening, agent 1) ===
+  S4.1 Helper "rh" (session 3; no SUMMARY.txt; evidence work/r410a-evidence/rh/, machine r410a-rh1 gone, no logger left):
+       plan "CharonDOS + Debian ready image", express, Polish, 6 GB, e1000, build a25t + a24-drv + charondos-r410os1.
+       RAN AND PASSED for what it was to prove: the a25 memory cap put both files on the announced path ("Dopiero po
+       przygotowaniu dysku pobiorę: ... gotowy obraz systemu Debian 13, 3 gigabajty, bo nie mieści się w pamięci" in
+       the summary; "files in memory=0, after the disk is prepared=2"); ZERO keys from TAK (16:35:36) to the report
+       (16:48); report "Zainstalowane systemy: 2 z 2"; 38 DOS programs; after power-on CharonDOS starts by itself, LINUX
+       starts Debian 13 (sign-in as user/test1234 PASS), sudo reboot -> CharonDOS again; systems.txt, first-entry,
+       clock.txt (rtc=utc, Europe/Warsaw) as planned (rh1-debian-readback.txt).
+       Defects seen, FIXED in code after it (session 4, see S4.3): (a) no automatic restart: the report carried the
+       note "Charon nie został ... uruchomiony z partycji EFI planu" (known issue 1; rule.timeout is 0 with CharonDOS
+       first when the firmware ignores Driver####), and any note keeps Charon waiting for a key - the key prompt
+       repeated every 60 s as designed; (b) "Debian 13: ... 64 minuty" - the Report took the LARGEST "finished" stamp of
+       the system, which was the image write step's (before the clock switch) + the 3600 s offset; real about 5 min;
+       (c) "W nim polecenie WINNT uruchamia Windows" in a plan without Windows.
+  S4.2 Golden test 390/2 when started from PowerShell (coordinator's report): cause = THE HARNESS, not the command.
+       tests/charon-install-answers-host.py falls back to C:\Program Files\Git\usr\bin\sh.exe when no sh is on PATH
+       (PowerShell) and started it with the Windows PATH, which lacks Git's usr\bin, so basename and tr were not found.
+       The command itself runs in the Ubuntu installer's live system (subiquity early-commands, full Ubuntu userland
+       with coreutils), not in busybox/d-i, so it was not changed. Fix: run() takes env; the sh run gets the sh's own
+       folder in front of PATH. Now 392/392 from PowerShell and from Git bash.
+  S4.3 Code by agent 1 (host tests green: golden 392, reasons 325/61, personal 338, plan host 5/5 --skip-dos incl. a new
+       check for the duration case of S4.1b in tests/charon-r409-plan-tests.cpp):
+       known issue 1  CharonWsPlan.h finish step: storeWait -> new host.planWaitOn (CharonWsCore.h member, BootMenu.h
+                      lambda: writes this Charon's settings record with the plan's wait into the settings slot files on
+                      the PLAN'S EFI partition, read back, never mirrored to the start medium); new Trouble/Reason text
+                      "the wait ... could not be stored in the settings of Charon on the plan's EFI partition"; log line
+                      either way. Effect: no note in a normal run -> the automatic restart happens.     COMPILED (a26)
+       S4.1b          CharonPlanState.h Report: duration = first step's start .. LAST step's end.      host-tested
+       S4.1c/issue 11 plan::DosCommandsText (summary, report, dialogue): WINNT/LINUX only for systems in the plan;
+                      CharonWsInstall2.h: "Potem odzywa się Narrator" -> "Wybrany czytnik ekranu mówi od pierwszego
+                      logowania." (true whether NVDA or Narrator speaks in Setup).                      COMPILED (a26)
+       known issue 5  CharonWsDetailed.h Hear() and the report's hearOut (CharonWsPlan.h): 1.5 s of UNBROKEN
+                      silence ends the wait (was: the first idle tick after 0.6 s).                     COMPILED (a26)
+       known issue 9  CharonHttps.h Probe: a network failure is tried again, 3 attempts.               COMPILED (a26)
+       known issue 10 CharonWsPlanDialogue.h Build: a set with Windows on 2+ internal disks is refused right after
+                      "Który zestaw?" (and after loading a saved set), nothing written.                 COMPILED (a26)
+       F2/Delete main CharonWsAsk.h AskOne: lists and check boxes get their default whenever the question has one
+                      (was: only detailed rows). Golden unchanged (392).                                COMPILED (a26)
+       block D memory CharonWsPlanDialogue.h MakeFetchList: no 1792 MiB cap; every file the memory map says fits is
+                      REALLY reserved before the summary (smallest first); a file whose memory cannot be had goes
+                      "later" and is announced with its size; FetchUpfront fills the reservation (held::Reserved);
+                      Escape at the typed word gives it back. CharonWsWinUsb.h held::Make: AllocateAnyPages, then
+                      AllocateMaxAddress(~0) (hypothesis for the 3 GB/8 GB failures: VMware's old DXE core gives
+                      "any pages" only below 4 GiB - to be shown by the trace "CHARON held: memory ends at piece").
+                                                                                                    COMPILED (a34)
+       Builds: charon-win-r410a26t + a26-drv (all above but block D), charon-win-r410a34t + a34-drv (+ block D).
+       Build names given to helpers: ls a27-a29, pw a30, dc a31-a33; agent 1 a34+.
+  S4.3b Agent 2's run-23 limits of the reader inside Charon's install dialogue (cause = the dialogue's layout):
+       (a) "where am I" = "Pozycja 1 z 2: Escape cofa ...": the only highlighted row on the screen was the inverse mode
+           line (help line), and the echo row under it starts in the same column, so the reader's generic list
+           (CharonScreenModel.h FindList/GrowList) was those two rows. FIX (CharonWsAsk.h DrawOptions/RestoreBody):
+           Choose and Pick draw their options as an indented list (4 columns, current one "► ", check boxes "[x]") at
+           the bottom of the body above one blank row, only in dialogues that keep a transcript; the echo row no
+           longer carries "◄ ... ►"; the transcript is drawn again when the question ends.          COMPILED ONLY
+       (b) Insert+= ("Charon nie znalazł pliku konfiguracji tego programu ...") on Charon's own dialogue: decided in
+           the reader's entry-info code (CharonResident*), which agent 2 owns and has closed - NOT changed; reported.
+       (c) the workspace count "7 z 16" vs Charon's "6 z 15": the reader counted the title row (column 0) as entry 1
+           of the list (entries' text starts in column 2). FIX (CharonWsCore.h Title, small shared edit): the title is
+           centred (at least 4 columns in).                                                       COMPILED ONLY
+       Proof: agent 2's work/r410-run23.sh (QEMU with sound) - waits for the sound slot (helper ls holds it).
+       F1 sentence evidence (the Windows entries' choice is made in Windows' text boot menu): RAN AND PASSED in helper
+       fp's plan run, work/r410a-evidence/fp/SUMMARY.txt section 6 "F1 (coordinator's extra) - TWO WINDOWS ENTRIES" (line 206; the reader on the
+       text menu heard 0.23-0.32 there); agent 2's own test of it was compile-only - both are true.
+  S4.5 Helper "dc" FINISHED (block C, CharonDOS rows; work/r410a-evidence/dc/SUMMARY.txt; build a32t + a32-drv):
+       19 E rows of spec 5.13 implemented in the detailed mode (CharonWsDosSystem.h namespace dosq, CharonWsDosApps.h
+       per-set lists / FetchChosen); express unchanged (golden 392, ProfileText goldens identical). Left out 4
+       (dos_cp, dos_kbd: emulator work; pc_zone: unverified names; pc_speed: wrong value cuts sound); partly: dos_first
+       without "the system that is first now", dos_win11_boot without "Charon's menu".
+       VM r410a-dc1 (Polish, detailed, every answer non-default), READ BACK from the installed CharonDOS:   RAN AND PASSED
+         dos_first (Charon's menu first), dos_lang (English), program sets (exactly the 7 chosen folders), AUTOEXEC.BAT
+         content and effect (PATH, greeting, date, prompt "C>"), speech (CHARON: rate 70 %, pitch 40 %, volume 80 %,
+         punctuation all; both slots CHARS00E, CRC good), partition 6000 MiB; summary named all 24 changed answers;
+         F2/Delete/Escape/ROZUMIEM worked. Run A found and a32 fixed: the row list was built once (unchecked sets still
+         asked).  CHARONPC.CFG keys written as answered, emulator effect NOT VERIFIED (no Windows 98 medium).
+         COMPILED ONLY: pc_org, second disk image copy, own prompt text, Doszip at start; dos_win11_boot effect NOT
+         VERIFIED. Spec corrected: reader_lead = Charon answers JAWS's start windows (asked for JAWS profiles only).
+       Open (user question): CHARONPC.CFG lang= follows Charon's language, not dos_lang.
+  S4.6 Agent 1 fixes of defects the helpers listed (build a36t compiles; golden 392 after ONE documented re-record:
+       tests/golden/charon-install-answers/image-arch-detailed-groups.out, English interface: "timezone: Europe/Warsaw"
+       -> "UTC", "keyboard: {layout: pl}" -> "us"; old file work/r410a-evidence/golden-before-s4/):
+       - set programs named, not by id, in the detailed summary: detailed::NamesHook (CharonWsDetailed.h ValueText)
+         + catalogue::Names (CharonWsCatalogue.h), wired where PickHook is set.                    COMPILED ONLY
+       - an unanswered keyboard / time zone starts at the one that suits the system language (ask::Suggested in
+         CharonWsAsk.h; was always Polish / Warsaw).                                               host-tested
+       - dos_win11_boot gets "Charon's menu" (dosdefault=charon -> Install-Charon.ps1 -FirstEntry Charon at the first
+         sign-in, CharonWsInstall2.h); dos_first gets "what starts first now" (CharonDOS and Charon appended at the
+         end of BootOrder, CharonWsDosSystem.h).                                                   COMPILED ONLY
+  S4.8 Helper "pv" FINISHED (work/r410a-evidence/pv/SUMMARY.txt; VMware, no sound, Polish, express; a26 and a34):
+       R4 two internal disks: refusal right after "Który zestaw?", 0 grains on both disks; a set without Windows
+          still reaches the summary.                                                                 RAN AND PASSED
+       R5 F2/Delete main questions: typed field PASSED; language list said/restored "English" under a Polish
+          interface (R5a) -> FIXED in CharonWsAsk.h (locale default follows the interface).          fix COMPILED ONLY
+       R1 CharonDOS + Debian image (a34, 12 GB): zero keys TAK -> automatic restart -> CharonDOS; report "Debian 13
+          ... 5 minut", no "Uwaga"; only LINUX named; log "czas oczekiwania ... zapisany w ustawieniach Charona na
+          partycji EFI planu"; charon-settings-a.bin on the plan's partition (wait 0 s: straight to CharonDOS);
+          power-on without CD: CharonDOS in about 10 s. Known issues 1 and the wording: FIXED.        RAN AND PASSED
+          (Without a sound card the report waits its whole 180 s before the restart: SpeechIdle never comes in a
+          machine without audio - not a defect on a computer that speaks.)
+       R6 block D memory (a34, 12 GB): "memory ends at piece 43" (2752 MiB) although the map said 12013 MiB free;
+          the image went "later", announced; no failure after TAK; 2 z 2.        RAN AND PASSED (fallback path)
+          -> NEXT FIX (CharonWsWinUsb.h, after a34): AllocateFromMap - pages taken with AllocateAddress at the top of
+          the free ranges of the memory map itself, highest first; trace "piece above 4 GiB at MiB". COMPILED (a37
+          app objects; the a37 link waited for helper bd's unfinished edit). To be proven by a 12 GB run.
+       R2 failure question (network cut during the image download): the whole question repeated every 90 s without a
+          sound card (60 s + the 30 s hear-out cap) for 6 minutes; hard power-off -> the plan asked again by itself;
+          install entry "Plan instalacji kilku systemów czeka na twoją decyzję"; retry -> 2 z 2.     RAN AND PASSED
+          Error sound: not verifiable without a sound card. Defect R2a "Debian 13 ... 66 minut" (offset added
+          although the stamps were in order) -> FIXED in CharonPlanState.h Report (offset only when the stamps went
+          back) + host check.                                                                        host-tested
+       R3 write retry: no injection existed -> ADDED test-disc switch \EFI\HAK\write-fail-test (N = number of
+          media writes that fail; CharonWsWinUsb.h InjectedWriteFailure). Proof handed to helper "bw" (N=2, N=5).
+  S4.9 Helper "ls" FINISHED (work/r410a-evidence/ls/SUMMARY.txt; final pair a29t + a29-drv; golden re-recorded for
+       grub_tune only, diff ls/golden-diff.txt):
+       known issue 4 spoken progress on a desktop: personal.sh speaks through the Speech Dispatcher of the seat's user
+          (logind), else the user whose sound server holds the card, else root; unit KillMode=mixed + reap;
+          measured (peak meter on the VM audio session) speech 22:13:36-22:14:27 during the unit; unit Result=success.
+                                                                                                      RAN AND PASSED
+       known issue 3 Orca at the greeter after a console: RAN, FAILED (GDM). A manual remedy worked once (restart the
+          greeter's wireplumber, stop its speech-dispatcher); automating it did not bring Orca back in 5 round trips -
+          taken out (attempt kept in ls/). LightDM/MATE NOT RUN. getty on tty2-6: not reproduced with GDM. -> OPEN,
+          handed to helper "rr".
+       known issue 6 Fedora image (whole disk): BiggerEsp() in CharonWsInstall3.h - a 256 MiB ESP with the old volume
+          serial, Fedora's \EFI copied, old entry removed; Charon complete on it, boots through Charon; detailed answers
+          read back, set packages, unit success; reader question no longer offers Speakup; spd-say from
+          speech-dispatcher-utils (packages.fedoraproject.org).                                      RAN AND PASSED
+          Still open: Fedora beside other systems / in a plan (CharonWsPlanDialogue.h:248) - no detailed answers.
+       known issue 11 Linux wording: "gnome gnome", set report by names, speakup local.conf, grub_tune keep/on/off,
+          group count (not a defect).                                                                RAN AND PASSED
+       known issue 5 detailed summary heard whole (22 s) before "Co dalej?".                         RAN AND PASSED
+  S4.11 Helper "pw" FINISHED (work/r410a-evidence/pw/SUMMARY.txt; a26t + a26-drv, 8 GB, e1000, no sound):
+       "Windows 11 + Debian installer" detailed, default Debian, wait 10 s, order Windows then Debian: zero keys TAK
+       21:23:09 -> Debian sign-in 22:14:02.                                                            RAN AND PASSED
+       (a) report "po 10 s", no "Uwaga"; charon-settings-a.bin wait byte 10; MEASURED 10.5-11 s after the plan's
+           restart and 10 s after a power cycle (screenshots 1/s and 0.5/s). Known issue 1: FIXED AND PROVEN.
+       (b) durations against the wall clock: up front 62 s (said 1 min 1 s), disk 5 min 43 s exact, Windows 16 min
+           (15:38), Debian 24 min (23:19), clock switch handled.
+       (c) NVDA fetched up front and installed from the media, no download, exit 0, running.
+           Probe retry: not visible in the trace -> counter added (https::ProbeRetries, trace "CHARON upfront:
+           address probes tried again"); COMPILED ONLY, no network failure in a run to show it.
+       (d) read-back both systems: hostname duet, user, sudo, Europe/Warsaw + RTC UTC, BootOrder Charon, Windows
+           Boot Manager, debian; Windows duet\user, CET; bcdedit firmware order the same.
+       Known issue 8 e1000e = VMware's EFI e1000e, NOT Charon: after ANY reset (Charon's EfiResetCold, vmrun reset
+           hard, a reset 1.5 s after the firmware's start before Charon ran) VMware logs "E1000 rx ring full" and DHCP
+           gets no answer until power off/on; e1000 and vmxnet3 with the same sequence pass; the 7.7 GB image
+           downloaded on e1000e in a first start with 0 ring-full lines. Charon uses only the firmware's protocols
+           (its own NIC drivers load only without SNP). No primary source describes it (two community threads).
+           Release note: genuine limit of that emulation. Charon now says after a DHCP time-out that a computer just
+           restarted should be powered off and on (CharonWsNet.h).                                   COMPILED ONLY
+  S4.10 23:10 helpers now: pw (Windows+Debian 10 s wait, e1000e), bd (T5 at 12 GB with the held-memory trace, T10,
+       data partition, own list, + Fedora image in a plan), bw (T7, T8 shrink refusals, vTPM, profile, T9 serial disk,
+       + R3 write-fail-test N=2/N=5), rr (SOUND SLOT: run23 proof with a38t + a38t-drv, then known issue 3 Orca at
+       the greeter, GDM and LightDM; owns src/linux/speech.sh), er (28 EASY rows, own software list file, site
+       override, block E; owns the generator, personal.sh, Charon-Personal.ps1). Builds: a38t/a38t-drv = tree at 23:05
+       (all agent-1 fixes incl. AllocateFromMap). Name ranges: bd a40-42, bw a45-47, rr a50-52, er a55-59, agent 1 a60+.
+  S4.7 Block D helpers launched 22:50 (wait for machine slots): "bd" (T5, T10, data partition, own list with typed
+       sizes; builds a40-a42) and "bw" (T7, T8 + shrink refusals, vTPM, Windows profile, T9 serial disk; builds
+       a45-a47). Still to launch: EASY-rows + block E helper once "ls" frees the generator; run23 proof once the
+       sound slot is free. User rule since 22:40: every defect found is FIXED and re-run, known issues only for real
+       impossibilities with evidence.
+  S4.4 HELPERS RUNNING (each writes work/r410a-evidence/<name>/SUMMARY.txt; rules: work/r410a-evidence/s4-helper-rules.txt):
+       ls  Linux side: known issues 4, 3, 6, Linux wording of 11, proof of issue 5; OWNS THE SOUND SLOT; owns src/linux/*,
+           tools/gen-charon-linux-scripts.py, tools/charon-install/*, CharonWsInstall3.h, planrun::SystemDetails.
+       pv  VM proofs with a26 (no edits): R1 CharonDOS+Debian image (automatic restart, wait stored, duration,
+           wording), R2 failure question minute signal + "a plan is waiting" notice, R3 write retry, R4 two disks,
+           R5 F2/Delete main; R6 = block D memory with a34 (12 GB).
+       pw  Windows 11 + Debian detailed with 10 s wait (wait in force, durations, NVDA on media / Probe retry,
+           read-back) + known issue 8 e1000e investigation (may fix Charon network files only, build a30).
+       dc  block C CharonDOS rows (CharonWsDosSystem.h, CharonWsDosApps.h), one VM read-back run when a slot is free.
+       NEXT after ls ends (it owns the generator): helper for the remaining EASY rows (inventory 2026-11-24: 104 EASY
+       ids in spec section 5; 40 in the generator; of the 64 others 19 are CharonDOS (dc), 17 administrator (5.12,
+       block E), 28 personal: extra_langs tz_other root_pw layout lvm sys_size esp_size w_bitlocker speech_lang volume
+       punct caps w_keyecho components u_mirror u_codecs u_drivers upgrade_now popcon w_menu ssh_key soft_when
+       w_telemetry profile profile_url power_plan w_key help_tool - some were left out as unverified in B2.7), the
+       user's own software list file, the site override, then block E; then block D's T5/T7/T8/T9/T10/TPM/profile
+       runs when machines are free.
+
+Charon r410 - install side ("agent 1") - results. Not released, not packaged.
+Nothing below ran on a physical computer. Three labels are used: RAN AND PASSED / COMPILED ONLY /
+NOT VERIFIED. Brief: work/r410-agent1-brief.txt; later instructions: work/r410-agent-followups.txt.
+
+=== RESUME HERE - SESSION 3 (2026-11-24; read this block first, the older block below is history) ===
+State when session 3 started: machine r410a-db1 (WITH sound, the dual-boot detailed plan, attempt 2, confirmation
+  typed 10:37:59) was still running, driven by a helper agent of session 2; image server on port 8797 (its).
+Session 3 so far:
+  S3.1 Block A, code (host tests green, build work/charon-win-r410a15t = trace app; the a15 DRIVER did not build
+       because of agent 2's unfinished edit in CharonResidentModel.inc:883 "kept set but not used" - build the driver
+       again later into charon-win-r410a15-drv; a14-drv is used meanwhile):
+       - D3 was INCOMPLETE as left by session 2: MayHoldSystem() looked only at steps in state "failed", but "skip this
+         system and continue" turns the step to "skipped" (plan::Decide), so exactly the path of the VMware data loss
+         still offered the range for freeing (the old host test even asserted it). Fixed: failed OR skipped with the
+         reasons reported / budgetStarts / budgetTime. New host checks in tests/charon-r409-plan-tests.cpp (skip, stop,
+         both budgets, and that a Charon-side failure still leaves a leftover).
+       - D5: a freed range is named in the report ("Freed space, reserved before for X: N; its partition was removed,
+         the space is unallocated." / Polish) and in log.txt; log.txt also gets a line for a range that may hold a
+         system; the fixed English log lines of the plan are now in the interface language (LogLine(pl,en));
+         step duration across the clock switch: plan::Report(..., freedMask, clockShift) adds the zone's offset for
+         the first installed system (ClockSwitcher) and says "the time was not measured ..." when it cannot be known;
+         Install-Charon.ps1 -Status reports the boot entries "Charon" / "Charon czytnik" with their BootOrder position;
+         addon.txt / installed-by.txt say r410 (4 scripts).
+       Host tests: tests/charon-r409-plan-host.py 7/7 (plan core 243 checks), golden 392, plan reasons 282,
+       personal 330.
+  S3.2 Block A, VM proofs: helper agent running (machines r410a-pa1..pa3, VNC 5940/5942/5944, image server port 8801,
+       evidence work/r410a-evidence/pa/SUMMARY.txt): RUN 1 = D1, RUN 2 = D3 with an injected first-start error,
+       RUN 3 = D5 (freed line, log language, duration).  State: RUNNING - results not yet in this file.
+  S3.2 RESULT (helper finished 12:28; evidence work/r410a-evidence/pa/: SUMMARY.txt, run1/, run2/, run2/stop-here/,
+       run3/; build a15t + a14-drv; machines destroyed, servers stopped):
+       RUN 1, D1 - plan "CharonDOS + Windows 11" from the CD, Polish, express:                    RAN AND PASSED
+         no key between the confirmation and the report (29 minutes); report "Zainstalowane systemy: 2 z 2";
+         install-charon.log "Installed Charon: Boot0004 loads \EFI\HAK\HAKBOOT.EFI ... plan: step 2 reported as
+         done"; both systems start. -Status: "Boot entry Charon: Boot0004, position 1 in BootOrder" (agrees with
+         bcdedit /enum firmware); addon.txt and installed-by.txt say r410. Duration across the clock switch:
+         "Windows 11: ... zainstalowany, 22 minuty" (finished 2301 s BEFORE first in plan-done.txt; wall clock 21:39).
+       RUN 2, D3 - the same plan with an injected first-start error (test disc only):             RAN AND PASSED
+         "skip this system and continue": NO free-or-keep question; report line "The space of Windows 11, 98
+         gigabytes: the installer worked there ... Charon removed nothing from it."; log line "the range of Windows
+         11 may hold an installed system ..."; EFFECT: Windows' four partitions unchanged, Windows starts and can be
+         signed in to. "stop here" (snapshot at the question): the same. Before the fix this path removed Windows.
+       RUN 3, D5 - "Windows 11 + Debian", Polish, image server cut, skip, "zwolnij":
+         freed line in report.txt, "zwolniono zarezerwowane miejsce ..., megabajtów: 78773" in log.txt, the range is
+         unallocated (fdisk in Debian), log.txt Polish throughout (6 lines).                      RAN AND PASSED
+         Debian's duration: FAILED in a15 ("czas nie został zmierzony"): ClockSwitcher() took Windows, whose step
+         had failed on Charon's side and never ran. FIXED after the run (CharonPlanState.h: a step that failed in
+         Charon's own work is not the switcher; host check added).                                host-tested only
+       Not seen in any run: the log lines "program rozruchowy wrócił" (unproven wording).
+       Oddities reported: with e1000e the firmware network died in the first start once ("E1000 rx ring full");
+       CharonDOS counted as done with "programs installed 5, failed 33"; the report still says "Windows 11: NOT
+       installed" above the corrective line (wording); without a sound card the trace has no "menu announce" lines.
+  S3.3 USER ANSWERS arrived: work/r410-install-user-answers.md (binding; seven answers + the new request "a plan
+       downloads everything first"). Done in code so far (host tests green; VM: NOT RUN):
+       1 failure question: plan::Continue uses ChooseWaiting (CharonWsPlan.h): no time limit, an error sound and
+         the whole question again every minute until a key comes.                              COMPILED ONLY
+       2 ONE identical computer name on all systems of a plan (CharonPlanModel.h: no "-<id>" ending, the
+         duplicate-name refusal is gone; dialogue AskSystem).                                   host-tested
+         The boot-entry ORDER question: given to the coding helper below (not done yet).
+       3 sd_rate and sd_pitch left the SHARED block (generator SHARED dict): 16 shared questions now, rate and pitch
+         are asked per Linux system; nothing writes NVDA's or Orca's own configuration.         host-tested (golden 392)
+       5 personal.sh speech_for_progress(): Speech Dispatcher + eSpeak NG are installed before the software sets when
+         spd-say is missing (same package names speech.sh has used since r409).                 dry-run tested only
+       4 six undocumented Windows settings are IN THE BUILD FOR THEIR TRIAL ONLY (w_ext, w_hidden, w_explorer_start,
+         w_start_sound, w_numlock, w_onedrive: generator rows marked UNOFFICIAL in tests/charon-r410-questions.txt,
+         handlers Apply-w_* in Charon-Personal.ps1). The user's rule: each stays only when a VM run shows the effect.
+         NO VM RUN YET - before any release: prove each (block B fresh Windows run) or set verified=False again.
+         Windows question count with them: 41 (Linux 41). Golden re-record: windows-detailed-no-reader-server.answers
+         + 6 default lines (old file: work/r410a-evidence/golden-before-s3/).
+       F2 / Delete in TYPED fields (block C): Prompt() in the shared CharonWsCore.h got PromptDefault() (two small
+         additive edits): while a question's typed field is asked, F2 says its default and Delete puts it back.
+         COMPILED ONLY (host harness compiles it; no vector presses the keys).
+       CharonDOS mode question (block C): dossys::Run asks "How do you want to install CharonDOS?" (express = the
+         r409 dialogue; detailed adds "What starts first?" CharonDOS / Charon's menu, and "Language of CharonDOS:"
+         Charon's / English / Polish - spec 5.13 rows dos_first, dos_lang; applied through the boot entries).
+         Not asked on the "CharonDOS + Windows 11" path. The other CharonDOS rows (size, program sets per program,
+         AUTOEXEC, prompt, speech, the CharonPC profile rows) are NOT done.            COMPILED ONLY (a20t)
+       Newest build with everything of S3.1-S3.5 and this list: work/charon-win-r410a20t (trace app). a16t, a18t,
+         a19t were deleted as superseded. No a2x driver exists: agent 2's CharonResidentModel.inc:900 ("kept set
+         but not used") fails every driver build since 10:50 - use charon-win-r410a17-drv or a14-drv.
+       HOST MEMORY: 32 GB, about 9 GB free with five machines running - no further machines until some finish.
+  S3.4 Saved answer sets for PLANS (block C/D, also the base of T9): new pure header src/efi/CharonPlanSets.h
+       (SetText / Inspect / LoadSetText / FinishLoad; host test TestPlanSets in tests/charon-r409-plan-tests.cpp:
+       shared part once, per-system parts, password=ask, no hash/secret/run keys; unattended variant with
+       [disk.1] serial and clear password only after the typed risk word; refusals). Dialogue
+       (CharonWsPlanDialogue.h): OfferPlanSets() before "Which set?" ("Load a saved plan?" - lists sets that name two
+       or more systems; asks only the password unless the file holds it; TPM/silent-system checks repeated; a set
+       with [disk.1] finds its disk by serial only via plan::AuthoriseDisks) and OfferSaveSet() in detailed mode
+       after the disk is chosen (no / yes / yes for an unattended run on this disk's serial). The typed word is
+       always asked.                                                        host-tested core; dialogue COMPILED ONLY
+  S3.5 UX defects of the batch 4 dialogue fixed: O1 (shared block asked "<set>: which programs?" for unchecked sets:
+       the generator keeps conditions that speak only of shared answers), O3 (keyboard help text), O4 (question
+       marks in the "cannot be applied" note), "medium cannot be written" is said before the set's name question.
+  Host tests now: golden 392, personal 330, plan reasons 283, plan host 5/5 with --skip-dos (plan core 250 checks).
+  Builds: charon-win-r410a16t (plan sets + UX, before the user-answer edits); a17t/-drv were made by the session 2
+       helper of r410a-db1 (its EnsureNetwork fix in InstallDebian); charon-win-r410a18t / a18-drv = everything
+       above (check that both exist; the driver build fails whenever agent 2 has an unfinished edit).
+  HELPERS RUNNING (each writes its own SUMMARY; a successor cannot talk to them, only read their files):
+       - block A VM proofs: work/r410a-evidence/pa/SUMMARY.txt (machines r410a-pa1..3, server ports 8801/8805)
+       - session 2's dual-boot proof: work/r410a-evidence/b4/SUMMARY.txt (r410a-db1 WITH sound, port 8797). Its
+         attempt 2 FAILED the zero-key proof at the Debian step (no network after the restart: InstallDebian never
+         called EnsureNetwork - fixed; VMware e1000e gets no DHCP answer after the first start - use e1000).
+       - coding helper "everything first" + boot-entry order: design and state in work/r410a-evidence/ef/
+         (DESIGN.txt, SUMMARY.txt); machines r410a-ef1/ef2, server port 8811, builds charon-win-r410e*.
+         It OWNS CharonWsPlanDialogue.h, CharonWsPlan.h, CharonPlan*.h, CharonWsWinUsb.h, CharonWsWinPart.h,
+         CharonWsImages.h until it reports: do not edit those meanwhile.
+       - block B fresh-install proofs (launched 11:52): work/r410a-evidence/fb/SUMMARY.txt (machines r410a-fb1..6,
+         VNC 5970-5980, server port 8821, ONE machine with sound; build a20t + a17-drv): fresh Debian GNOME detailed
+         with sound, fresh Windows with the six unofficial settings (verdict per setting), Debian KDE, software sets on
+         Ubuntu/Fedora images + speech_for_progress, Xfce/Cinnamon if time, Charon's reader on the Windows text boot
+         menu (agent 2's newest driver), the CharonDOS mode question.
+  COORDINATOR LIMITS (12:03, binding): keep at least 80 GB free on the host disk (132 GB at that moment; each
+       installed machine is about 33 GB), at most ONE machine with sound over all helpers, no new helper with machines
+       until a running one is finished and removed. Done: r410a-db1 destroyed (evidence collected), old scratch ISOs
+       deleted (164 GB free), every helper told: one machine at a time, df check before each start.
+       r410a-db2 belongs to session 2's helper (attempt 3 of the zero-key proof): delete it once b4/SUMMARY.txt
+       shows its result and it is powered off.
+  COORDINATOR'S FIX LIST after the dual-boot proof (12:35, binding; 8 items + the final re-proof): items 1-5 (report
+       waits for a key; menu wait not stored; one failed disk write ends the Windows step without the failure
+       question; Escape forgets the waiting plan; e1000e DHCP after a warm restart) were handed to the coding helper
+       "ef" together with the final proof run (Windows 11 + Debian, detailed, WITH sound when the slot is free, zero
+       keys from the typed word to the default system's login, everything-first, read-back from both systems).
+       Items 6-8 (espeakup installed though Speakup unchecked; Fenrir silent on the console beside a graphical
+       sign-in; kbd; the "Windows Home" wording; why NVDA's installer could not be put on the Windows media; review
+       of F1/F2) went to a CODE-ONLY helper "rs" (no machines; edits only src/linux/speech.sh, personal.sh,
+       firstboot.sh, Charon-Personal.ps1, Charon-Readers.ps1, reader resolution; copies of the old files in
+       work/r410a-evidence/before-rs/). Its fixes will need a VM run WITH sound (Fenrir on tty) afterwards.
+       Leftovers to delete at the very end: work/win11ent-dl-r410 (after the last Windows proof), superseded ISOs in
+       work/r410a-vm/iso. (r410a-db2 was removed by its helper.)
+  S3.6 "A PLAN DOWNLOADS EVERYTHING FIRST" + BOOT-ENTRY ORDER - coding helper "ef" finished (its report: evidence
+       work/r410a-evidence/ef/DESIGN.txt + SUMMARY.txt; old files in work/r410a-evidence/before-ef/; builds
+       charon-win-r410e1t..e4t, e2t ran in the machines, e4t = its final tree; machines and server removed).
+       New pure header src/efi/CharonPlanFetch.h; changed CharonPlanModel/State/Sets.h, CharonWsPlan.h,
+       CharonWsPlanDialogue.h, CharonWsWinUsb.h, CharonWsWinPart.h, CharonWsImages.h, CharonWsSeed.h, additive in
+       CharonWsInstall2.h (NvdaOntoMedia reuses the file on the media when its SHA-256 matches) and the shared
+       CharonWsCore.h (TraceSay: trace builds write every workspace sentence to serial as "ws say: ...").
+       (a) all files fetched after the typed word, one after another (the HTTP client is blocking: NOT parallel), one
+           combined progress; size checked for every file, SHA-256 only for NVDA.               RAN AND PASSED (partly)
+           ready images: COMPILED ONLY; two Windows: their images are announced as "after the disk is prepared".
+       (b) the disk changes only afterwards; (c) installs back to back, each step logs "downloads nothing": PASSED
+       (d) files wait in RAM only (reserve max(512 MiB, free/8)); waiting on Charon's medium is NOT built; a file
+           that does not fit is named with its size BEFORE the confirmation and fetched after step 0, still before
+           the first installer. The real 8.2 GB Windows image did not fit in a 6 GB machine: that announcement path
+           is what ran. The 8 GB image HELD IN RAM (needs about 11 GB): NOT RUN.
+       (e) failure before the disk is touched: server stopped during file 1 -> "Pobieranie plików przed zmianą
+           dysku nie powiodło się ... Plan nie ruszył. Na dysku nic się nie zmieniło."; the 120 GB disk had 0
+           grains written; memory released.                                                    RAN AND PASSED
+       (f) phase durations in report.txt ("Pobieranie z góry ... plików 3, 156 megabajtów, czas 1 min 3 s / ...
+           Windows 11 ... 14 minut / Debian ... 6 minut").                                      RAN AND PASSED
+       Proof plan: Windows 11 + Debian installer, real image, detailed, no sound, e1000, build e2t: no key between
+           TAK and the report; no server request after the image's single GET; both systems start.
+       Boot-entry order (user answer 2): asked in detailed mode, [plan] boot_order (plan file version 2 only when
+           the key is present; older Charon refuses it), applied to systems.txt and BootOrder after Charon, named in
+           summary and report; chosen "Debian, then Windows 11": efibootmgr BootOrder 0004,0006,0005 + plan log +
+           systems.txt.                                                                         RAN AND PASSED
+           (the opposite order was not run; Debian's installer puts itself ahead of Windows anyway.)
+       Coordinator's list, state in the tree (ALL COMPILED / host-tested only, NOT run in a machine):
+         1 end of plan: report heard out, "in 15 seconds I restart ... any key opens the workspace", cold restart into
+           the default system; a FIXED 15 s, not the chosen wait. With a failed/skipped step it waits and repeats.
+         2 the report names the wait really in force when it could not be stored; storing it is NOT done (and the
+           note appeared in a normal run: probably Charon runs from memory, so the chosen wait is never stored).
+         3 winusb::WriteAt retries 5 times, 2 s apart, says "write error" unless the volume is full. NOT done:
+           device handle after a controller reset, the reason kept across a restart, a guaranteed failure question.
+         4 the install entry names a waiting plan and offers its question again.
+         5 e1000e DHCP after a warm restart: NOT investigated.
+       The final proof run WITH sound (zero keys to the default system's login, everything-first, read-back from
+       both): NOT RUN - the helper's context ended.
+       Known duplication: planrun::RunDebianLocal/DebianUrl copy install::RunDebian's addresses and start sequence.
+       Host tests reported: golden 392, plan reasons 325 (61 reasons), personal 338, plan host 5/5 --skip-dos
+       (plan core 301 checks; the full 7/7 was last run before the final WinUsb edit).
+  S3.7 Code-only helper "rs" finished (report; old files work/r410a-evidence/before-rs/, its stub tests
+       work/r410a-evidence/rs-host-tests/, 33 ok). ALL host-tested with stub commands only, nothing in a machine:
+       A espeakup + speakup modules although Speakup was unchecked: cause = Debian's installer itself (Charon makes it
+         speak with speakup.synth=soft; espeakup-udeb's finish-install.d/06espeakup installs espeakup into the target
+         and rootskel registers speakup_soft for the initramfs). speech.sh now, in an installer's chroot on apt
+         systems: purges espeakup when Speakup was not checked (only if the simulated purge removes that one
+         package), removes the modprobe file, deletes the speakup_* lines from /etc/initramfs-tools/modules and
+         runs update-initramfs; logged. Sources: salsa.debian.org a11y-team/espeakup, installer-team/rootskel,
+         debian-installer-utils, base-installer (URLs in the script's comment).
+       B Fenrir silent on a console beside LightDM: cause = charon-audio-share took a sound server that only held
+         /dev/snd/seq for "has the card" and sent Fenrir to the greeter's server. New: hascard (controlC*/pcmC* and
+         the user may open the card now), seatuser (seat0's active session), target() = the user in front, else a
+         user whose server has the card, else the card itself; 1 s polling; kbd installed with a console reader.
+         Unproven: heard at tty2 before a sign-in; a few silent seconds at each switch; PulseAudio desktops.
+       C "which one speaks" for Orca + Fenrir: by design (one desktop + one console reader), nothing changed.
+       D "(not honoured by Windows Home)" only on Home editions (EditionID Core*).
+       E NVDA's installer not on the Windows media: a connect time-out (DNS or TCP) on github.com or its redirect
+         host; https::Probe has NO retry (CharonHttps.h:519-527) while Download retries six times. NOT FIXED
+         (suggestion: retry connectFailed two or three times). Probably the e1000e network dying.
+       F1 reviewed: EnsureNetwork stood BEFORE the "files already on the EFI partition" branch, so an up-front plan
+         would stop for a network it does not need - MOVED by me to just before the download branch (a22).
+       F2 hardened: after the first line that hits the 20 s limit the later lines are sent without -w.
+       Open, noticed by it: on a system with only a desktop reader root's spd-say in charon-personal.service has
+         no sound server to reach, so the spoken progress is probably silent there too.
+  Host tests on the final tree (13:05): golden 392, plan reasons 325 (61 reasons), personal 338, plan host 7/7
+       (plan core 301 checks).
+  BUILDS NOW: work/charon-win-r410a22t (trace app) + charon-win-r410a22-drv = everything above. Kept besides:
+       a14t/a14-drv, a20t (block B helper tests it). All other a*/e* build folders were deleted.
+  FINAL PROOF HELPER "fp" launched 13:06: work/r410a-evidence/fp/SUMMARY.txt (machine r410a-fp1, VNC 5990, server
+       port 8831, sound when the slot is free; build a22): task A = the coordinator's final dual-boot proof
+       (everything-first, zero keys to Debian's login, read-back from both, espeakup/Fenrir checks); task B = saved
+       plan set save / load / refusal on another disk serial (r410a-fp2).
+  S3.8 BLOCK B - fresh-install proofs, helper "fb" finished 14:36 (evidence work/r410a-evidence/fb/SUMMARY.txt, a
+       table per task; machines fb1-fb6 destroyed). Builds: tasks 1-2 a20t + a14-drv, tasks 3-5 and 7 a21t + a21-drv.
+       1 FRESH Debian installer, detailed, Polish, GNOME, WITH sound: 22 of 23 answers read back PASS.   RAN, 1 FAIL
+         FAIL numlock=on on GNOME 48/Wayland (keys stored, no effect) -> the question is no longer asked for GNOME
+         (generator: numlock desks 'mc'). F2/Delete in a typed field, in a detailed list, D, F3: PASS (F2/Delete do
+         nothing in the MAIN questions). Audible: group list, opened group, typed-word confirmation.
+         NOT audible: the SUMMARY (defect B-F1: CharonWsDetailed.h Summary/Say/Hear(900) is cut by "Co dalej?").
+         Software set installed (dpkg) but its progress was NOT SPOKEN: root's spd-say in the unit never returns on
+         a desktop system whose session owns the card (defect B-F2; the timeout only bounds it to 20 s a line).
+       2 FRESH Windows 11 Enterprise evaluation, detailed: 8 PASS + 1 partly of 9.                      RAN AND PASSED
+         THE SIX UNOFFICIAL SETTINGS, effect measured after restart and sign-in:
+           w_ext TAKES EFFECT; w_hidden TAKES EFFECT; w_explorer_start TAKES EFFECT (Win+E opens This PC);
+           w_start_sound TAKES EFFECT (four starts on/off/off/on, sound only in the "on" starts);
+           w_onedrive TAKES EFFECT for the installed user (later accounts get OneDrive again: the default user's
+             Run entry stays);
+           w_numlock TAKES EFFECT AT THE SIGN-IN SCREEN ONLY - in the user's session Windows puts its own value back.
+             The question's text says "at sign-in", so it stays; say so to the user (question below).
+         Per the user's rule all six stay in the build.
+       3 FRESH Debian installer, KDE Plasma: 10 of 11 PASS; the /etc/xdg cascade reaches a fresh user (sounds,
+         powerdevil). FAIL dark=yes (Plasma's first sign-in writes its own colours) -> no longer asked for KDE
+         (generator: dark desks 'gc').                                                                   RAN, 1 FAIL
+         New defect B-F4: on Debian charon-personal.service ends "Failed with result 'timeout'" 90 s after the script
+         (the speech-dispatcher started by spd-say stays in the unit's control group). NOT FIXED.
+       4 Software sets: Ubuntu 26.04 image: packages, "Speech Dispatcher installed for the spoken progress", unit
+         2 min 17 s.                                                                                    RAN AND PASSED
+         Fedora 45 image: FAILED as installed (defect B-F6: the image's EFI partition is 100 MB, Charon's copy stops
+         part-way, nothing of the first-start work arrives - CharonWsInstall3.h about 469; the spoken note does not
+         say it). By hand: dnf packages PASS; speech_for_progress FAIL (B-F7: spd-say is in another Fedora package,
+         probably speech-dispatcher-utils - not confirmed). Debian: covered by task 1.
+       5 Xfce + Cinnamon (one Debian with both): 7 read-backs PASS; Cinnamon's values not seen in a Cinnamon session.
+       6 Charon's reader on the Windows classic TEXT boot menu, with sound, agent 2's b26t app + driver:
+         as Driver#### add-on: SILENT in VMware (its firmware does not load Driver#### options - known since r409);
+         through Charon's boot entry: SPEAKS - "Menedżer rozruchu Windows: Windows 11, domyślna, start za 19 sekund",
+         entries read on Down/Up, Tab reads "Windows Memory Diagnostic". Observations for agent 2 (R1-R5 in the
+         SUMMARY: stray " p " after each entry, "en" tag on Polish lines, countdown said once, the menu lasted 4 s
+         instead of 20 s once, risk sound on Memory Diagnostic).                                        RAN (observed)
+       7 CharonDOS mode question: detailed (Charon's menu first, English under a Polish interface): bcfg boot dump
+         Option 00 Charon, 01 CharonDOS, English greeting; express unchanged.                           RAN AND PASSED
+       Smaller, open: "for: gnome gnome" in two report lines; the group count before a set is ticked; set programs
+       named by id in the summary; Fedora's reader list offers Speakup after saying it has none; brltty.cfg sets
+       GRUB_INIT_TUNE although grub_tune=no; English interface keeps Polish keyboard / Warsaw as defaults.
+       After the two generator edits: golden 392 (tree builds: not rebuilt after them - next build a23).
+  S3.9 Coordinator 14:40: (1) agent 2 finished; its builds b34/b34t (+ -drv); app and driver must be one build ->
+       a23t + a23-drv are such a pair from the current tree. (2) two more observations wanted from a plan run, sent
+       to helper "fp": D4 (device list after the finish step without a restart shows and starts the new systems) and
+       F1 (two-entry Windows: Charon says the choice is made in Windows' text boot menu) + the reader on that menu.
+       (3) settings record V14 "CHARS00E": tools/charon-os (linux/charon-settings, windows/Charon-Settings.ps1,
+       tests) still knew versions up to C and treated D as "newer" -> code-only helper "os" launched (old files
+       work/r410a-evidence/before-os/; it also checks src/dos/charon_cmd.cpp and builds CharonDOS into
+       work/charondos-r410os1). FINISHED 14:55, host tests only (nothing in a machine):
+       tools/charon-os (charon-settings, Charon-Settings.ps1, generated CharonOs.Fields.ps1, tests) know formats D
+       and E with every V13/V14 field (formatGroups, profile, profileItems, readerBar, absoluteColours), refuse
+       beyond E, and keep every byte they do not change; src/dos/charon_cmd.cpp accepts D/E and rewrites a record
+       from its raw bytes in its own format (before: it re-encoded everything as C, which would have wiped the new
+       fields). Beyond the coordinator's note the header also needs the masks byte36 & 3 and byte38 & 3, and byte 41
+       bit 7 (extraLinger) is valid from format C on - the tools had rejected the DEFAULT record (153) as invalid.
+       Tests: tools/charon-os/tests/run-tests.py 134 passed (python 56, powershell 58, shared 20; before the edits
+       it crashed after 9 PASS / 3 FAIL because the header already wrote E); tests/CharonDosTests.py 68/68; golden
+       392; personal 338. New CharonDOS build: work/charondos-r410os1 (CHARONDOS.EFI compile/link only).
+       Left as it was: release strings "r409" inside tools/charon-os.
+  S3.10 16:05 Fedora image: the detailed questions and software sets are NOT asked for the Fedora ready image any
+       more; Charon says before the questions that the image's 100 MB EFI partition cannot hold its files
+       (CharonWsInstall3.h, and planrun::SystemDetails for a Fedora image in a plan). COMPILED (a24), golden 392.
+       This is the honest refusal, NOT a fix: carrying Charon onto that image is still open.
+       Coordinator 16:06 (user): "finish EVERYTHING, then the release" - nothing is cut from the brief; whatever is
+       unproven at the end is hidden or labelled and a RELEASE STATE block goes to the top of this file.
+       Helper "rg" launched 16:09 (work/r410a-evidence/rg/SUMMARY.txt, machine r410a-rg1, no sound, build a24t +
+       a24-drv + charondos-r410os1): run 1 = the OFFERED set "CharonDOS + Debian ready image" through the new
+       up-front path (never run since the change); run 2 = the Fedora note; run 3 = the failure question's repeat.
+  S3.11 FINAL PROOF (helper "fp", evidence work/r410a-evidence/fp/SUMMARY.txt, build a22, machines destroyed):
+       TASK A Windows 11 + Debian installer, detailed, Polish, WITH sound (attempt 2, 8 GB):     RAN AND PASSED
+         0 keys from TAK (14:29:56) to the Debian sign-in screen (15:01:11): up-front 3 files 57 s; disk + Windows
+         image 3 min 58 s; Windows 14 min ("Windows media ready, no download"); Debian 9 min ("installer from local
+         files, no download"); report; "Za 15 sekund uruchamiam komputer ponownie; wystartuje Debian"; restart.
+         Read-back 31 PASS / 1 FAIL / 2 not applicable; FAIL = the wait of 10 s is not in force (report: 5 s).
+         hostname "duet" on both; boot order chosen "Windows 11, potem Debian": BootOrder 0004,0005,0006,
+         systems.txt, the list of Charon. The NVDA installer was on the media; the "Windows Home" ending is gone.
+         Readers: espeakup not installed, no speakup modules, kbd installed (speech.log lines); Fenrir on a text
+         console before sign-in HEARD; Orca back at the greeter SILENT (the WirePlumber of lightdm keeps only the
+         dummy sink); Orca on the desktop HEARD; Fenrir on consoles with a user signed in HEARD; NVDA HEARD.
+         Attempt 1 (12 GB, the 8 GB image promised to memory): FAILED before the disk was touched ("brakuje pamieci
+         na pliki planu") - held::Make (CharonWsWinUsb.h) cannot allocate what ramdisk::FreeMemory promised.
+       F1 sentence on a two-entry Windows: PASSED ("System wybierzesz w tekstowym menu rozruchu Windows, ktore
+         czytnik przeczyta; Charon niczego nie zapisuje"); the reader on the text menu speaks (heard 0.23-0.32).
+       TASK B saved plan set (writable USB medium): save PASSED (DUET.INI: [plan] boot_order, [shared],
+         [system.win], [system.debian], [secrets] password=ask, no hash; every shared key is repeated in each system
+         section); load PASSED (only the password asked, then disk, summary, TAK; ran to the END without a key,
+         31 min). The unattended variant was NOT offered (no disk serial in VMware): NOT RUN, refusal NOT RUN.
+       D4: after the finish step, without a restart, the device list shows the new systems (firmware names) and
+         Enter starts Debian: PASSED (Windows entry not tried). A key during the report opens the workspace but
+         Charon does not say that the restart was called off.
+       Helper "rg" (work/r410a-evidence/rg/): "CharonDOS + Debian ready image" FAILED in the up-front phase at 6 and
+         8 GB (the 3 GB image promised to memory, allocation failed, disk untouched); Fedora note PASSED (but it
+         comes after the common questions); failure-question repeat NOT RUN.
+       FIX after both (a25): memory is promised only up to 1792 MiB free (1280 MiB of files); larger files take the
+         announced "after the disk is prepared" path. Helper "rh" reruns that plan (r410a-rh1, build a25t).
+  NEWEST BUILD: work/charon-win-r410a25t (app) + charon-win-r410a24-drv. Next free: a26*.
+Downloads: work/win11ent-dl-r410 still needed (block A runs, block B fresh Windows, the helpers).
+
+=== OLDER RESUME BLOCK (session 2, 2026-11-24) ==============================================
+Tree state: BUILDS CLEAN (app + driver, no workaround flags): work/charon-win-r410a14t (trace), charon-win-r410a14-drv
+  (a14 = a12 + the five script fixes of the batch 2 VM proofs, built by the helper; a12 = a11 + the shared block of plans, batch 4; a11 = a9 + plan fixes; older: a9 batch 3, a7 batch 2)
+  (a11 = a9 + the plan fixes D1-D3 of batch 1; a10 was built by the helper agent of the VM proofs)
+  (with the software sets of batch 3; r410a7t/-drv = batch 2 only, the build the first VM proofs started on).
+  Fix of the morning's build break (reported by agent 2): (1) CharonWsDetailed.h includes CharonVoiceRest.h itself;
+  (2) ask::Question got default member initialisers in r410, which made "static Question asked[N];" in
+  install::Classic and planrun::AskSystem a guarded dynamic initialisation (__cxa_guard_*): every member now has an
+  initialiser and both arrays are "={}" - no -fno-threadsafe-statics. The generated header is replaced atomically.
+Host tests, all green: python3.15 tests/charon-install-answers-host.py = 392 (was 316; the re-record is documented
+  in batch 2 below), tests/charon-r410-plan-reasons-host.py = 282, tests/charon-r410-personal-host.py = 330.
+After editing the question table: python3.15 tools/charon-install/charon_questions.py, then
+  python3.15 tools/gen-charon-linux-scripts.py (personal.sh is compiled in), then the three host tests, then a build
+  into a NEW directory (next free name: charon-win-r410a15*; check which exist, helper agents build too).
+Next step: collect the helper agents' VM results (work/r410a-evidence/b2/SUMMARY.txt = batch 2 and 3 proofs,
+  work/r410a-evidence/b4/SUMMARY.txt = the dual-boot detailed plan, machine r410a-db1 WITH sound), write them into
+  B2.9, B3.5, B4.6, then the parts listed as not done, then batch 5 (administrator layer: nothing started).
+Machines: batch 1 proofs are finished and their machines deleted. A helper agent runs the batch 2/3 proofs with
+  r410a-d1, r410a-i1, r410a-w1 (all without a sound card); its running notes: work/r410a-evidence/b2/SUMMARY.txt.
+Downloads: work/win11ent-dl-r410 (Windows 11 Enterprise evaluation, Microsoft fwlink) - still needed for the Windows
+  proof of batch 2; delete after it.
+Web verification (primary sources, URLs per item): work/r410a-evidence/verify-linux.txt (28 items),
+  verify-windows.txt (28 items), verify-desktops.txt (boot menu policy, 7 desktops x 15 items, login screens, Orca).
+User additions of 2026-11-24 (binding): (1) Windows text boot menu by default - implemented, see B2.6;
+  (2) per-desktop Linux questions with the group x system table - implemented as far as verified, see B2.7.
+=============================================================================================
+
+BATCH 1 - r409 open items
+-------------------------
+B1.a Build tools no longer write host paths into binaries              RAN AND PASSED (host)
+     tools/charon_private_paths.py (prefix maps for the compilers + a check that fails the build),
+     used by tools/build-charon-windows.py, build-charon-synths.py, build-charondos.py.
+     Fresh builds 2026-11-24: charon-win-r410a4t/CHARON.EFI, charon-win-r410a4-drv/CHARONVOICE.EFI,
+     charondos-r410a2/CHARONDOS.EFI: work/scan-private-r409.py = 3 files, 0 with private strings.
+     synth-modules-r410a: 72 files, 0 with private strings (2026-11-23; synth host tests passed).
+B1.b Failure reasons of a plan's step runners / finish step are localised   RAN AND PASSED (host), VM: see B1.2
+     plan::Reason() table in src/efi/CharonPlanState.h (52 reasons), plan::Trouble() joins them without a
+     trailing "; "; the note buffer grew from 400 to 1200 bytes (src/efi/CharonWsPlan.h).
+     tests/charon-r410-plan-reasons-host.py: 277 passed, 0 failed (52 reasons in sources = 52 in table).
+     Golden test tests/charon-install-answers-host.py: 316 passed (unchanged, no re-record).
+B1.c The device list called CharonDOS "Windows Boot Manager"            RAN AND PASSED (host check in the build)
+     Cause: the text "Windows Boot Manager" stood whole inside CHARONDOS.EFI (src/dos/launch_select.h) and
+     Charon's detector (src/efi/CharonBootManagers.h) names an entry after such a text in its image.
+     Fix: the name is compared in two pieces; tools/build-charondos.py now fails when any detector
+     signature occurs in CHARONDOS.EFI. CharonDosTests on charondos-r410a1: passed. VM: NOT VERIFIED.
+B1.d Self-copy-to-RAM pacing (speech in scraps under disk load)         RAN AND PASSED (QEMU, throttled disk)
+     src/efi/CharonSelfCopy.h: a slow read shrinks the next chunk and rests loop turns so the voice is fed;
+     src/efi/BootMenu.h: trace line "CHARON selfcopy pacing slow/worst-ms/rested" and the voice is pumped
+     between the pieces of selfram::Move (two small edits in the shared file).
+     Measured as silent gaps in a continuous melody (work/r410a-vm/pacing-test.py, disk throttled to
+     1.5 MB/s, evidence work/r410a-evidence/pacing/*-gaps.txt + serial logs):
+       old copy (r410a1t)          186 gaps, 21439 ms silent in 41 s
+       paced copy (r410a2t)          8 gaps,   585 ms (one of 470 ms: the move)
+       paced + fed move (r410a3t)    8 gaps,   174 ms, longest 39 ms
+       unthrottled old / new         5 gaps, 622 ms / 5 gaps, 211 ms (no regression; the 549 ms move hole is gone)
+     Limits: QEMU only; the "1-2 minutes of scraps" case in VMware under host load was not reproduced, so
+     whether this was its only cause is NOT VERIFIED. The voice side belongs to agent 2.
+B1.e Reported to the coordinator, not edited (reader/settings code of agent 2):
+     - "Settings saved" shown on a CD: src/efi/BootMenu.h about line 1916 (status text after save).
+     - 76 MB self-install voice row sticking on Natan; "eSpeak NG polski" in the English interface:
+       voice lists in the reader/settings code.
+B1.1 Windows installers on a real Windows 11 (Enterprise evaluation 26H2, VMware, UEFI, Secure Boot off)
+     Evidence: work/r410a-evidence/b1/ (SUMMARY.txt, a1-* ... a4-*, script-fix-Install-Charon.diff).
+     A1 Install-Charon.ps1, reader add-on (Driver0000 "Charon voice"): install, -Status, restart, uninstall
+        - all read back with bcdedit and the EFI partition's files.                    RAN AND PASSED
+     A2 -Mode Manager -Default: Boot0007 "Charon" first, Charon's screen, then Windows by itself; uninstall puts
+        the old order back.                                                          RAN AND PASSED
+     A3 -PlanResult with an EFI partition that already has a letter: with a plan every case was right; WITHOUT a
+        plan the script ended with exit code 1 ("could not be mounted") where it documents exit 0.
+        Fixed in tools/charon-addon/Install-Charon.ps1 (14 lines: the lettered partition is found through its
+        device name).                                                                RAN AND PASSED after the fix
+     A4 Install-CharonAddon.ps1 install, -Status, uninstall.                         RAN AND PASSED
+     Mode Shim: exits 1 "Missing shimx64.efi and mmx64.efi ... Nothing was changed"; no key enrolment tried.
+     Seen, not changed: -Status reports only the reader's Driver#### entry, never the "Charon" boot entry;
+     addon.txt and installed-by.txt still say r409. VMware Tools did not install; commands went through
+     work/r410a-vm/winagent.py.
+B1.2 Plan runs in VMware with real restarts (evidence b1-*.png, b1-serial-full.txt, b2-*.png, b2-serial-full.txt)
+     B-1 "Windows + Debian (installer)", Polish, the Windows image server cut mid-download, Windows skipped:
+       the failure reason is Polish in the stop message and in the report.           RAN AND PASSED
+       no trailing "; ": passed for the per-system reason; the "Uwaga:" note appeared in B-2 with one reason and a
+       full stop; two joined reasons were never seen.                                RAN AND PASSED (one reason)
+       password files erased before the report, no warning.                          RAN AND PASSED
+       Debian starts by itself after the plan and can be signed in to.               RAN AND PASSED
+       registry names in the device list: WRONG in the start that finishes the plan ("debian (shim ...)",
+       "Continue: invalid saved target"), right after a restart.                     FAILED - see defect D4
+       freed range: the wrong "reserved and unused" line is gone and the range is free, but no line of the
+       report or the log says that it was freed.                                     PASSED with a gap (open)
+     B-2 "CharonDOS + Windows" (the case where Windows shares the EFI partition):
+       B1.c the device list says "CharonDOS", not "Windows Boot Manager".            RAN AND PASSED
+       the plan itself did NOT end well - defects D1-D3 below.
+B1.3 Defects the plan runs exposed (the build tested was charon-win-r410a4t)
+     D1 Charon started from its boot disc has no EFI/HAK/HAKBOOT.EFI, so Install-Charon.ps1 at Windows' first logon
+        ended with "Missing HAKBOOT.EFI" and the Windows step was reported as failed although Windows was installed.
+        FIXED in src/efi/CharonWsInstall2.h (the running manager is copied as HAKBOOT.EFI, as the Linux hand-over
+        does since r406).                                                            COMPILED ONLY (charon-win-r410a11t)
+     D2 That failure text was English in a Polish sentence. FIXED: plan::Reason has the text;
+        tests/charon-r410-plan-reasons-host.py now also reads the -PlanText literals: 282 passed (53 = 53).
+     D3 DATA LOSS: after such a "failed" Windows step the finish step said the range "is empty", offered to free it,
+        and "free it" removed the installed Windows; "keep" then reported the range as "reserved and unused".
+        FIXED in src/efi/CharonPlanState.h: plan::MayHoldSystem() - a range whose installer ran but whose first start
+        reported an error or never reported is not a leftover: never offered for freeing, never freed by an
+        unattended plan, never called unused; the report says that the system may be there and that nothing was
+        removed.  tests/charon-r409-plan-host.py 7/7 still pass; NO new test covers it and it was NOT re-run in a
+        VM.                                                                           COMPILED ONLY (charon-win-r410a11t)
+     D4 Stale lists in the start that finishes a plan (registry names, the Continue target, a missing CharonDOS
+        entry, "the target's entry is gone"): BootMenu.h about line 1102 loads the systems registry once, before
+        the finish step writes EFI/HAK/systems.txt. NOT FIXED: the file belongs to the reader/menu side;
+        REPORTED to the coordinator. A restart makes everything right.
+     D5 Report gaps, open: no line says that a range was freed; a step's duration is dropped when the installed
+        system switched the clock to universal time (finished < first in plan-done.txt); log.txt mixes English
+        lines into Polish ones; the firmware text console still drops Polish diacritics (r409 known issue).
+     The three finish-step items r409 left "compiled only": password-file order PASSED; registry names FAILED in
+     the same start (D4); freed-range line PASSED with the gap above.
+     Not exercised: synth-modules-r410a (the test ISO maker takes synth-modules-r397).
+
+BATCH 2 - detailed mode, phase 1 (frame and direct mappings)          state: RAN AND PASSED in VMs after fixes (B2.9), with the stated limits
+-----------------------------------------------------------------------------------------------------------
+B2.1 One table generates everything: tools/charon-install/charon_questions.py -> src/efi/CharonWsQuestions.h,
+     tests/charon-r410-questions.txt (the table for people: key, paths, default, how applied, source item),
+     tests/charon-install-host/detail-keys.txt. The generator FAILS when a question has no handler in
+     src/linux/personal.sh (apply_<key>) or tools/charon-addon/Charon-Personal.ps1 (Apply-<key>), or a handler has
+     no question.                                                                    RAN AND PASSED (host)
+B2.2 ask::Question extension (group, level, when, flags, low/high, risk), Kind::number, F2 = default again,
+     Delete = back to the default (lists and check boxes; NOT in typed fields: Prompt is in the shared core),
+     typed word ROZUMIEM / I UNDERSTAND for a risky answer (ask::ConfirmRisk), ask::AskOne. src/efi/CharonWsAsk.h.
+B2.3 The detailed-mode dialogue, src/efi/CharonWsDetailed.h: group list (defaults / "changed K of N"), Enter opens,
+     D reads the group's changed answers, F3 search over EN + PL texts and keys, F10 or the last line ends,
+     administration gate (default no; there are no administration rows yet, so it is not shown), summary that
+     speaks ONLY the answers that differ from the defaults, then: go on / change an answer / save as a set.
+     Hooked into Debian's and Ubuntu's installers, Windows (CharonWsInstall2.h) and the ready images
+     (CharonWsInstall3.h). NOT hooked: plans of several systems (CharonWsPlanDialogue.h), CharonDOS.
+     The "ask me group by group" gate variant and F5 (full list) are NOT done.
+B2.4 Carriers. Only answers that differ from their defaults travel; with all defaults NOTHING is added and the
+     express outputs stay byte-identical (checked for every "defaults" vector: "<name>: the express mode carries
+     no detailed answers").
+       Linux: /var/lib/charon/answers.env + personal.sh (unit charon-personal.service, after the network; retries
+       up to five starts; report /var/lib/charon/personal.report, key=applied|skipped|failed: text).
+         Debian installer: in the cpio, late_command copies and runs "personal.sh install";
+         Ubuntu installer: charon-install/ubuntu/answers-env.sh + personal.sh, a late-command renames and installs;
+         images: EFI/HAK/answers.env + personal.sh, a runcmd line moves them (the file leaves the EFI partition)
+         and runs "personal.sh install now".
+       Windows: charon/answers.ini on the media + Charon-Personal.ps1 (first-logon command after Charon-Readers.ps1;
+       report %ProgramData%/Charon/personal-report.txt). NVDA values are written into %APPDATA%/nvda/nvda.ini with
+       NVDA closed and started again.
+B2.5 Saved answer sets, src/efi/CharonWsAnswerSets.h: EFI/HAK/answers/<name>.ini (format of the spec, section 6.1:
+     [charon-answers] format=1, [plan], [system.<kind>], [secrets]). Offered before the questions of a detailed
+     dialogue when a set exists; unknown keys and bad values are counted and said, never applied; passwords are
+     "ask" unless the author typed the confirmation word (then clear text, and loading says so). Deviations from
+     the spec, stated: no separate mode "saved" in the mode list, and a password from a file is still asked again.
+     Host: the text of a set and its reload are in the golden .carried files ("set-reload=ok"). File I/O on the
+     EFI side: COMPILED ONLY.
+B2.6 Windows text boot menu (user decision 2026-11-24): every Windows answer file gets the first-logon command
+     "cmd.exe /c bcdedit /set {current} bootmenupolicy legacy" (express and detailed); the detailed question
+     w_bootmenu = tile keeps the tile menu after the typed word and says that no reader can read it.
+     Source: verify-desktops.txt part A (learn.microsoft.com .../devtest/bcdedit--set: "bootmenupolicy [ Legacy |
+     Standard ]"). Golden: one added line in every Windows vector (EXPECTED_CHANGES 'windows-defaults').
+B2.7 Questions in the build after batch 2: Linux 35, Windows 30, CharonDOS 0 (with batch 3: Linux 41, Windows 35). Per path: Debian installer 35, Ubuntu installer 35,
+     images Debian 35 / Ubuntu 35 / Fedora 35 / Arch 33 (no automatic updates on Arch). The full table with the
+     source of every row: tests/charon-r410-questions.txt; group x system matrix at its end (copied here):
+       implemented/hidden/unverified  Win11   GNOME   KDE     MATE    Xfce    Cinnamon LXQt    i3      console CharonDOS
+       Language and time              1/0/0   2/0/0   2/0/0   2/0/0   2/0/0   2/0/0    2/0/0   2/0/0   2/0/0   0
+       Accounts and sign-in           0/0/0   3/0/0   3/0/0   3/0/0   3/0/0   3/0/0    3/0/0   3/0/0   3/0/0   0
+       Start-up                       3/0/0   3/0/0   3/0/0   3/0/0   3/0/0   3/0/0    3/0/0   3/0/0   3/0/0   0
+       Speech and braille             11/0/0  7/0/0   7/0/0   7/0/0   7/0/0   7/0/0    7/0/0   7/0/0   7/0/0   0
+       Desktop and programs           0/0/0   2/0/0   2/0/0   2/0/0   2/0/0   2/0/0    2/0/0   2/0/0   2/0/0   0
+       Appearance and behaviour       2/0/5   9/1/0   3/7/0   5/5/0   2/8/0   8/2/0    0/10/0  0/10/0  0/10/0  0
+       Network                        2/0/0   2/0/0   2/0/0   2/0/0   2/0/0   2/0/0    2/0/0   2/0/0   2/0/0   0
+       Updates and privacy            5/0/1   2/0/0   2/0/0   2/0/0   2/0/0   2/0/0    2/0/0   2/0/0   2/0/0   0
+       Power and hardware             6/0/0   4/0/0   4/0/0   4/0/0   4/0/0   4/0/0    4/0/0   4/0/0   4/0/0   0
+       TOTAL                          30/0/6  34/1/0  28/7/0  30/5/0  27/8/0  33/2/0   25/10/0 25/10/0 25/10/0 0
+     Kept OUT of the build because no primary source confirmed them (verified=False rows): w_ext, w_hidden,
+     w_explorer_start (HideFileExt, Hidden, LaunchTo: named only in Win11Debloat/WinUtil sources), w_start_sound
+     (registry value not documented by Microsoft), w_numlock (tool sources only), w_onedrive (uninstall command not
+     documented by Microsoft). Dropped during verification: "most" punctuation (not a Speech Dispatcher value), a
+     Polish contraction table (BRLTTY has none), the removal of "rhgb" (Fedora default not confirmed), masking
+     power-profiles-daemon (TLP's documentation: the package replaces it).
+     Partly verified and still in the build, to be confirmed by a VM read-back: "systemctl enable ufw" on Arch
+     (unit name not fetched), cups unit names on Arch/Fedora, MATE text size as dpi = 96 x factor (the key is
+     verified, the base 96 is X's default), KDE /etc/xdg/kdeglobals and powerdevilrc as system defaults (keys
+     verified from the kcfg files; the cascade through /etc/xdg is KDE's documented rule, not tried).
+     Known limits, stated: Speech Dispatcher answers are written to the system speechd.conf, which a user's own
+     speechd.conf replaces whole; Orca's own settings (layout, echo) are NOT offered - Orca 50 moved them from a
+     JSON file to dconf and the four distributions ship 48.1 / 50 / 51 (verify-desktops.txt B.9), so one mapping
+     would be wrong on some; LXQt and i3 have no system-wide equivalent of the appearance questions, so that group
+     is hidden for them; of the spec's 208 rows this is the part that could be verified today, NOT all EASY rows.
+B2.8 Host tests.                                                                     RAN AND PASSED
+     tests/charon-install-answers-host.py: 392 passed, 0 failed. Re-record (golden files before it:
+     work/r410a-evidence/golden-before-r410/): every Windows vector: + the bcdedit first-logon line (B2.6);
+     debian-pl-detailed-free and windows-detailed-no-reader-server: + "keys=F10 ENTER" (the group list) and the
+     defaults of the detailed questions in .answers; new vectors debian-pl-detailed-groups (changed answers in
+     several groups, typed word, F3, F2, Delete, D), image-arch-detailed-groups, windows-detailed-groups (tile menu
+     with the typed word); new files <vector>.carried (answers.env / answers.ini + a saved set + its reload).
+     The "all defaults" express outputs: unchanged except the documented Windows line.
+     tests/charon-r410-personal-host.py: 290 passed: every question with every non-default value through
+     personal.sh --dry-run as an apt, a dnf and a pacman system, and through Charon-Personal.ps1 -DryRun
+     (Windows PowerShell 5.1); unknown keys are reported as failed by both.
+B2.9 VM proofs (VMware; evidence and per-answer read-back lines: work/r410a-evidence/b2/SUMMARY.txt)
+     Caveats: three of the four machines had NO sound card (the one sound slot was taken), so those dialogues were
+     driven and recorded by screenshots and Charon's speech was not heard; only the second Arch run had sound and a
+     spoken transcript. The Debian and Windows fixes below were proven by running the FIXED script inside the
+     already installed guest, not by a fresh installation; the Arch fix by a fresh installation.
+     (a) Debian through its installer, detailed, POLISH, MATE, 19 non-default answers in 8 groups.
+         With the first build (a7): 17 applied, 1 failed, 1 skipped, and 3 "applied" lines had NO effect.
+         After the fixes: 18 applied, 1 skipped (truthful), 0 failed, every effect read back.   RAN AND PASSED after fixes
+         Read back: LC_* = en_GB.UTF-8; NTP=no; sudo -l "(ALL : ALL) NOPASSWD: ALL" (typed ROZUMIEM); shell
+         /usr/bin/zsh; group dialout; GRUB_TIMEOUT=2 in grub.d/90-charon.cfg and "set timeout=2" in grub.cfg, the
+         tune "play 480 440 1", no "quiet" in /proc/cmdline; DefaultRate 50, DefaultPunctuationMode "all"; MATE
+         dpi 144.0, event-sounds false, numlock-state 'off', lock-enabled false; ufw active, deny incoming, 22/tcp;
+         Origins-Pattern = the two Debian-Security lines, Automatic-Reboot "true"; HandleLidSwitch ignore;
+         console font: skipped, "console-setup is not installed" (true on Debian 13 with MATE); the unit disabled.
+     (b) Arch ready image, detailed, English. First build: FAILED - the answers were never applied (the unit was
+         ordered after cloud-final and ran inside the shutdown that ends the first start; later starts hit an
+         ordering cycle). Fresh installation with the fixed build (a10):                 RAN AND PASSED
+         Read back: formats en_GB in /etc/locale.conf; shell /usr/bin/fish; group uucp (dialout on Arch); GRUB wait
+         5 s + tune; FONT=ter-v32b; ufw active and enabled; lid ignore; cups + cups-browsed enabled; bluetooth:
+         skipped, "BlueZ is not installed" (true); answers.env gone from the EFI partition.
+         This also confirms three spellings that were only "partly verified": the ufw unit and the cups unit names
+         on Arch, and the MATE keys (as corrected) on Debian.
+     (c) Windows 11 Enterprise evaluation 26H2, detailed (build a9): report 19 applied, 1 skipped (a parameter key),
+         0 failed; two "applied" lines had no effect until the fix.                    RAN AND PASSED after the fix
+         Read back: tzutil "Central European Standard Time"; hibernation off; HiberbootEnabled 0; nvda.ini
+         keyboardLayout laptop, symbolLevel 200, NVDAModifierKeys 7, showWelcomeDialogAtStartup False (no dialog
+         after a restart); AUOptions 3; DisabledByGroupPolicy 1; AllowNewsAndInterests 0; display off 60 s and lid
+         "do nothing" in the ACTIVE plan (after the fix); High performance active; NetFx3, WSL,
+         VirtualMachinePlatform enabled after a restart; dark theme and TaskbarAl 0 for the user and in the default
+         user's hive; OpenSSH server running; network Private.
+         Boot menu: bcdedit {current} says "bootmenupolicy Legacy"; with a second entry and a 15 s wait the screen
+         is the classic TEXT menu "Windows Boot Manager" with both entries (c-TEXT-BOOT-MENU.png).   RAN AND PASSED
+         Whether Charon's reader READS that menu: NOT RUN (no sound card; in that machine the firmware started
+         Windows Boot Manager without Charon).
+     (d) Saved answer sets on real files:                                              RAN AND PASSED
+         on a CD: "Charon's medium cannot be written to, so the set was not saved" (said after the name and the
+         password question - it should be said before them: open); on a writable medium: saved "test1", a second
+         dialogue offered it, "Answers loaded: 19", the group list showed the same changed counts; the file holds
+         9 main + 10 detailed answers and "[secrets] password=ask", no password (b2/d-saved-set/test1.ini).
+     Defects found by these runs and fixed (host tests stayed green, no golden file changed):
+       1 personal.sh formats: "localectl set-locale" is refused on Debian 13 even for root -> update-locale on apt.
+       2 personal.sh MATE: wrong dconf paths (the schema ids of MATE are org.mate.*, their PATHS are
+         org/mate/desktop/...): text size, event sounds, Num Lock reported "applied" without effect.
+       3 personal.sh unit: After=network-online.target only; "install now" starts through a one-minute timer;
+         "apply" does nothing during a shutdown.
+       4 Charon-Personal.ps1: the power plan is applied first (display and lid answers went into another plan).
+       5 personal.sh: the progress counter of the software sets.
+     Lesson recorded: "applied" in the report is the script's own word; three lines were wrong until the effect
+     was measured. The read-back per desktop exists for MATE only. GNOME, KDE, Xfce, Cinnamon mappings are
+     verified against sources but NOT run: NOT VERIFIED.
+     Open, small: the summary names ticked programs by their ids; "numlock=applied ... for: mate mate".
+B2 not done: CharonDOS mode question and CharonDOS rows; administration rows; software sets (batch 3); the direct
+     installer mappings (partman recipe, LVM, pkgsel/upgrade, autoinstall codecs/drivers, unattend TimeZone):
+     all answers so far are applied at the first start of the installed system.
+
+BATCH 3 - software catalogue                                          state: RAN AND PASSED for Arch and Windows (B3.5); other systems not run
+-----------------------------------------------------------------------------------------------------------
+B3.1 The catalogue is a DATA file: tools/charon-install/catalogue/charon.ini (to be shipped as
+     EFI/HAK/catalogue/charon.ini; format of the specification, section 9.2; site.ini beside it overrides per key).
+     60 items in four sets: everyday 14, for blind users 16, system tools 15, creating and programming 15.
+     Every package id was checked LIVE on 2026-11-24 against the primary index; evidence with the index URL and
+     the version seen per id: work/r410a-evidence/verify-catalogue.txt. Verified ids: apt Debian 13: 51,
+     apt Ubuntu 26.04: 53, dnf Fedora 45: 47, pacman: 48, AUR: 6, Flathub: 17, winget: 31.
+     Left EMPTY everywhere (not verified, so not used): Microsoft Store ids, installer URLs from authors' sites
+     (nothing downloaded or hashed), NVDA add-on ids (the add-on store index did not answer).
+     Defaults are conservative: 22 items are default=yes; nothing with accessibility "poor" or "unknown" and nothing
+     proprietary is a default (VLC, mpv, 7-Zip on Windows, htop, mc: "unknown", because no accessibility statement
+     could be fetched; Audacity on Linux: "poor" by its own manual). Accessibility notes come from fetched
+     statements only; NOTHING in the catalogue was tested with a screen reader in this project.
+     Surprises recorded in the evidence file: Ubuntu's firefox/thunderbird/chromium-browser debs install snaps;
+     Debian 13 has no firefox (firefox-esr), ocrfeeder, element or signal; Fedora 45 names wget2-wget, ffmpeg-free,
+     pandoc-cli; fenrir, emacspeak, pidgin, ocrmypdf are AUR-only on Arch; rhvoice is non-free/multiverse only.
+B3.2 Dialogue: group "Desktop and programs": "Software sets to install" (check boxes; keys sets / w_sets), for every
+     checked set "<set>: which programs?" - the list is read from the catalogue file on Charon's medium at that
+     moment (src/efi/CharonWsCatalogue.h: only items that exist for the system being installed; "poorly
+     accessible:" / "accessibility unknown:" is said before such a name; ticks start at the set's defaults; F2 and
+     Delete work), and on Linux "Take programs that the repository lacks from Flathub?" (default no).
+     Without the catalogue file the sets can still be checked and the dialogue says that single programs cannot
+     be chosen. The EFI reader of the catalogue: COMPILED ONLY (the host harness has no file system for it).
+B3.3 Installing happens in the installed system at the first start, after the network is there:
+     Linux, personal.sh apply_sets: the distribution's repository id (apt, apt.ubuntu, dnf, pacman), Flathub only
+     when allowed and the item has a Flathub id; an item without an id for this system is reported "not available
+     here" and nothing is substituted; the result line names what was installed and what was not, and a failure
+     makes the whole key "failed" (charon-tone error signal at the end). Progress is said with spd-say when it
+     exists (as root at boot - whether it is audible is NOT VERIFIED) and is always in personal.log.
+     Windows, Charon-Personal.ps1 Apply-w_sets: winget install --id ID -e --silent --accept-package-agreements
+     --accept-source-agreements --source winget (verify-windows.txt item 27); when winget is missing the App
+     Installer package is registered first (Microsoft's documented workaround); progress through SAPI.
+     NOT done from the specification: AUR helper builds, Microsoft Store, installers from authors' sites, the
+     user's own list file (section 9.3), "during the installation" timing, CharonDOS sets, https update of the
+     catalogue. The four sources of the user's decision are therefore reduced to: repository / winget (always) and
+     Flathub (Linux, on request).
+B3.4 Host tests.                                                                     RAN AND PASSED
+     Golden 392 (debian-pl-detailed-groups now also checks a set: sets='everyday' in its .carried file).
+     tests/charon-r410-personal-host.py: every set alone and all four together through personal.sh --dry-run as
+     apt, dnf and pacman systems and through Charon-Personal.ps1 -DryRun with the real catalogue file
+     (329 passed in all).
+B3.5 VM proof (work/r410a-evidence/b2/SUMMARY.txt, "software sets"):
+     The catalogue lands where the scripts look for it (Arch /efi/EFI/HAK/catalogue; Windows
+     C:/ProgramData/Charon/EFI/HAK/catalogue).
+     Arch image, set "system tools", defaults: report "sets=applied: installed: rsync disk-tools 7zip network-tools";
+     pacman -Q confirms rsync, parted, gptfdisk, 7zip, nmap, curl, wget, openssh.        RAN AND PASSED
+     Windows 11, set "system tools" + 7-Zip ticked: winget list shows 7zip.7zip, Windows Terminal, PowerShell 7;
+     winget was usable at the first logon; about 3.5 minutes.                           RAN AND PASSED
+     Debian, Ubuntu, Fedora: no set was installed in a VM.                              NOT VERIFIED
+     Spoken progress: NOT audible on Arch (spd-say is not on a console image); not testable on Windows (no sound
+     card in that machine). The requirement "spoken progress" is therefore NOT met on a console system: open.
+     Ticking single programs from the catalogue in Charon's dialogue worked in the Windows run (7-Zip added).
+
+BATCH 4 - plans of several systems: detailed questions (user request of 2026-11-24)   state: BUILT, NOT YET RUN
+-----------------------------------------------------------------------------------------------------------
+Build: work/charon-win-r410a12t (trace), charon-win-r410a12-drv. Host tests after it: golden 392, plan reasons 282,
+tests/charon-r409-plan-host.py 7/7. NO host test drives the plan dialogue; everything in B4 is COMPILED ONLY until
+the VM run B4.6 reports (helper agent, evidence work/r410a-evidence/b4/SUMMARY.txt).
+B4.1 Shared block, asked ONCE, derived from the table: the dict SHARED in tools/charon-install/charon_questions.py
+     marks the shared rows and says how each maps to Windows; the generator writes detailed::sharedRows[],
+     sharedMaps[] and zoneMaps[] - there is no second hand-written list. In a detailed plan the shared main
+     questions (language, keyboard, time zone, user, password, computer name - as in r409) are followed by the
+     group list of the shared detailed questions (CharonWsPlanDialogue.h AskShared).
+     18 shared questions: 9 reach Windows too (lid, sleep on mains, dark theme, punctuation, software sets and the
+     four "which programs" lists) + the shared time zone, which is mapped to Windows' zone name; 9 are shared by
+     the Linux systems only, because Windows has no VERIFIED equivalent today (regional formats, speech rate,
+     pitch, braille, text size, event sounds, Num Lock, automatic updates, firewall).
+     Per-system remainder: Linux 23, Windows 25 questions (CharonDOS: none).
+B4.2 Per system: its own main questions as before (the screen-reader check boxes included, see B4.5), then its
+     group list with the shared answers already filled in (for Windows through the generated maps,
+     detailed::MapShared); an answer can be changed for this system there (F2 says the default, Delete goes back to
+     the DEFAULT, not to the shared value - stated limit). Shared answers a system cannot take are NAMED before
+     its list (detailed::NotApplied: "These shared answers cannot be applied in this system: ..."); its summary
+     speaks only what differs from the shared answers and says how many shared ones apply (detailed::TakeBaseline).
+B4.3 Carriers in a plan: the answer "detailed" is captured with each system's answers; at each step, after the
+     answers are read back, the generators carry answers.env / answers.ini exactly as in the single-system mode
+     (StepDetails; the plan's own image writer hands answers.env + personal.sh over too). A program ticked in the
+     shared software lists that belongs to another system is reported "for another system, not installed here"
+     (not a failure) by both scripts.
+B4.4 Dual-boot result questions: which system starts by default (r409) and, in a detailed plan, how long Charon
+     waits before it starts (5 / 2 / 10 / 30 s -> [plan] timeout). The ORDER OF ENTRIES is not asked (question for
+     the user below). Unchanged user decisions: the systems' own boot managers stay, the reader add-on is on,
+     Windows gets the text boot menu (B2.6), Charon is not forced first.
+     After the typed word nothing is asked in the normal course. A FAILED step still stops the plan with a spoken
+     choice (try again / skip / end here) unless the plan is unattended - that is the r409 behaviour and conflicts
+     with "nothing more is asked" only in the failure case (question for the user below).
+B4.5 Screen readers in plans (coordinator's question of 2026-11-24). By the code (CharonWsPlanDialogue.h AskSystem):
+     every system of a plan is asked its own reader check boxes in BOTH modes - Windows: windowsQuestions
+     "wreaders" (an express question) + install::ResolveWindowsReaders (which one speaks); Debian and the images:
+     "readers" (an express question) + install::ResolveReaders per desktop. Nothing is collapsed.
+     Reader speech settings in the shared block: punctuation reaches both systems; rate and pitch are shared by the
+     Linux systems only: the detailed answer is NOT mapped to NVDA (NVDA keeps rate and pitch in a per-synthesizer
+     subsection, [speech] [[espeak]]; the mapping of Charon's scale to it is not written). Without an answer both
+     systems start with Charon's own rate, pitch and punctuation through voice.conf (r409).
+     A plan run with non-default readers on both systems, read back with sound levels: part of B4.6. NOT VERIFIED.
+B4.6 Proof run (VMware, Windows 11 + Debian installer, detailed, Polish, zero keys after the confirmation,
+     non-default readers on both, read-back from both systems). Evidence: work/r410a-evidence/b4/SUMMARY.txt
+     (dialogue as spoken, key logs with time stamps, read-back files, sound meter), machine r410a-db1 WITH sound.
+     DIALOGUE (shared block once, per-system remainder, default system + wait): RAN AND PASSED, with the defects
+       O1-O4 (fixed afterwards in S3.5, not re-run).
+     READ-BACK of the answers from BOTH installed systems (attempt 2, builds a14/a17): RAN AND PASSED - shared:
+       time zone, user, lid, sleep on mains, punctuation (speechd "all" / NVDA symbolLevel 300), software set
+       "system tools" on both (dpkg / winget list), dark theme on Windows (named as not applicable on MATE); Linux
+       only: speech rate 50, firewall; per system: Debian zsh + dialout, Windows NVDA laptop layout + AUOptions 3;
+       text boot menu "bootmenupolicy Legacy"; both personal reports 8 applied, 0 failed.
+     READERS, non-default on both (Windows: NVDA only, Narrator unchecked; Debian: Orca + Fenrir, Speakup unchecked):
+       Windows NVDA installed, starts at the lock screen and after sign-in, Narrator not running, MEASURED SPEAKING
+       (peaks 0.31-0.49).                                                                RAN AND PASSED
+       Debian Orca speaks at the sign-in screen (peak 0.06).                              RAN AND PASSED (greeter only)
+       Debian Fenrir on a text console: SILENT.                                           FAILED - open defect F1:
+         speech.sh routes Fenrir's sound to the greeter's sound server (/run/charon-pulse.sock ->
+         /run/user/<lightdm>/pulse/native), which is not the active session on a text console; also espeakup was
+         installed although Speakup was unchecked, kbd is missing, getty@tty2 was not running. NOT FIXED.
+       Orca in the desktop session after sign-in: NOT MEASURED.
+     ZERO KEYS AFTER THE CONFIRMATION:                                    RAN AND PASSED on the third attempt
+       attempt 1 FAILED (a host disk write stalled 7 s, the firmware reset the NVMe controller, Charon ended the
+         Windows step on the first failed write and fell out of the plan without its failure question: defects
+         D-a..D-c in the SUMMARY, CharonWsWinUsb.h - not fixed);
+       attempt 2 FAILED at the Debian step: no network after the restart (InstallDebian never called
+         EnsureNetwork - FIXED in a17; and VMware's e1000e gets no DHCP answer after the first start - use e1000);
+         after one "try again" the rest ran without a key; report at 11:16;
+       attempt 3 (machine r410a-db2, no sound, e1000, build a17t):                        RAN AND PASSED
+         0 keys from the confirmation (11:33:54) to the plan's report "Zainstalowane systemy: 2 z 2" (12:13:53):
+         Windows 24 minutes, Debian 11 minutes, the Debian step started by itself after Windows' last restart
+         (key-log-db2.txt, db2-vmware.log, db2-30-plan-report-zero-keys.png). The same run showed in a VM: O1/O3/O4
+         gone, speech rate asked per system, ONE computer name ("duet" on Debian), Polish log, Windows duration.
+         Limit, by design until the coding helper changes it: the report then waits for "any key"; the default
+         system started by itself only after a reset. Not proven: the Debian step when the firmware has NO address.
+       New defect found and fixed by that helper: "spd-say -w" hangs about 3 minutes per line on a machine without
+         a sound card (the software set kept the unit busy 15 minutes) -> personal.sh speak(): "timeout 20 spd-say".
+         Host-tested only.
+     Seen in the run and passed on to the coding helper (files it owns): the plan's report waits for "any key"
+       for ever, so a plan never ends in the default system by itself; the report says "after 10 s" and then that
+       the wait keeps its usual value; Escape at "What now?" hides the waiting plan. The computer names read back
+       were "duet-debian" / "duet-win" (old rule; ONE name is in the tree since S3.3, not re-run).
+     D1 of batch 1 (HAKBOOT.EFI on the Windows media): first VM run PASSED here (install-charon.log "Installed
+       Charon: Boot0004 loads \EFI\HAK\HAKBOOT.EFI ... plan: step 1 reported as done").
+B4 not done: saved answer sets for plans (a set stores one system; shared/per-system parts are not stored), the
+     own list with typed sizes, T5 (Debian installer + Ubuntu image), two Windows (T7), data partition (D7), kept
+     disk / existing system and the Windows shrink helper (T8), unattended plans from a file (T9), Ubuntu
+     autoinstall end to end (T10), a plan with a virtual TPM, a plan with a Windows profile in detailed mode.

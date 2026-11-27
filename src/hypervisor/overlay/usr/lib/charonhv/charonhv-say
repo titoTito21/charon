@@ -1,0 +1,28 @@
+#!/usr/bin/python3 -I
+# SPDX-License-Identifier: GPL-2.0-or-later
+"""Charon Hypervisor: speak stdin (or argv[1]) with CHARON'S voice and settings - TVox, RHVoice (Charon's voices) or
+eSpeak NG, the same front ends and the same choice as the hypervisor's own voice (hvvoice). Used by speech-dispatcher's
+generic module "charon" so that Orca in the modern browser mode (6s/6u) speaks with Charon's voices."""
+import os, subprocess, sys
+sys.path.insert(0, '/usr/lib/charonhv')
+import hvvoice
+
+
+def lang():
+    want = os.environ.get('CHARONHV_LANG', '')[:2].lower()      # speech-dispatcher's $LANGUAGE (the page's language)
+    if want in ('en', 'pl'):
+        return want
+    try:
+        from charonhv import cfg_language
+        return cfg_language()
+    except Exception:
+        return 'en'
+
+
+text = sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read()
+text = ' '.join(text.split())
+if text:
+    v = hvvoice.Voice(hvvoice.Settings(lang()))
+    want = os.environ.get('CHARONHV_LANG', '')[:2].lower()
+    script, argv = v.command(text, lang=want if want in ('en', 'pl') else None)
+    subprocess.run(['sh', '-c', script] + argv)

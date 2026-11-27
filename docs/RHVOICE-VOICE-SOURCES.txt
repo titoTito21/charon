@@ -1,0 +1,20 @@
+RHVoice voices of Charon r410: repositories and commits
+======================================================
+The voice data in \EFI\HAK\synths\rhvoice\*.chsp are packed by tools/build-charon-synths.py from these
+repositories at these commits (16 kHz models). The voice set is the same 13 voices as r409. The
+complete table with licences, data archives and their SHA-256 is
+src/synth/rhvoice/VOICES.tsv in charon-source-r410.zip (licenses\synth-addons\rhvoice-voices.tsv).
+
+Natan        Polish   CC0-1.0                https://github.com/RHVoice/natan-pol  commit 42d2a7d7b60ee5b4c512d7e2a8428bbb252b7203
+Slt          English  CMU-ARCTIC             https://github.com/RHVoice/slt-eng  commit c17dded68322016aba2868d9c29f11bba14d275f
+Alicja       Polish   CC-BY-4.0              https://github.com/RHVoice/alicja-pol  commit 22274019eca0825a21f5379b99b8fed6a6bfdd9d
+Cezary       Polish   CC-BY-NC-ND-4.0        https://github.com/RHVoice/cezary-pol  commit c9f3bb6c66d063913ec7838fef250e3251000099   NON-COMMERCIAL
+Magda        Polish   CC-BY-4.0              https://github.com/RHVoice/magda-pol  commit a14d3a9223ba268436c74b1f4467bf6d683ecd57
+Michal       Polish   CC0-1.0                https://github.com/RHVoice/michal-pol  commit e59be811263d9cb67cbd220505d41acd7d19c62b
+Alan         English  RHVoice-unrestricted   https://github.com/RHVoice/alan-eng  commit bb3fdb15b9c64109f396f56f6155965bfcf89977
+Bdl          English  RHVoice-unrestricted   https://github.com/RHVoice/bdl-eng  commit ea6b944550af6f9b33f2cc5e20f38d3b19087068
+Clb          English  RHVoice-unrestricted   https://github.com/RHVoice/clb-eng  commit e0aa06cf50334f10844d1a28a72b3fdcf3cdd150
+Dasha-Eng    English  CC-BY-SA-4.0           https://github.com/RHVoice/dasha-eng  commit 3115c2666cd011debcf7fa4166ec905132338934
+Evgeniy-Eng  English  CC-BY-NC-ND-4.0        https://github.com/RHVoice/evgeniy-eng  commit c483272eb7ff97936ef7f997e268e1c11478d492   NON-COMMERCIAL
+Ksp          English  CMU-ARCTIC             https://github.com/RHVoice/ksp-eng  commit 858023095833e574f6f90a99b1669c58ad5de02b
+Lyubov       English  CC-BY-NC-ND-4.0        https://github.com/RHVoice/lyubov-eng  commit a32db8ee28c17f8c5fb56b6c044eaa08ac807206   NON-COMMERCIAL

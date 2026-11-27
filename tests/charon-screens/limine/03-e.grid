@@ -1,0 +1,7 @@
+CHARON grid 50 153 0 0 0 Limine
+G01 64*00,28*83|64*0000,28*040e|                                                                Limine 11.4.1 (x86-64, UEFI)
+G03 4*00,20*87,7*00,8*87|4*0000,20*040d,7*0000,8*040d|    ESC Discard and Exit       F10 Boot
+G06 1*00,1*b7,12*87|1*0000,13*040f| protocol: efi
+G07 1*00,33*87|1*0000,33*040f| path: boot():/EFI/probe/PROBE.EFI
+G31 23*82|23*040f|Configuration is valid.
+CHARON grid end

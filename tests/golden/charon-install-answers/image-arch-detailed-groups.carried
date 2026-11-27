@@ -1,0 +1,25 @@
+==== /var/lib/charon/answers.env ====
+# Charon: answers of the detailed mode that differ from the defaults. Read by personal.sh.
+charon_path='A'
+charon_user='user'
+charon_ssh='yes'
+shell='fish'
+lid='ignore'
+
+==== a saved answer set (without the system's main questions) ====
+[charon-answers]
+format=1
+made=charon-r410
+
+[plan]
+version=1
+name=host-test
+systems=image-arch
+mode=detailed
+
+[system.image-arch]
+kind=image-arch
+shell=fish
+lid=ignore
+
+[secrets]

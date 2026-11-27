@@ -1,0 +1,8 @@
+CHARON grid 31 100 11 0 1 iPXE
+G00 28*87|28*0000|iPXE initialising devices...
+G01 59*87|59*0000|file:autoexec.ipxe... Not found (https://ipxe.org/7f4de18e)
+G02 60*87|60*0000|file:/autoexec.ipxe... Not found (https://ipxe.org/7f4de18e)
+G06 17*8f,41*87,16*83|74*0000|iPXE 2.0.0+dfsg-5 -- Open Source Network Boot Firmware -- https://ipxe.org
+G07 61*87|61*0000|Features: VLAN DNS HTTP HTTPS iSCSI NFS SRP TFTP AoE EFI Menu
+G09 23*87|23*0000|No more network devices
+CHARON grid end

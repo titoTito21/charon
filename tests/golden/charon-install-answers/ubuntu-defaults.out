@@ -1,0 +1,33 @@
+#cloud-config
+# Written by Charon from spoken answers.
+autoinstall:
+  version: 1
+  locale: en_US.UTF-8
+  keyboard: {layout: us}
+  timezone: America/New_York
+  identity:
+    hostname: "charon-pc"
+    realname: "user"
+    username: "user"
+    password: "$5$charonhosttests1$WzxqaZSgROh.v47PCFj0GhdYegM7YfeXZEQqFudoOx5"
+  ssh: {install-server: false}
+  updates: security
+  storage:
+    layout:
+      name: direct
+      match: {size: largest}
+  packages: [efibootmgr, espeak-ng, alsa-utils, espeakup, orca, ubuntu-desktop-minimal]
+  early-commands:
+    - mkdir -p /run/charon/EFI /mnt/charon; for c in $(blkid -c /dev/null -t TYPE=iso9660 -o device); do l=$(losetup -f -P -r --show $c 2>/dev/null) && echo $l >> /run/charon/loops; done; udevadm settle 2>/dev/null; for d in $(blkid -c /dev/null -t TYPE=vfat -o device); do mount -o ro $d /mnt/charon 2>/dev/null || continue; [ -f /mnt/charon/EFI/HAK/CHARONVOICE.EFI ] && [ ! -d /run/charon/EFI/HAK ] && cp -r /mnt/charon/EFI/HAK /run/charon/EFI/; [ -f /mnt/charon/EFI/HAK/CHARONVOICE.EFI ] && [ ! -f /run/charon/EFI/HAK/HAKBOOT.EFI ] && [ -f /mnt/charon/EFI/BOOT/BOOTX64.EFI ] && cp /mnt/charon/EFI/BOOT/BOOTX64.EFI /run/charon/EFI/HAK/HAKBOOT.EFI; [ -d /mnt/charon/charon-install/ubuntu ] && cp /mnt/charon/charon-install/ubuntu/*.sh /mnt/charon/charon-install/ubuntu/*.wav /mnt/charon/charon-install/ubuntu/label.txt /mnt/charon/charon-install/ubuntu/charon-tone /mnt/charon/charon-install/ubuntu/voice.conf /mnt/charon/charon-install/ubuntu/network.conf /run/charon/ 2>/dev/null; [ -f /mnt/charon/charon-install/ubuntu/network.conf ] && mount -o remount,rw /mnt/charon 2>/dev/null && rm -f /mnt/charon/charon-install/ubuntu/network.conf; umount /mnt/charon; done; for l in $(cat /run/charon/loops 2>/dev/null); do losetup -d $l; done; true
+    - rm -f /run/charon/EFI/HAK/continue.bin /run/charon/EFI/HAK/continue-set /run/charon/EFI/HAK/installed-by.txt /run/charon/EFI/HAK/reader-only; true
+    - for d in /run/charon/EFI/HAK/*; do case "$(basename "$d" | tr A-Z a-z)" in answers|plan|network.conf) rm -rf "$d";; esac; done; true
+    - echo en_US > /run/charon/lang.txt; sh /run/charon/live-speech.sh > /run/charon/live-speech.log 2>&1; true
+    - L=$(cat /run/charon/label.txt 2>/dev/null); for d in /dev/disk/by-label/CIDATA; do [ -e $d ] && [ -n "$L" ] && fatlabel $d "$L"; done; true
+  late-commands:
+    - mkdir -p /target/boot/efi/EFI/HAK /target/var/lib/charon
+    - cp -r /run/charon/EFI/HAK/. /target/boot/efi/EFI/HAK/ 2>/dev/null; cp /run/charon/*.sh /run/charon/*.wav /run/charon/charon-tone /run/charon/voice.conf /target/var/lib/charon/ 2>/dev/null; chmod 755 /target/var/lib/charon/charon-tone; true
+    - curtin in-target -- sh /var/lib/charon/install-charon.sh || true
+    - if [ -f /run/charon/network.conf ]; then cp /run/charon/network.conf /target/var/lib/charon/; chmod 600 /target/var/lib/charon/network.conf; curtin in-target -- sh /var/lib/charon/network.sh apply; fi; true
+    - curtin in-target -- env CHARON_CHROOT=1 sh /var/lib/charon/speech.sh speakup orca orca,speakup graphical > /target/var/lib/charon/speech.log 2>&1 || true
+    - sh /run/charon/live-speech.sh done; true
+  shutdown: reboot

@@ -1,11 +1,23 @@
-// Charon synthesizer module "rhvoice.tts": RHVoice 1.18.5 with the voices
-// Natan (Polish) and Slt (English). This glue: GPL-2.0-or-later.
+// Charon synthesizer module "rhvoice.tts": RHVoice 1.18.5 with every Polish
+// and English RHVoice voice whose data is present (r409; Natan and Slt are
+// the defaults and the first two voices). This glue: GPL-2.0-or-later.
 //
-// ABI 2: the entry point only checks the data index; Prepare(voice) mounts
-// that voice's pack (its language + voice data) and creates an RHVoice
+// Data folder (r409):
+//   rhvoice-pl.chsp        Polish language data + Natan   (base, as before)
+//   rhvoice-en.chsp        English language data + Slt    (base, as before)
+//   rhvoice-<voice>.chsp   one further voice (voice.info, voice.params,
+//                          16000/...): optional, any subset
+// The entry point only probes which packs exist (nothing is read) and offers
+// exactly those voices; a voice needs its language's base pack.
+//
+// ABI 2: Prepare(voice) mounts that voice's pack(s) and creates an RHVoice
 // engine for it alone, so only the chosen voice is decompressed and loaded.
-// Both voices stay prepared when they fit; if preparing one runs out of
-// memory, the other is released and preparation is retried once.
+// At most maxPrepared voices stay prepared: normally the chosen voice and
+// the voice of the other language. A new voice first replaces a prepared
+// voice of its own language, else the least recently used one. If preparing
+// fails although the pack is intact (out of memory: the HTS loader reports
+// that only as a file it cannot open), the other voices are released one by
+// one and preparation is retried.
 //
 // RHVoice runs through its public C API (src/lib/lib.cpp). RHVoice_speak()
 // is synchronous; its play_speech callback copies samples into a ring and
@@ -32,16 +44,45 @@ namespace {
 constexpr size_t ringCapacity = 16384;
 constexpr size_t stackBytes = (size_t)1 << 20;
 constexpr int maxResumesPerRender = 64;
-constexpr uint32_t voiceCount = 2;
+constexpr uint32_t maxVoices = 16;      // CharonSynthModule.h: voiceCount <= 16
+constexpr uint32_t maxPrepared = 2;     // engines kept loaded: 12..22 MiB each of the 62 MiB budget (three large ones did not fit)
 
-CharonSynthVoice voices[voiceCount] = {
-    {"rhvoice-natan", u"Natan", "pl", 16000},
-    {"rhvoice-slt", u"Slt", "en", 16000},
+// The two base packs: a language and its default voice.
+struct Language { const char* code; const char* pack; const char* mount; const char* dataPath; };
+const Language languages[2] = {
+    {"pl", "/rhvoice-pl.chsp", "/rhvoice/pl", "/rhvoice/pl/data"},
+    {"en", "/rhvoice-en.chsp", "/rhvoice/en", "/rhvoice/en/data"},
 };
-const char* const profiles[voiceCount] = {"Natan", "Slt"};
-const char* const packs[voiceCount] = {"/rhvoice-pl.chsp", "/rhvoice-en.chsp"};
-const char* const mounts[voiceCount] = {"/rhvoice/pl", "/rhvoice/en"};
-const char* const dataPaths[voiceCount] = {"/rhvoice/pl/data", "/rhvoice/en/data"};
+// Every Polish and English voice of RHVoice 1.18.5. id = "rhvoice-" + the
+// RHVoice voice name in lower case (src/synth/rhvoice/VOICES.tsv maps it to
+// the names other systems use); profile = the RHVoice voice name. pack: the
+// voice's own pack, nullptr for the voice inside its language's base pack.
+// Order: the defaults first (Charon takes the first voice of the other
+// language for text in that language), then by language and name. Indices
+// 0 and 1 never change.
+struct Known { const char* id; const char16_t* name; uint32_t language; const char* profile; const char* pack; const char* mount; };
+const Known known[] = {
+    {"rhvoice-natan", u"Natan", 0, "Natan", nullptr, nullptr},
+    {"rhvoice-slt", u"Slt", 1, "Slt", nullptr, nullptr},
+    {"rhvoice-alicja", u"Alicja", 0, "Alicja", "/rhvoice-alicja.chsp", "/rhvoice/v/alicja"},
+    {"rhvoice-cezary", u"Cezary", 0, "Cezary", "/rhvoice-cezary.chsp", "/rhvoice/v/cezary"},
+    {"rhvoice-magda", u"Magda", 0, "Magda", "/rhvoice-magda.chsp", "/rhvoice/v/magda"},
+    {"rhvoice-michal", u"Micha\u0142", 0, "Michal", "/rhvoice-michal.chsp", "/rhvoice/v/michal"},
+    {"rhvoice-alan", u"Alan", 1, "Alan", "/rhvoice-alan.chsp", "/rhvoice/v/alan"},
+    {"rhvoice-bdl", u"Bdl", 1, "Bdl", "/rhvoice-bdl.chsp", "/rhvoice/v/bdl"},
+    {"rhvoice-clb", u"Clb", 1, "Clb", "/rhvoice-clb.chsp", "/rhvoice/v/clb"},
+    {"rhvoice-dasha-eng", u"Dasha-Eng", 1, "Dasha-Eng", "/rhvoice-dasha-eng.chsp", "/rhvoice/v/dasha-eng"},
+    {"rhvoice-evgeniy-eng", u"Evgeniy-Eng", 1, "Evgeniy-Eng", "/rhvoice-evgeniy-eng.chsp", "/rhvoice/v/evgeniy-eng"},
+    {"rhvoice-ksp", u"Ksp", 1, "Ksp", "/rhvoice-ksp.chsp", "/rhvoice/v/ksp"},
+    {"rhvoice-lyubov", u"Lyubov", 1, "Lyubov", "/rhvoice-lyubov.chsp", "/rhvoice/v/lyubov"},
+};
+constexpr uint32_t knownCount = sizeof known / sizeof known[0];
+static_assert(knownCount <= maxVoices, "CharonSynthModule voice limit");
+
+// The voices whose packs exist on this disk (filled by synth_engine_start).
+uint32_t voiceCount;
+CharonSynthVoice voices[maxVoices];
+const Known* table[maxVoices];
 
 struct Utterance {
     char* text;
@@ -51,7 +92,10 @@ struct Utterance {
 };
 
 struct State {
-    RHVoice_tts_engine engines[voiceCount];
+    RHVoice_tts_engine engines[maxVoices];
+    uint64_t used[maxVoices];        // r409: last Prepare/Begin of each voice (LRU order)
+    uint64_t clock;
+    uint32_t current[2];             // r409: the voice ESC 'p' / ESC 'e' select (last one used of each language)
     synth_coro* coroutine;
     Utterance utterance;
     int16_t ring[ringCapacity];
@@ -102,17 +146,34 @@ void Diagnose(const char* prefix, const char* what)
     synth_diagnose(text);
 }
 
-void PackPath(uint32_t voice, char* path)
+void PackPath(const char* pack, char* path)
 {
     strcpy(path, state->dataDirectory);
-    strcat(path, packs[voice]);
+    strcat(path, pack);
+}
+
+void Touch(uint32_t voice)
+{
+    state->used[voice] = ++state->clock;
+    state->current[table[voice]->language] = voice;
+}
+
+// The prepared voice ESC 'p' (language 0) / ESC 'e' (language 1) selects:
+// the last one used of that language, else any prepared one, else none.
+uint32_t VoiceOfLanguage(uint32_t language, uint32_t fallback)
+{
+    uint32_t v = state->current[language];
+    if (v < voiceCount && table[v]->language == language && state->engines[v]) return v;
+    for (v = 0; v < voiceCount; ++v)
+        if (table[v]->language == language && state->engines[v]) return v;
+    return fallback;
 }
 
 void SpeakSegment(const char* text, size_t n, uint32_t voice)
 {
     RHVoice_synth_params p;
     memset(&p, 0, sizeof p);
-    p.voice_profile = profiles[voice];
+    p.voice_profile = table[voice]->profile;
     p.absolute_rate = 0;
     p.absolute_pitch = 0;
     p.absolute_volume = 0;
@@ -143,8 +204,7 @@ void SpeakEntry(void*)
                 if (c == 0x1b && at + 1 < u.bytes) {
                     char code = u.text[at + 1];
                     if (code == 'p' || code == 'e') {
-                        next = code == 'p' ? 0 : 1;
-                        if (!state->engines[next]) next = voice;
+                        next = VoiceOfLanguage(code == 'p' ? 0 : 1, voice);
                         at += 2;
                         break;
                     }
@@ -172,8 +232,46 @@ void Release(uint32_t voice)
     if (state->engines[voice]) RHVoice_delete_tts_engine(state->engines[voice]);
     state->engines[voice] = nullptr;
     char path[600];
-    PackPath(voice, path);
+    if (table[voice]->pack) { PackPath(table[voice]->pack, path); synth_vfs_unmount_pack(path); }
+    // The language's base pack stays while another voice of it is prepared.
+    for (uint32_t v = 0; v < voiceCount; ++v)
+        if (state->engines[v] && table[v]->language == table[voice]->language) return;
+    PackPath(languages[table[voice]->language].pack, path);
     synth_vfs_unmount_pack(path);
+}
+
+uint32_t PreparedCount()
+{
+    uint32_t n = 0;
+    for (uint32_t v = 0; v < voiceCount; ++v) if (state->engines[v]) ++n;
+    return n;
+}
+
+// Makes room for `keep`: releases a prepared voice of the same language
+// (`keep` takes its place), else the least recently used prepared voice.
+bool ReleaseOldest(uint32_t keep)
+{
+    uint32_t oldest = UINT32_MAX;
+    for (int pass = 0; pass < 2 && oldest == UINT32_MAX; ++pass)
+        for (uint32_t v = 0; v < voiceCount; ++v) {
+            if (v == keep || !state->engines[v]) continue;
+            if (pass == 0 && table[v]->language != table[keep]->language) continue;
+            if (oldest == UINT32_MAX || state->used[v] < state->used[oldest]) oldest = v;
+        }
+    if (oldest == UINT32_MAX) return false;
+    Release(oldest);
+    return true;
+}
+
+int Mount(const char* pack, const char* at)
+{
+    char path[600];
+    PackPath(pack, path);
+    if (synth_vfs_mounted(path)) return 0;
+    int mounted = synth_vfs_mount_pack(path, at);
+    if (!mounted) return 0;
+    synth_diagnose("rhvoice: data pack missing or corrupt");
+    return mounted == -2 ? -4 : mounted == -3 ? -2 : -5;
 }
 
 // Prepare one voice: mount its pack, create its engine, speak one discarded
@@ -182,23 +280,23 @@ void PrepareEntry(void*)
 {
     uint32_t v = state->prepareVoice;
     try {
-        char path[600];
-        PackPath(v, path);
-        if (!synth_vfs_mounted(path)) {
-            int mounted = synth_vfs_mount_pack(path, mounts[v]);
-            if (mounted) {
-                synth_diagnose("rhvoice: data pack missing or corrupt");
-                state->prepareStatus = mounted == -2 ? -4 : mounted == -3 ? -2 : -5;
-                return;
-            }
-        }
+        const Known& k = *table[v];
+        const Language& language = languages[k.language];
+        int mounted = Mount(language.pack, language.mount);
+        if (!mounted && k.pack) mounted = Mount(k.pack, k.mount);
+        if (mounted) { state->prepareStatus = mounted; return; }
         RHVoice_init_params p;
         memset(&p, 0, sizeof p);
-        p.data_path = dataPaths[v];
+        p.data_path = language.dataPath;
         p.config_path = "/rhvoice/config";
         p.callbacks.set_sample_rate = SetSampleRate;
         p.callbacks.play_speech = PlaySpeech;
-        p.options = RHVoice_preload_voices;
+        // A voice with its own pack is a resource directory beside the
+        // language's data; the base voice in that data is then left unloaded
+        // (no preloading: the discarded word below loads the chosen voice).
+        const char* resources[2] = {k.mount, nullptr};
+        if (k.pack) p.resource_paths = resources;
+        else p.options = RHVoice_preload_voices;
         state->engines[v] = RHVoice_new_tts_engine(&p);
         if (!state->engines[v]) {
             // The C API hides the reason; the same construction through the
@@ -207,6 +305,7 @@ void PrepareEntry(void*)
                 RHVoice::engine::init_params q;
                 q.data_path = p.data_path;
                 q.config_path = p.config_path;
+                if (k.pack) q.resource_paths.push_back(k.mount);
                 RHVoice::engine probe(q);
                 synth_diagnose("rhvoice: engine failed only through the C API");
             } catch (const std::bad_alloc&) {
@@ -219,10 +318,17 @@ void PrepareEntry(void*)
             state->prepareStatus = -1;
             return;
         }
-        if (RHVoice_get_number_of_voices(state->engines[v]) < 1) {
-            synth_diagnose("rhvoice: voice data missing");
-            state->prepareStatus = -3;
-            return;
+        {
+            // The engine must know this very voice (its voice.info was read).
+            const unsigned n = RHVoice_get_number_of_voices(state->engines[v]);
+            const RHVoice_voice_info* info = RHVoice_get_voices(state->engines[v]);
+            bool present = false;
+            for (unsigned i = 0; info && i < n; ++i) if (info[i].name && !strcmp(info[i].name, k.profile)) present = true;
+            if (!present) {
+                synth_diagnose("rhvoice: voice data missing");
+                state->prepareStatus = -3;
+                return;
+            }
         }
         state->utterance.rate = state->utterance.pitch = state->utterance.volume = 1.0;
         state->cancel = false;
@@ -287,17 +393,19 @@ int CHARON_SYNTH_API Prepare(CharonSynthModule* self, uint32_t voice)
 {
     if (!state || state->failed) return -1;
     if (voice >= voiceCount) return -3;
-    if (state->engines[voice]) return 0;
+    if (state->engines[voice]) { Touch(voice); return 0; }
     Cancel(self);
+    while (PreparedCount() >= maxPrepared && ReleaseOldest(voice)) {}
     int r = RunPrepare(voice);
-    if (r == -2) {
-        // Out of memory: release the other voice and try once more.
+    while (r && r != -4 && r != -5) {
+        // Not a missing or corrupt pack: most likely out of memory (-2, or -1/-3
+        // from the HTS loader). Release another voice and retry.
         Release(voice);
-        for (uint32_t other = 0; other < voiceCount; ++other)
-            if (other != voice && state->engines[other]) Release(other);
+        if (!ReleaseOldest(voice)) break;
         r = RunPrepare(voice);
     }
     if (r) Release(voice);
+    else Touch(voice);
     return r;
 }
 
@@ -313,6 +421,7 @@ int CHARON_SYNTH_API Begin(CharonSynthModule* self, uint32_t voice, const char* 
     if (!copy) return -2;
     if (bytes) memcpy(copy, text, bytes);
     copy[bytes] = 0;
+    Touch(voice);
     state->utterance = Utterance{copy, bytes, voice, Clamp(rate, 0.5, 2.0), Clamp(pitch, 0.5, 2.0), Clamp(volume, 0.0, 1.0)};
     state->coroutine = synth_coro_create(stackBytes, SpeakEntry, nullptr);
     if (!state->coroutine) { Finish(); return -2; }
@@ -348,13 +457,34 @@ extern "C" int synth_engine_start(const char* dataDirectory, CharonSynthModule**
     size_t n = strlen(dataDirectory);
     if (n >= sizeof state->dataDirectory) return -1;
     memcpy(state->dataDirectory, dataDirectory, n + 1);
-    // Only the data index: every voice pack must exist; nothing is read.
+    // Only the data index: which packs exist; nothing is read. A voice is
+    // offered when its language's base pack and its own pack (if any) exist.
     const synth_platform* platform = synth_rt_platform();
-    for (uint32_t v = 0; v < voiceCount; ++v) {
+    bool base[2];
+    for (uint32_t l = 0; l < 2; ++l) {
         char path[600];
-        PackPath(v, path);
-        if (platform->probe_file(platform->context, path, nullptr)) { synth_diagnose("rhvoice: data pack missing"); return -4; }
+        PackPath(languages[l].pack, path);
+        base[l] = platform->probe_file(platform->context, path, nullptr) == 0;
     }
+    voiceCount = 0;
+    for (uint32_t i = 0; i < knownCount; ++i) {
+        const Known& k = known[i];
+        if (!base[k.language]) continue;
+        if (k.pack) {
+            char path[600];
+            PackPath(k.pack, path);
+            if (platform->probe_file(platform->context, path, nullptr)) continue;
+        }
+        CharonSynthVoice& out = voices[voiceCount];
+        memset(&out, 0, sizeof out);
+        strncpy(out.id, k.id, sizeof out.id - 1);
+        for (size_t c = 0; k.name[c] && c + 1 < sizeof out.name / sizeof out.name[0]; ++c) out.name[c] = k.name[c];
+        strcpy(out.language, languages[k.language].code);
+        out.sampleRate = 16000;
+        table[voiceCount++] = &k;
+    }
+    if (!voiceCount) { synth_diagnose("rhvoice: data pack missing"); return -4; }
+    state->current[0] = state->current[1] = UINT32_MAX;
     // C++ static objects of RHVoice and libc++ (std::cout, locale ids, tables)
     // are constructed here, explicitly, on the engine's own stack.
     synth_coro* constructors = synth_coro_create(stackBytes, [](void*) { synth_run_constructors(); }, nullptr);

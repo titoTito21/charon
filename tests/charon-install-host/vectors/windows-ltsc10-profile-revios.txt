@@ -1,0 +1,13 @@
+# r409: Windows 10 LTSC 2021 evaluation fetched by Charon, the profile ReviOS (its playbook lists build 19044): kept (-Profile ReviOS).
+lang=en
+flow=windows
+mode=quick
+arg wversion=ltsc10
+arg windex=1
+arg language_asked=1
+arg wlocale=en-US
+keys=ENTER "test" ENTER "test" ENTER
+keys=ENTER END UP ENTER
+put diskmode=whole
+arg partition=3
+arg esp=0

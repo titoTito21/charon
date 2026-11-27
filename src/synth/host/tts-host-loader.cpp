@@ -10,6 +10,10 @@
 //
 // Usage: tts-host-loader VOLUME_DIR MODULE_NAME OUT_DIR|- VOICES [DIAGNOSTIC_RVA STDERR_RVA]
 //   VOICES: voice indices to Prepare, in order ("0", "1", "0,1"); OUT_DIR "-" writes no WAV.
+//   r409: "all" = every voice of the module; a leading '@' ("@0,5,1,0" or "@all") is the
+//   cycle test: each listed voice is prepared and speaks at once (a module may release
+//   other voices to make room), as when a user steps through the voice list quickly.
+//   WAVs: <module>-<language>.wav for the first voice of a language, <voice id>.wav for all.
 //   VOLUME_DIR holds EFI\HAK\synths\<name>.tts and <name>\ (staging layout).
 // The program prints one JSON object per test utterance and exits non-zero
 // when a check fails.
@@ -250,7 +254,9 @@ int main(int argc, char** argv)
 {
     if (argc != 5 && argc != 7) { fprintf(stderr, "usage: VOLUME_DIR MODULE_NAME OUT_DIR|- VOICES [DIAGNOSTIC_RVA STDERR_RVA]\n"); return 2; }
     std::vector<uint32_t> prepareList;
-    for (const char* p = argv[4]; *p;) { prepareList.push_back((uint32_t)strtoul(p, (char**)&p, 10)); if (*p == ',') ++p; }
+    const bool cycle = argv[4][0] == '@';
+    const bool all = !strcmp(argv[4] + cycle, "all");
+    if (!all) for (const char* p = argv[4] + cycle; *p;) { prepareList.push_back((uint32_t)strtoul(p, (char**)&p, 10)); if (*p == ',') ++p; }
     uintptr_t diagnosticRva = argc == 7 ? (uintptr_t)strtoull(argv[5], nullptr, 16) : 0;
     uintptr_t stderrRva = argc == 7 ? (uintptr_t)strtoull(argv[6], nullptr, 16) : 0;
     auto report = [&](const char* when) {
@@ -300,6 +306,41 @@ int main(int argc, char** argv)
     bool ok = true;
     std::vector<bool> prepared(module->voiceCount);
     std::vector<int16_t> buffer(1024);
+    if (all) for (uint32_t v = 0; v < module->voiceCount; ++v) prepareList.push_back(v);
+    for (uint32_t v = 0; v < module->voiceCount; ++v) {
+        char name8[48]; size_t k = 0;
+        for (; module->voices[v].name[k] && k < 47; ++k) name8[k] = module->voices[v].name[k] < 128 ? (char)module->voices[v].name[k] : '?';
+        name8[k] = 0;
+        printf("{\"voice_index\":%u,\"id\":\"%s\",\"name\":\"%s\",\"language\":\"%s\"}\n", v, module->voices[v].id, name8, module->voices[v].language);
+    }
+    for (uint32_t v : prepareList) if (v >= module->voiceCount) { fprintf(stderr, "voice index %u out of range\n", v); return 2; }
+    if (cycle) {
+        // Prepare + speak each listed voice in turn; nothing else stays guaranteed prepared.
+        int step = 0;
+        for (uint32_t v : prepareList) {
+            double p0 = Now();
+            int r = module->Prepare(module, v);
+            double prepareMs = (Now() - p0) * 1000;
+            std::string text = !strcmp(module->voices[v].language, "pl") ? "Menu rozruchu, pozycja 2 z 5." : "Boot menu, item 2 of 5.";
+            int b = r ? r : module->Begin(module, v, text.data(), text.size(), 1.0, 1.0, 1.0);
+            std::vector<int16_t> pcm; int n = 0;
+            if (!b) while ((n = module->Render(module, buffer.data(), 1024)) != -1 && n >= 0) pcm.insert(pcm.end(), buffer.begin(), buffer.begin() + n);
+            double sum = 0; for (int16_t x : pcm) sum += (double)x * x;
+            uint32_t rate = module->voices[v].sampleRate;
+            double rms = pcm.empty() ? 0 : sqrt(sum / pcm.size()), seconds = rate ? (double)pcm.size() / rate : 0;
+            bool good = !r && !b && n == -1 && rms > 300 && seconds > 0.8 && seconds < 8.0;
+            ok = ok && good;
+            printf("{\"cycle\":%d,\"voice\":\"%s\",\"prepare\":%d,\"prepare_ms\":%.1f,\"begin\":%d,\"seconds\":%.3f,\"rms\":%.1f,"
+                   "\"pool_live\":%zu,\"pool_peak\":%zu,\"ok\":%s}\n", step++, module->voices[v].id, r, prepareMs, b, seconds, rms,
+                   poolLive, poolPeak, good ? "true" : "false");
+            if (!good) report("cycle");
+            if (good && outDir != "-") WriteWav(outDir + "\\" + module->voices[v].id + "-cycle.wav", pcm, rate);
+        }
+        bool memoryOk = poolPeak <= ((size_t)64 << 20);
+        printf("{\"memory_peak_bytes\":%zu,\"within_64MiB\":%s}\n", poolPeak, memoryOk ? "true" : "false");
+        puts(ok && memoryOk ? "PASS" : "FAIL");
+        return ok && memoryOk ? 0 : 1;
+    }
     // Begin before Prepare must refuse with -3.
     for (uint32_t v = 0; v < module->voiceCount; ++v) {
         int r = module->Begin(module, v, "a", 1, 1.0, 1.0, 1.0);
@@ -320,6 +361,7 @@ int main(int argc, char** argv)
     }
     struct Case { const char* tag; uint32_t voice; std::string text; double rate; };
     std::vector<Case> cases;
+    std::map<std::string, bool> written;   // <module>-<tag>.wav belongs to the first voice with that tag
     for (uint32_t v = 0; v < module->voiceCount; ++v) {
         if (!prepared[v]) continue;
         std::string language = module->voices[v].language;
@@ -355,7 +397,10 @@ int main(int argc, char** argv)
         double sum = 0; int peak = 0;
         for (int16_t s : pcm) { sum += (double)s * s; peak = abs(s) > peak ? abs(s) : peak; }
         double rms = pcm.empty() ? 0 : sqrt(sum / pcm.size()), seconds = (double)pcm.size() / rate;
-        if (outDir != "-") WriteWav(outDir + "\\" + name + "-" + c.tag + ".wav", pcm, rate);
+        if (outDir != "-") {
+            if (!written[c.tag]) { WriteWav(outDir + "\\" + name + "-" + c.tag + ".wav", pcm, rate); written[c.tag] = true; }
+            if (!strcmp(c.tag, "pl") || !strcmp(c.tag, "en")) WriteWav(outDir + "\\" + module->voices[c.voice].id + ".wav", pcm, rate);
+        }
         bool plausible = rms > 300 && seconds > 0.8 && seconds < 8.0;
         ok = ok && plausible;
         printf("{\"case\":\"%s\",\"voice\":\"%s\",\"rate\":%u,\"seconds\":%.3f,\"rms\":%.1f,\"peak\":%d,\"begin_ms\":%.2f,"

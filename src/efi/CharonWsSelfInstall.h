@@ -79,12 +79,36 @@ inline const char16_t* Holds(efi_handle volume) {
     for(const auto& l:linux)if(Has(volume,l[0]))return l[1];
     return T(u"bez rozpoznanego systemu",u"no system recognised");
 }
+// r409: with every RHVoice voice the add-on synthesizers grew from about 7 MB to about 22 MB. When
+// everything does not fit, the further voice packs go first: \EFI\HAK\synths\rhvoice\rhvoice-<name>.chsp
+// other than the two base packs (rhvoice-pl.chsp, rhvoice-en.chsp) and the pack of the voice Charon
+// speaks with now (KeptVoice: "rhvoice-natan", or empty). Only then are all add-ons given up.
+inline bool& FurtherVoices() {static bool wanted=true;return wanted;}
+inline char* KeptVoice() {static char name[64];return name;}
+inline bool FurtherVoicePack(const char16_t* path) {
+    static const char16_t prefix[]=u"\\EFI\\HAK\\SYNTHS\\RHVOICE\\";size_t i=0;
+    for(;prefix[i];++i)if(selfcopy::Fold(path[i])!=prefix[i])return false;
+    size_t n=i;while(path[n])++n;
+    static const char16_t suffix[]=u".CHSP";
+    if(n<i+6)return false;
+    for(size_t k=0;k<5;++k)if(selfcopy::Fold(path[n-5+k])!=suffix[k])return false;
+    auto is=[&](const char* name) {   // the file's name without ".chsp", any case
+        size_t k=0;
+        for(;name[k];++k) {char c=name[k];if(c>='a' && c<='z')c=char(c-32);if(i+k>=n-5 || selfcopy::Fold(path[i+k])!=char16_t(uint8_t(c)))return false;}
+        return i+k==n-5;};
+    static const char16_t voicePrefix[]=u"RHVOICE-";
+    for(size_t k=0;voicePrefix[k];++k)if(selfcopy::Fold(path[i+k])!=voicePrefix[k])return false;
+    if(is("rhvoice-pl") || is("rhvoice-en"))return false;
+    return !(KeptVoice()[0] && is(KeptVoice()));
+}
 // Files that a variant does not need (the reader alone leaves the boot manager and its tools out).
 inline bool Wanted(const selfcopy::Item& item,bool manager,bool synths) {
     auto starts=[&](const char16_t* prefix) {
         size_t i=0;for(;prefix[i];++i)if(selfcopy::Fold(item.path[i])!=selfcopy::Fold(prefix[i]))return false;
         return true;};
+    if(item.privateItem)return false;   // r409: installing Charon on a computer GIVES Charon: no saved answer sets, no plan state (CharonPrivate.h)
     if(!synths && starts(u"\\EFI\\HAK\\SYNTHS\\"))return false;
+    if(!FurtherVoices() && FurtherVoicePack(item.path))return false;   // r409: the step before giving up every add-on synthesizer
     if(manager)return true;
     return !(starts(u"\\EFI\\HAK\\HAKBOOT.EFI") || starts(u"\\EFI\\HAK\\PACKAGES\\") || starts(u"\\EFI\\HAK\\TOOLS\\") || starts(u"\\EFI\\HAK\\ADDON\\")
         || starts(u"\\EFI\\HAK\\CharonShell.efi") || starts(u"\\EFI\\HAK\\install-charon.sh"));
@@ -126,6 +150,7 @@ inline bool WriteOne(efi_handle volume,const selfcopy::Item& item) {
 // disk's free space and install there; firmware loads Driver####/Boot#### by device path, so they
 // need not be on the system's ESP. Nothing else on the disk is touched. GPT, 512-byte sectors only.
 inline bool InstallToNewPartition(bool manager,bool first) {
+    FurtherVoices()=true;   // r409: a partition made for Charon is sized for everything
     auto& cc=selfcopy::S();constexpr uint64_t mega=uint64_t(1)<<20;
     uint64_t want=0;for(size_t i=0;i<cc.count;++i)if(Wanted(cc.items[i],manager,true))want+=cc.items[i].size+4096;
     uint64_t partBytes=(want+(uint64_t(16)<<20)+mega-1)/mega*mega;if(partBytes<(uint64_t(96)<<20))partBytes=uint64_t(96)<<20;   // r408a: room for FAT32's 65525 clusters with a margin
@@ -152,17 +177,25 @@ inline bool InstallToNewPartition(bool manager,bool first) {
     seeddisk::AddRequest request{};request.type=espGuid;request.unique=unique;request.name=u"Charon";request.sizeBytes=partBytes;request.alignmentBytes=0;request.placement=seeddisk::Placement::At;request.firstLba=firstLba;request.attributes=0;
     seeddisk::AddResult added{};
     if(seeddisk::AddPartition(sd,images::SeedWork(),seeddisk::kWorkBytes,request,added)!=seeddisk::Error::None) {Fail(T(u"Nie udało się dodać partycji Charona.",u"The Charon partition could not be added."));return false;}
+    // r409: a step that fails after the partition was added no longer leaves an empty "Charon" partition behind:
+    // its entry is removed again (same type, same place), and that is said.
+    auto undo=[&]() {
+        const auto error=seeddisk::RemovePartition(sd,images::SeedWork(),seeddisk::kWorkBytes,unique,espGuid,added.firstLba);
+        if(d.io->FlushBlocks)reinterpret_cast<images::BlockFlush>(d.io->FlushBlocks)(d.io);
+        images::Reconnect(d.handle);
+        Say(error==seeddisk::Error::None?T(u"Usunąłem nową, pustą partycję Charona; dysk jest taki jak przedtem.",u"I removed the new, empty Charon partition; the disk is as it was.")
+            :T(u"Uwaga: na dysku została pusta partycja o nazwie Charon; można ją usunąć w zarządzaniu dyskami.",u"Note: an empty partition named Charon was left on the disk; it can be deleted in a disk management tool."));};
     uint32_t lo,hi;__asm__ volatile("rdtsc":"=a"(lo),"=d"(hi));
-    if(!dossys::FormatFat32(d.io,added.firstLba,added.lbaCount,"CHARON",lo^hi)) {Fail(T(u"Formatowanie partycji Charona nie powiodło się.",u"Formatting the Charon partition failed."));return false;}
+    if(!dossys::FormatFat32(d.io,added.firstLba,added.lbaCount,"CHARON",lo^hi)) {Fail(T(u"Formatowanie partycji Charona nie powiodło się.",u"Formatting the Charon partition failed."));undo();return false;}
     if(d.io->FlushBlocks)reinterpret_cast<images::BlockFlush>(d.io->FlushBlocks)(d.io);
     images::Reconnect(d.handle);
     const efi_handle esp=images::VolumeOfPartition(unique.bytes);
-    if(!esp) {Fail(T(u"Firmware nie widzi nowej partycji Charona.",u"The firmware does not see the new Charon partition."));return false;}
+    if(!esp) {Fail(T(u"Firmware nie widzi nowej partycji Charona.",u"The firmware does not see the new Charon partition."));undo();return false;}
     Say(T(u"Kopiuję Charona na nową partycję.",u"Copying Charon to the new partition."));
     uint64_t total=0,done=0;size_t written=0;
     for(size_t i=0;i<cc.count;++i)if(Wanted(cc.items[i],manager,true))total+=cc.items[i].size;
     for(size_t i=0;i<cc.count;++i) {if(!Wanted(cc.items[i],manager,true))continue;
-        if(!WriteOne(esp,cc.items[i])) {Fail(T(u"Zapis na nową partycję nie powiódł się.",u"Writing to the new partition failed."));return false;}
+        if(!WriteOne(esp,cc.items[i])) {Fail(T(u"Zapis na nową partycję nie powiódł się.",u"Writing to the new partition failed."));undo();return false;}
         done+=cc.items[i].size;++written;Progress(T(u"Charon na partycję",u"Charon to the partition"),done,total);}
     efi_status status=dossys::PutOption(true,u"Charon voice",esp,u"\\EFI\\HAK\\CHARONVOICE.EFI",true,nullptr,nullptr,true);
     if(status==EFI_UNSUPPORTED)status=dossys::PutOption(true,u"Charon voice",esp,u"\\EFI\\HAK\\CHARONVOICE.EFI",true,nullptr);
@@ -231,17 +264,29 @@ inline void Run() {
     const efi_handle esp=targets[chosen].volume;
     // 4. room
     bool synths=true;
+    // r409: in steps - first without the further voice packs, then without any add-on synthesizer
+    {static char synth[64],voice[48];CharSettings now;install::CurrentVoice(synth,sizeof(synth),voice,sizeof(voice),now);
+     char* kept=KeptVoice();kept[0]=0;
+     if(ask::Same(synth,"rhvoice") && voice[0]) {size_t k=0;for(const char* s="rhvoice-";*s;++s)kept[k++]=*s;for(const char* s=voice;*s && k+1<64;++s)kept[k++]=*s;kept[k]=0;}}
+    FurtherVoices()=true;
     if(Needed(manager,true,esp)>targets[chosen].freeBytes) {
+        FurtherVoices()=false;
+        if(Needed(manager,true,esp)<=targets[chosen].freeBytes) {
+            Say(T(u"Wszystkie głosy syntezatora RHVoice nie zmieszczą się na tej partycji. Kopiuję głosy podstawowe, polski i angielski, oraz głos, którym Charon mówi teraz; pozostałe głosy pomijam.",
+                  u"Not all RHVoice voices fit on this partition. I am copying the base voices, Polish and English, and the voice Charon speaks with now; the other voices are left out."));
+            HearOut(60);
+        } else {
         synths=false;
         if(Needed(manager,false,esp)>targets[chosen].freeBytes) {
             static char16_t text[500];Set(text,500,T(u"Na tej partycji EFI jest za mało miejsca: potrzeba ",u"This EFI partition has too little room: "));
             CatN(text,500,Needed(manager,false,esp)>>20);Cat(text,500,T(u" MB, wolne jest ",u" MB are needed, free are "));CatN(text,500,targets[chosen].freeBytes>>20);
             Cat(text,500,T(u" MB. Zamiast tego mogę utworzyć nową, małą partycję Charona w wolnym miejscu dysku.",u" MB. Instead I can make a new, small Charon partition in the disk's free space."));
             Say(text);HearOut(120);
-            InstallToNewPartition(manager,first);return;}
+            FurtherVoices()=true;InstallToNewPartition(manager,first);return;}
         Say(T(u"Dodatkowe syntezatory mowy nie zmieszczą się na tej partycji, więc ich nie kopiuję. Charon będzie mówił wbudowanym głosem.",
               u"The additional speech synthesizers do not fit on this partition, so I leave them out. Charon will speak with its built-in voice."));
         HearOut(60);
+        }
     }
     // 5. the plan, confirmed by a typed word
     {static char16_t text[900];

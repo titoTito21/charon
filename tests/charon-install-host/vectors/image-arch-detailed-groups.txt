@@ -1,0 +1,12 @@
+# r410. Ready image (Arch), English, detailed mode: no desktop, so the appearance group is not shown; automatic updates
+# are not asked on Arch. Changed: the lid, the firewall, the shell.
+lang=en
+flow=image
+mode=detailed
+arg entry=2
+keys=ENTER ENTER ENTER ENTER "Ann" ENTER ENTER "test" ENTER "test" ENTER
+keys=ENTER ENTER
+keys=DOWN ENTER
+keys=END UP ENTER DOWN DOWN ENTER ENTER ENTER ENTER
+keys=F3 "shell" ENTER ENTER DOWN DOWN ENTER
+keys=F10 ENTER ENTER

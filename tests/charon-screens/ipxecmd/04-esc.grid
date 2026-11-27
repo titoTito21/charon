@@ -1,0 +1,24 @@
+CHARON grid 31 100 4 7 0 iPXE
+G01 26*97,27*9f,27*97|80*0000|                          iPXE configuration settings                           
+G02 2*00,3*93|5*0000|     
+G03 1*00,78*9f|79*0000|  builtin/                                                                     
+G04 1*00,78*cf|79*0000|  cpuid/                                                                       
+G05 1*00,78*9f|79*0000|  efi/                                                                         
+G06 1*00,78*9f|79*0000|  pci/                                                                         
+G07 1*00,78*9f|79*0000|  smbios/                                                                      
+G08 1*00,78*9f|79*0000|  usb/                                                                         
+G09 1*00,78*9f|79*0000|  acpi/                                                                        
+G0a 1*00,78*9f|79*0000|  netX/                                                                        
+G0b 1*00,78*97|79*0000|  busid.......... <not specified>                                              
+G0c 1*00,78*97|79*0000|  busloc......... <not specified>                                              
+G0d 1*00,78*97|79*0000|  bustype........ <not specified>                                              
+G0e 1*00,78*97|79*0000|  chip........... <not specified>                                              
+G0f 1*00,78*97|79*0000|  hwaddr......... <not specified>                                              
+G10 1*00,78*97|79*0000|  ifname......... <not specified>                                              
+G11 1*00,78*97|79*0000|  linktype....... <not specified>                                              
+G12 1*00,78*97|79*0000|  mac............ <not specified>                                              
+G13 2*00,3*93|5*0000|  ...
+G14 80*97|80*0000|                                                                                
+G15 80*97|80*0000|                                                                                
+G17 80*97|80*0000|                      Ctrl-X - exit configuration utility                       
+CHARON grid end

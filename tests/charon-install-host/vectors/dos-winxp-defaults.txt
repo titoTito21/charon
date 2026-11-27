@@ -1,0 +1,6 @@
+# CharonDOS, Windows XP profile from a disc (NVDA 2017.3; Setup is not automatic for XP).
+lang=en
+flow=dos
+arg profile=WINXP
+arg reader=nvda-2017.3
+arg medium=SETUP.ISO

@@ -1,0 +1,7 @@
+result=written
+confirm-silent=not-asked
+set-reload=ok applied=2
+asked=locale,keyboard,timezone,hostname,fullname,user,password,desktop,readers,ssh
+shell=fish
+lid=ignore
+keys-left=0

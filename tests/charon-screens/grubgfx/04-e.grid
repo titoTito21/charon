@@ -1,0 +1,9 @@
+CHARON grid 34 100 0 0 1 GRUB
+G01 33*00,32*87|33*0000,32*0110|                                 GNU GRUB  version 2.12-9+deb13u4
+G04 2*00,95*87|2*0000,95*0110|  ┃ etparams 'Charon test entry two'                                                            ┃
+G06 2*00,95*87|2*0000,95*0110|  ┃  echo "Entry two selected"                                                                  ┃
+G07 2*00,95*87|2*0000,95*0110|  ┃  sleep 3                                                                                    ┃
+G1e 7*00,83*87|7*0000,83*0110|       Minimum Emacs-like screen editing is supported. TAB lists completions. Press Ctrl-x
+G1f 7*00,82*87|7*0000,82*0110|       or F10 to boot, Ctrl-c or F2 for a command-line or ESC to discard edits and return
+G20 7*00,17*87|7*0000,17*0110|       to the GRUB menu.
+CHARON grid end

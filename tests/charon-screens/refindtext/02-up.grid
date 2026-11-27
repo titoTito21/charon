@@ -1,0 +1,16 @@
+CHARON grid 31 100 4 43 0 rEFInd
+G00 100*9f|100*0000|                                                                                                    
+G01 100*9f|100*0000|   rEFInd - Main Menu                                                                               
+G02 100*9f|100*0000|                                                                                                    
+G04 1*8a,1*00,41*af|43*0000|   Boot EFI\probe\GPROBE.EFI from GRUBTEST 
+G05 2*00,39*87|41*0000|   Boot EFI\probe\PROBE.EFI from GRUBTEST
+G06 2*00,42*87|44*0000|   Boot EFI\debian\grubx64.efi from GRUBTEST
+G07 2*00,29*87|31*0000|   Reboot to EFI Internal Shell
+G08 2*00,13*87|15*0000|   About rEFInd
+G09 2*00,24*87|26*0000|   Manage Hidden Tags Menu
+G0a 2*00,19*87|21*0000|   Shut Down Computer
+G0b 2*00,16*87|18*0000|   Reboot Computer
+G0c 2*00,33*87|35*0000|   Reboot to Computer Setup Utility
+G1d 45*8a|45*0000|Use arrow keys to move cursor; Enter to boot;
+G1e 64*8a|64*0000|Insert, Tab, or F2 for more options; Esc or Backspace to refresh
+CHARON grid end

@@ -134,6 +134,10 @@ public:
         for(size_t y=0;y<height;++y) {
             if(y && !(y&127))idle();
             const uint32_t* row=pixels+y*stride;
+            // A row is plain when one colour holds half of 32 samples. (r410 tried "a quarter of 64" here, to keep
+            // the widest line of a cropped area: on a theme's wallpaper it turned picture rows into text rows and
+            // the reader spoke rows of "IIII". The widest line is kept by the reader instead, which no longer
+            // crops an area to less than twice the width of its ink: CharonResident.h RecognizeArea.)
             uint32_t samples[32];
             for(size_t i=0;i<32;++i)samples[i]=row[(i*width)/32]&0xffffff;
             uint32_t best=samples[0];size_t bestCount=0;
@@ -143,6 +147,7 @@ public:
             const int bg=Lum(best);
             for(size_t x=0;x<width;++x) {const int d=Lum(row[x])-bg;if(d>40 || d<-40) {rowInk_[y]=true;break;}}
         }
+        FindFrameEdges(pixels,width,height,stride,idle);
         // r396: a run of inked rows of three cells holds more than one line. A
         // frame's vertical edges (Limine's entry editor) ink every row inside
         // it; their pixels, in vertical runs longer than any glyph, are left
@@ -157,8 +162,19 @@ public:
             // One block per run of inked rows; its background is that of the
             // first row (a highlight bar's edge carries no text, while its text
             // rows may hold more dark pixels than bar colour).
-            size_t end=y;while(end<height && rowInk_[end])++end;
-            if(end-y>=5 && end-y+2<=maxBlock)recognized+=Block(pixels,width,stride,left,top,y,end,emit,idle);
+            // r410: the run ends where the background changes and one of the two rows is a bar's plain edge (every
+            // pixel between the first and the last of its colour has that colour). A line whose descenders reach
+            // down to a selection bar made one block with it, read against the page's colour: the chosen entry
+            // of a GRUB theme's boxed text menu ("*Opcje zaawansowane ...", black on grey) was not read at all.
+            auto edgeRow=[&](size_t r) {
+                const uint32_t* row=pixels+r*stride;const uint32_t paper=rowBg_[r];
+                size_t a=0;while(a<width && (row[a]&0xffffff)!=paper)++a;
+                size_t b=width;while(b>a && (row[b-1]&0xffffff)!=paper)--b;
+                for(size_t x=a;x<b;++x)if((row[x]&0xffffff)!=paper)return false;
+                return b>a;
+            };
+            size_t end=y+1;while(end<height && rowInk_[end] && !(rowBg_[end]!=rowBg_[end-1] && (edgeRow(end) || edgeRow(end-1))))++end;
+            recognized+=Segments(pixels,width,stride,left,top,y,end,emit,idle);
             y=end;
         }
         // r367: bitmap text over a picture (GRUB themes: PF2 glyphs drawn in
@@ -168,7 +184,7 @@ public:
         if(std::getenv("TTF_TRACE"))std::printf("  scan h%zu pictureRows %zu bitmapFonts %zu inPicture %d\n",height,pictureRows,bitmapFonts_,int(inPicture_));
 #endif
         if(pictureRows>=6 && bitmapFonts_ && !inPicture_ && SyntheticBuffer(width*height)) {
-            inPicture_=true;
+            inPicture_=true;directCount_=0;heldCount_=0;
             for(size_t y=0;y<height;++y)pictureMask_[y]=rowPicture_[y];  // the nested reads reuse rowPicture_
             static const uint32_t keys[]={0x000000,0xffffff};
             for(const uint32_t key:keys) {
@@ -182,10 +198,210 @@ public:
                 recognized+=Recognize(synthetic_,width,height,width,left,top,emit,idle);
             }
             inPicture_=false;
+            // r410: a part read as holes in a box of the key colour (EmitPart held it back) goes out only where no
+            // part was read from glyph pixels: the same letters must not be reported twice, the second time cut.
+            for(size_t i=0;i<heldCount_;++i) {
+                const Held& h=held_[i];bool twice=false;
+                for(size_t k=0;k<directCount_ && !twice;++k) {
+                    const Direct& d=direct_[k];const size_t dy=d.y>h.y?d.y-h.y:h.y-d.y;
+                    const size_t from=d.x0>h.x0?d.x0:h.x0,to=d.x1<h.x1?d.x1:h.x1;
+                    twice=dy<=3 && to>from+8;
+                }
+                if(!twice)emit(h.text,size_t(h.x0),size_t(h.y),h.fg,h.bg,size_t(h.height));
+            }
+            heldCount_=0;directCount_=0;
         }
         return recognized;
     }
 private:
+    // r410: the upright edges of a frame drawn around text. A GRUB theme's terminal box (Debian's starfield)
+    // draws them as dashes two or three pixels wide in the rows of every text line: they joined the line's
+    // block, were read as letters ("j Opcje zaawansowane j", "l" on rows without text) and with the box's top
+    // line made the first text line one block with the frame, which then was not read at all ("setparams ...").
+    // An edge is taken only as a PAIR: two column groups of the same width (at most 4 pixels), inked in exactly
+    // the same rows - at least 24 rows from first to last, three quarters of them inked - each with three blank
+    // columns on both sides (the corners' rows aside) and at least 64 pixels apart. Ink here is a pixel far from
+    // its row's background AND from the area's (a highlight bar between the edges is neither).
+    // The same theme leaves a strip of its wallpaper and a dim border line beside the terminal's page: columns
+    // at the area's side (at most 16) whose last one is off the page colour in EVERY row of the page (but four:
+    // the border's rounded corners), with the page starting right after it in four rows out of five. Their
+    // brightness hovers around the ink threshold, so they joined text rows into one block at random
+    // ("^   Anywhere else TAB ...", the first editor line again). (Every row: a box's edge that stops short of a line of text at the screen's side - Limine's editor
+    // frame above "Configuration is valid." - is not such a strip, and that text keeps its first letter.)
+    // Edge and strip columns are no ink for the row test and are blanked in every block; nothing else about the
+    // reading changes. One edge alone, or shorter ones, stay as they were (the reader drops a line of upright
+    // strokes itself).
+    struct FrameEdge {uint16_t from,to,first,last;};
+    FrameEdge frame_[16]={};size_t frameCount_=0;const uint32_t* frameBase_=nullptr;
+    bool FrameColumn(size_t x,size_t y) const {
+        for(size_t i=0;i<frameCount_;++i)if(x>=frame_[i].from && x<frame_[i].to && y>=frame_[i].first && y<=frame_[i].last)return true;
+        return false;
+    }
+    template<class Idle> void FindFrameEdges(const uint32_t* pixels,size_t width,size_t height,size_t stride,Idle& idle) {
+        frameCount_=0;frameBase_=pixels;
+        if(height<24 || width<80)return;
+        // The area's page: the background most plain rows have.
+        uint32_t page=0;size_t plain=0;
+        {uint32_t seen[8]={};size_t counts[8]={},kinds=0,best=0;
+         for(size_t y=0;y<height;++y) {
+             if(rowPicture_[y])continue;
+             size_t k=0;while(k<kinds && seen[k]!=rowBg_[y])++k;
+             if(k==kinds) {if(kinds==8)continue;seen[kinds++]=rowBg_[y];}
+             if(++counts[k]>best) {best=counts[k];page=seen[k];}
+         }
+         plain=best;}
+        const int pageLum=Lum(page);
+        // Side strips: where the page starts and ends in its rows.
+        if(plain>=24) {constexpr size_t reach=16;size_t lead[reach+1]={},trail[reach+1]={},always[reach+1]={},alwaysRight[reach+1]={};
+         for(size_t y=0;y<height;++y) {
+             if(rowPicture_[y] || rowBg_[y]!=page)continue;
+             const uint32_t* row=pixels+y*stride;size_t l=0,t=0;
+             // (within 8 of the page's brightness is the page: the wallpaper shows faintly through it here and there)
+             auto off=[&](uint32_t p) {const int d=Lum(p)-pageLum;return d>8 || d<-8;};
+             for(size_t x=0;x<=reach;++x) {if(off(row[x])) {l=x+1;if(x<reach)++always[x+1];}if(off(row[width-1-x])) {t=x+1;if(x<reach)++alwaysRight[x+1];}}
+             if(l<=reach)++lead[l];
+             if(t<=reach)++trail[t];
+         }
+         for(size_t s=1;s<=reach;++s) {
+             if(lead[s]*5>=plain*4 && always[s]+4>=plain)frame_[frameCount_++]={0,uint16_t(s),0,uint16_t(height-1)};
+             if(trail[s]*5>=plain*4 && alwaysRight[s]+4>=plain)frame_[frameCount_++]={uint16_t(width-s),uint16_t(width),0,uint16_t(height-1)};
+         }}
+        // A box of one colour in the middle of a picture (a GRUB theme's progress bar with the countdown label
+        // in it, once one of its two colours fills half of the screen's width): its rows count as plain, and the
+        // wallpaper left and right of the box was ink - read as "l  lllllllllllllllllllll[lllll" while the label
+        // was lost. Where the row's colour is absent from both sides for more than 32 pixels, and both sides
+        // hold at least four colours, the sides are no ink. The box goes on over a run of one other colour of at
+        // least 16 pixels (the bar's other part) when most of its rows show that run to the same column. Only
+        // for at least five plain rows with the same box (then also for the rows next to them that hold the
+        // box's colours in three fifths of its width); a row of another colour right above or below it that
+        // spans the same columns is the box's border line and carries no text.
+        if(width>=128) {
+            static uint16_t a0[maxScan],b0[maxScan],a1[maxScan],b1[maxScan];
+            auto picture=[&](const uint32_t* row,size_t x0,size_t x1) {
+                uint32_t seen[4];size_t kinds=0;
+                for(size_t x=x0;x<x1 && kinds<4;++x) {const uint32_t c=row[x]&0xffffff;size_t k=0;while(k<kinds && seen[k]!=c)++k;if(k==kinds)seen[kinds++]=c;}
+                return kinds>=4;
+            };
+            for(size_t y=0;y<height;++y) {
+                a0[y]=b0[y]=a1[y]=b1[y]=0;
+                const uint32_t* row=pixels+y*stride;const uint32_t paper=rowBg_[y];
+                size_t a=0;while(a<width && (row[a]&0xffffff)!=paper)++a;
+                size_t b=width;while(b>a && (row[b-1]&0xffffff)!=paper)--b;
+                if(a<=32 || b+32>=width || b<=a+32)continue;
+                // A row of the box whose text left its colour less than half of the row's samples counts as a
+                // picture row; it may join the box's plain rows when that colour fills two fifths of the box.
+                if(rowPicture_[y]) {size_t same=0;for(size_t x=a;x<b;++x)if((row[x]&0xffffff)==paper)++same;if(same*5<(b-a)*2)continue;}
+                a0[y]=a1[y]=uint16_t(a);b0[y]=b1[y]=uint16_t(b);
+                {const uint32_t c=row[a-1]&0xffffff;size_t k=a-1;while(k>0 && (row[k-1]&0xffffff)==c)--k;if(a-k>=16)a1[y]=uint16_t(k);}
+                {const uint32_t c=row[b]&0xffffff;size_t k=b+1;while(k<width && (row[k]&0xffffff)==c)++k;if(k-b>=16)b1[y]=uint16_t(k);}
+            }
+            for(size_t y=0;y<height;) {
+                if(!b0[y]) {++y;continue;}
+                size_t end=y+1;while(end<height && b0[end]==b0[y] && a0[end]==a0[y] && rowBg_[end]==rowBg_[y])++end;
+                size_t rows=0;for(size_t r=y;r<end;++r)if(!rowPicture_[r])++rows;   // plain on their own
+                // the column most rows reach on each side (the rows a letter crosses stop short of it)
+                size_t from=a0[y],to=b0[y];
+                {size_t votes=0;for(size_t r=y;r<end;++r) {if(a1[r]==a0[r])continue;size_t same=0;for(size_t q=y;q<end;++q)if(a1[q]==a1[r])++same;if(same>votes) {votes=same;from=a1[r];}}
+                 if(votes*2<end-y)from=a0[y];}
+                {size_t votes=0;for(size_t r=y;r<end;++r) {if(b1[r]==b0[r])continue;size_t same=0;for(size_t q=y;q<end;++q)if(b1[q]==b1[r])++same;if(same>votes) {votes=same;to=b1[r];}}
+                 if(votes*2<end-y)to=b0[y];}
+                const uint32_t* row=pixels+y*stride;
+                if(rows>=5 && from>32 && to+32<width && picture(row,0,from) && picture(row,to,width) && frameCount_+2<=sizeof(frame_)/sizeof(frame_[0])) {
+                    // The rows above and below that are the same box: a letter at the box's side, or text dense
+                    // enough to make the row a picture row, changes where the row's colour begins.
+                    // The box's colours: the row's own and those of its runs of at least 16 pixels.
+                    const uint32_t paper=rowBg_[y];uint32_t colours[4]={paper};size_t kinds=1;
+                    for(size_t x=from;x<to;) {
+                        const uint32_t c=row[x]&0xffffff;size_t e=x+1;while(e<to && (row[e]&0xffffff)==c)++e;
+                        if(e-x>=16 && kinds<4) {size_t k=0;while(k<kinds && colours[k]!=c)++k;if(k==kinds)colours[kinds++]=c;}
+                        x=e;
+                    }
+                    auto belongs=[&](size_t r) {
+                        if(!rowPicture_[r] && rowBg_[r]!=paper)return false;
+                        const uint32_t* q=pixels+r*stride;size_t same=0;
+                        for(size_t x=from;x<to;++x) {const uint32_t c=q[x]&0xffffff;for(size_t k=0;k<kinds;++k)if(c==colours[k]) {++same;break;}}
+                        return same*5>=(to-from)*3;
+                    };
+                    size_t top=y;
+                    while(top>0 && belongs(top-1))--top;
+                    while(end<height && belongs(end))++end;
+                    frame_[frameCount_++]={0,uint16_t(from),uint16_t(top),uint16_t(end-1)};
+                    frame_[frameCount_++]={uint16_t(to),uint16_t(width),uint16_t(top),uint16_t(end-1)};
+                    for(size_t r=top;r<end;++r) {rowPicture_[r]=false;rowBg_[r]=paper;rowInk_[r]=true;}
+                    auto border=[&](size_t r) {
+                        if(!b0[r] || rowPicture_[r] || rowBg_[r]==paper)return;
+                        const size_t da=a0[r]>from?a0[r]-from:from-a0[r],db=b0[r]>to?b0[r]-to:to-b0[r];
+                        if(da<=2 && db<=2)rowInk_[r]=false;
+                    };
+                    for(size_t k=1;k<=3;++k) {if(top>=k)border(top-k);if(end+k-1<height)border(end+k-1);}
+                }
+                y=end;
+            }
+        }
+        idle();
+        {
+            static uint16_t count[maxWidth],first[maxWidth],last[maxWidth];
+            auto inked=[&](size_t x,size_t y) {
+                if(!rowInk_[y] || rowPicture_[y])return false;
+                const int l=Lum(pixels[y*stride+x]),d=l-Lum(rowBg_[y]),e=l-pageLum;
+                return (d>40 || d<-40) && (e>40 || e<-40);
+            };
+            for(size_t x=0;x<width;++x) {count[x]=0;first[x]=0xffff;last[x]=0;}
+            for(size_t y=0;y<height;++y) {
+                if(!rowInk_[y] || rowPicture_[y])continue;
+                if(!(y&127))idle();
+                const uint32_t* row=pixels+y*stride;const uint32_t paper=rowBg_[y];
+                for(size_t x=0;x<width;++x) {
+                    const uint32_t p=row[x]&0xffffff;
+                    if(p==paper || p==page || !inked(x,y))continue;
+                    ++count[x];if(first[x]==0xffff)first[x]=uint16_t(y);last[x]=uint16_t(y);
+                }
+            }
+            FrameEdge found[8];size_t n=0;
+            for(size_t x=0;x<width && n<8;) {
+                if(count[x]<18) {++x;continue;}
+                size_t e=x+1;while(e<width && count[e]==count[x] && first[e]==first[x] && last[e]==last[x])++e;
+                const size_t w=e-x,top=first[x],bottom=last[x],span=bottom-top+1;
+                bool ok=w<=4 && span>=24 && size_t(count[x])*4>=span*3;
+                // the same rows in every column of the group, and nothing beside it
+                for(size_t y=top;y<=bottom && ok;++y) {
+                    const bool on=inked(x,y);
+                    for(size_t k=x+1;k<e && ok;++k)ok=inked(k,y)==on;
+                    if(y<top+4 || y+4>bottom)continue;   // a corner joins the box's top or bottom line
+                    for(size_t k=1;k<=3 && ok;++k)ok=!(x>=k && inked(x-k,y)) && !(e+k-1<width && inked(e+k-1,y));
+                }
+#ifdef CHARON_TTF_DEBUG
+                if(std::getenv("TTF_TRACE") && (ok || w>1))std::printf("  frame? x%zu w%zu rows %zu-%zu count%u ok%d\n",x,w,top,bottom,unsigned(count[x]),int(ok));
+#endif
+                if(ok)found[n++]={uint16_t(x),uint16_t(e),uint16_t(top),uint16_t(bottom)};
+                x=e;
+            }
+            idle();
+            bool paired[8]={};
+            for(size_t a=0;a<n;++a)for(size_t b=a+1;b<n;++b) {
+                const FrameEdge& l=found[a];const FrameEdge& r=found[b];
+                if(l.to-l.from!=r.to-r.from || l.first!=r.first || l.last!=r.last || count[l.from]!=count[r.from] || r.from<l.to+64u)continue;
+                bool same=true;for(size_t y=l.first;y<=l.last && same;++y)same=inked(l.from,y)==inked(r.from,y);
+                if(same)paired[a]=paired[b]=true;
+            }
+            for(size_t a=0;a<n;++a)if(paired[a] && frameCount_<sizeof(frame_)/sizeof(frame_[0]))frame_[frameCount_++]=found[a];
+        }
+#ifdef CHARON_TTF_DEBUG
+        if(std::getenv("TTF_TRACE"))for(size_t i=0;i<frameCount_;++i)std::printf("  frame x%u-%u rows %u-%u\n",frame_[i].from,frame_[i].to,frame_[i].first,frame_[i].last);
+#endif
+        if(!frameCount_)return;
+        // Rows whose only ink is the frame's are no text rows.
+        for(size_t y=0;y<height;++y) {
+            if(!rowInk_[y] || rowPicture_[y])continue;
+            const uint32_t* row=pixels+y*stride;const int bg=Lum(rowBg_[y]);bool ink=false;
+            for(size_t x=0;x<width && !ink;++x) {const int d=Lum(row[x])-bg;ink=(d>40 || d<-40) && !FrameColumn(x,y);}
+            rowInk_[y]=ink;
+        }
+    }
+    bool maskOn_=false;size_t maskX0_=0,maskX1_=0,maskY0_=0,maskY1_=0;
+    struct Direct {uint16_t x0,x1,y;};
+    struct Held {uint16_t x0,x1,y,height;uint32_t fg,bg;char16_t text[200];};
+    Direct direct_[96]={};Held held_[8]={};size_t directCount_=0,heldCount_=0,partEnd_=0;
     // r396: a block caret: a rectangle 8 or 9 pixels wide and 16 high of one
     // colour whose first two rows and last row are solid, with the colour
     // ending on both sides, and the letter cut out between them.
@@ -495,6 +711,7 @@ private:
                 const int row=base+g.y0+int(j);
                 const int obs=row>=0 && row<int(blockHeight_)?alpha_[size_t(row)*maxWidth+col]:0;
                 const int t=bits[j*g.w+i];
+                if(maskOn_ && col>=maskX0_ && col<maskX1_ && row>=int(maskY0_) && row<int(maskY1_))continue;   // r410: under the caret's bar
                 diff+=uint32_t(obs>t?obs-t:t-obs);inside+=uint32_t(obs);
             }
             diff+=colInk_[col]-inside;seen+=colInk_[col];
@@ -654,10 +871,51 @@ private:
         if(!s)return false;
         best=s;return true;
     }
+    // r410: a run of inked rows is cut into the parts that at least 24 blank columns separate, and each part is
+    // read with its own rows (as in CharonAaOcr.h). Until r410 the run was one block: an icon beside the text
+    // (Clover's gear, question mark and warning badge next to the first lines of its menus) gave the block its
+    // text colour and its height, so the lines beside it - among them the selected entry - were not read, and a
+    // block taller than 120 rows was not looked at.
+    template<class Emit,class Idle> size_t Segments(const uint32_t* pixels,size_t width,size_t stride,size_t left,size_t top,size_t y,size_t end,Emit& emit,Idle& idle) {
+        auto whole=[&]() {return end-y>=5 && end-y+2<=maxBlock?Block(pixels,width,stride,left,top,y,end,emit,idle):size_t(0);};
+        const int bg=Lum(rowBg_[y]);
+        for(size_t r=y;r<end;++r)if(rowBg_[r]!=rowBg_[y])return whole();   // bars and bands: as before
+        size_t from[8],to[8],count=0,blank=24;bool overflow=false;
+        for(size_t x=0;x<width && !overflow;++x) {
+            bool ink=false;
+            for(size_t r=y;r<end && !ink;++r) {const int d=Lum(pixels[r*stride+x])-bg;ink=d>40 || d<-40;}
+            if(!ink) {++blank;continue;}
+            if(blank>=24) {if(count==8)overflow=true;else {from[count]=x;to[count]=x+1;++count;}}
+            else to[count-1]=x+1;
+            blank=0;
+        }
+        if(overflow || count<2)return whole();
+        // The parts are read apart only when the block as a whole gives nothing: a line with wide gaps that reads
+        // well as one line (Windows: "Running test pass  1 of  2: 57% complete", "Windows Setup        >") stays one.
+        size_t recognized=whole();
+        if(recognized)return recognized;
+        for(size_t i=0;i<count;++i) {
+            const size_t x0=from[i]>=8?from[i]-8:0,x1=to[i]+8<width?to[i]+8:width;
+            if(x1-x0<12)continue;
+            for(size_t r=y;r<end;) {
+                auto inked=[&](size_t row) {for(size_t x=from[i];x<to[i];++x) {const int d=Lum(pixels[row*stride+x])-bg;if(d>40 || d<-40)return true;}return false;};
+                if(!inked(r)) {++r;continue;}
+                size_t e=r;while(e<end && inked(e))++e;
+                if(e-r>=5 && e-r+2<=maxBlock)recognized+=Block(pixels+x0,x1-x0,stride,left+x0,top,r,e,emit,idle);
+                r=e;
+            }
+            idle();
+        }
+        return recognized;
+    }
     template<class Emit,class Idle> size_t Block(const uint32_t* pixels,size_t width,size_t stride,size_t left,size_t top,size_t y0,size_t y1,Emit& emit,Idle& idle) {
         const uint32_t bgColor=rowBg_[y0];const int bg=Lum(bgColor);
         int far=0;uint32_t fgColor=bgColor;
-        for(size_t y=y0;y<y1;++y)for(size_t x=0;x<width;++x) {const int d=Lum(pixels[y*stride+x])-bg;if((d<0?-d:d)>(far<0?-far:far)) {far=d;fgColor=pixels[y*stride+x]&0xffffff;}}
+        const size_t frameShift=frameCount_ && pixels>=frameBase_?size_t(pixels-frameBase_):0;
+        for(size_t y=y0;y<y1;++y)for(size_t x=0;x<width;++x) {
+            const int d=Lum(pixels[y*stride+x])-bg;
+            if((d<0?-d:d)>(far<0?-far:far) && !(frameCount_ && FrameColumn(x+frameShift,y))) {far=d;fgColor=pixels[y*stride+x]&0xffffff;}   // r410: not a frame's or a wallpaper's colour
+        }
         if(far<60 && far>-60)return 0;
         // One blank row above and below for the blur.
         const size_t inkTop=y0,inkEnd=y1;
@@ -679,14 +937,21 @@ private:
         // r362: text without anti-aliasing (bitmap fonts) has a handful of
         // exact colours; any clear ink is a full pixel then, also in a paler
         // colour on the same line ("Description:" grey, its text white).
+        bool crisp=false;
         {
             uint32_t seen[5];size_t distinct=0;
+            const size_t frameOffset=frameCount_ && pixels>=frameBase_?size_t(pixels-frameBase_):0;
             for(size_t y=inkTop;y<inkEnd && distinct<=4;++y)for(size_t x=0;x<width && distinct<=4;++x) {
-                const uint32_t c=pixels[y*stride+x]&0xffffff;bool known=false;
+                if(frameCount_ && FrameColumn(x+frameOffset,y))continue;   // r410: a wallpaper strip beside the page has many colours
+                uint32_t c=pixels[y*stride+x]&0xffffff;bool known=false;
+                // r410: a page that is not quite one colour (the wallpaper showing faintly through a theme's
+                // terminal: 0x000001, 0x010102 on black) is still one background.
+                if(c!=bgColor) {const int d=Lum(c)-bg;if(d>=-8 && d<=8)c=bgColor;}
                 for(size_t k=0;k<distinct;++k)if(seen[k]==c)known=true;
                 if(!known) {if(distinct<5)seen[distinct]=c;++distinct;}
             }
             if(distinct<=4) {
+                crisp=true;
                 for(size_t x=0;x<width;++x)colInk_[x]=0;
                 for(size_t y=y0;y<y1;++y) {
                     uint8_t* out=raw_+(y-y0)*maxWidth;
@@ -730,6 +995,18 @@ private:
             bool solid=true;for(size_t y=y0+1;y<y1 && solid;++y)solid=(pixels[y*stride+x]&0xffffff)==c;
             if(solid) {colInk_[x]=0;for(size_t y=0;y<blockHeight_;++y)raw_[y*maxWidth+x]=0;}
         }
+        // r410: a frame's upright edges (FindFrameEdges) are no ink.
+        if(frameCount_ && pixels>=frameBase_) {
+            const size_t offset=size_t(pixels-frameBase_);
+            for(size_t i=0;i<frameCount_;++i) {
+                const FrameEdge& e=frame_[i];
+                if(e.last<y0 || e.first>=y1)continue;
+                for(size_t x=e.from;x<e.to;++x) {
+                    if(x<offset || x-offset>=width)continue;
+                    colInk_[x-offset]=0;for(size_t y=0;y<blockHeight_;++y)raw_[y*maxWidth+x-offset]=0;
+                }
+            }
+        }
         // Blurred copy for matching (screen edges count as blank).
         for(size_t y=0;y<blockHeight_;++y)for(size_t x=0;x<width;++x) {
             int sum=0;
@@ -757,6 +1034,42 @@ private:
         for(size_t y=1;y<=blockHeight_;++y)if(bottoms[y]>bottoms[base])base=y;
         for(size_t y=0;y<blockHeight_;++y)if(tops[y]) {capTop=y;break;}
         if(!base || capTop==SIZE_MAX || base<=capTop+3)return 0;
+        // r410: an underline caret (GRUB's terminal in a theme, in the entry editor): a solid bar one cell wide and
+        // two or three rows thick right under the baseline. With it the letter above was read as another one
+        // ("xetparams", ")ietparams" for "setparams"). The one such bar of a block of crisp (bitmap) text is
+        // taken out, and its rectangle counts for no glyph: what a letter's descender would show there is hidden
+        // by the bar, so letters that differ only below the baseline (v and y) cannot be told apart on it.
+        maskOn_=false;
+        if(crisp && base+2<=blockHeight_) {
+            size_t bars=0,bx0=0,bx1=0,by0=0,by1=0;
+            for(size_t r=base;r<=base+1 && r+2<=blockHeight_;++r) {
+                const uint8_t* row=raw_+r*maxWidth;
+                for(size_t x=0;x<width;) {
+                    if(row[x]<128) {++x;continue;}
+                    size_t e=x;while(e<width && row[e]>=128)++e;
+                    // wider than the ink above it: a cell's bar under a letter, not a letter's own thick foot
+                    size_t above=0;for(size_t k=x;k<e;++k)if(raw_[(r-1)*maxWidth+k]>=128)++above;
+                    if(e-x>=10 && e-x<=40 && above+3<=e-x) {
+                        size_t t=1;
+                        while(r+t<blockHeight_ && t<4) {
+                            bool solid=true;for(size_t k=x;k<e && solid;++k)solid=raw_[(r+t)*maxWidth+k]>=128;
+                            if(!solid)break;
+                            ++t;
+                        }
+                        bool clear=t>=2 && t<=3;
+                        for(size_t q=r;q<r+t && clear;++q)clear=(x==0 || raw_[q*maxWidth+x-1]<128) && (e>=width || raw_[q*maxWidth+e]<128);
+                        if(clear && r+t<blockHeight_)for(size_t k=x;k<e && clear;++k)clear=raw_[(r+t)*maxWidth+k]<128;
+                        if(clear) {++bars;bx0=x;bx1=e;by0=r;by1=r+t;}
+                    }
+                    x=e;
+                }
+                if(bars)break;
+            }
+            if(bars==1) {
+                for(size_t y=by0;y<by1;++y)for(size_t x=bx0;x<bx1;++x) {raw_[y*maxWidth+x]=0;alpha_[y*maxWidth+x]=0;}
+                maskOn_=true;maskX0_=bx0;maskX1_=bx1;maskY0_=by0;maskY1_=by1;
+            }
+        }
         // Vertical sub-pixel position of the baseline: glyphs drawn a
         // fraction of a pixel low leave a faint row under the last full one.
         size_t phase=0;
@@ -899,6 +1212,29 @@ private:
             meanAdvance/=float(placedCount_);
             if(pitch<meanAdvance*1.15f)pitch=0;  // proportional text keeps its own spacing
         }
+        // r410: a short line of the same terminal ("sleep 3", "boot", "}": fewer glyphs than the count above needs,
+        // more so now that the box's edges are no longer read as two more letters) was spaced out as
+        // "s  l  e e p   3". The pitch a long line of this font and size showed is used for a line where every
+        // step from glyph to glyph is a whole number of such cells (within a pixel and a half); any other line
+        // keeps its own spacing.
+        if(pitch>0 && placedCount_>=12) {
+            CellPitch* slot=&cellPitch_[0];
+            for(auto& c:cellPitch_) {if(c.pitch && c.font==best->font && c.quarter==best->quarter) {slot=&c;break;}if(c.stamp<slot->stamp)slot=&c;}
+            *slot={best->font,best->quarter,uint8_t(pitch),++clock_};
+        } else if(pitch==0 && placedCount_>=2) {
+            for(auto& c:cellPitch_) {
+                if(!c.pitch || c.font!=best->font || c.quarter!=best->quarter)continue;
+                bool cells=true;float meanAdvance=0;
+                for(size_t i=1;i<placedCount_ && cells;++i) {
+                    const int d=int(placed_[i].x)-int(placed_[i-1].x)+int(best->g[placed_[i-1].glyph].x0)-int(best->g[placed_[i].glyph].x0);
+                    const int steps=(d*2+c.pitch)/(2*c.pitch),off=d-steps*c.pitch;
+                    cells=steps>=1 && off*2>=-3 && off*2<=3;
+                }
+                for(size_t i=0;i<placedCount_;++i)meanAdvance+=best->g[placed_[i].glyph].adv;
+                if(cells && float(c.pitch)>=meanAdvance/float(placedCount_)*1.15f) {pitch=float(c.pitch);c.stamp=++clock_;}
+                break;
+            }
+        }
         const Font& f=fonts_[best->font];
         size_t recognized=0,length=0,startX=placed_[0].x;
         for(size_t i=0;i<placedCount_;++i) {
@@ -916,7 +1252,7 @@ private:
                     if(cells<1.5f)gap=0;
                 }
                 if(gap>best->space*4.0f && length) {
-                    text_[length]=0;EmitPart(emit,left,startX,lineY,fgColor,bgColor);++recognized;length=0;startX=p.x;
+                    text_[length]=0;partEnd_=size_t(q.x)+h.w;EmitPart(emit,left,startX,lineY,fgColor,bgColor);++recognized;length=0;startX=p.x;
                 } else if(gap>=best->space*0.55f) {
                     size_t spaces=size_t(gap/best->space+0.5f);if(!spaces)spaces=1;if(spaces>3)spaces=3;
                     while(spaces-- && length+1<maxPlaced)text_[length++]=u' ';
@@ -924,7 +1260,7 @@ private:
             }
             if(length+1<maxPlaced)text_[length++]=ch==u'\u2019'?u'\'':ch;
         }
-        if(length) {text_[length]=0;EmitPart(emit,left,startX,lineY,fgColor,bgColor);++recognized;}
+        if(length) {text_[length]=0;partEnd_=size_t(placed_[placedCount_-1].x)+best->g[placed_[placedCount_-1].glyph].w;EmitPart(emit,left,startX,lineY,fgColor,bgColor);++recognized;}
         return recognized;
     }
     template<class Emit> void EmitPart(Emit& emit,size_t left,size_t x,size_t y,uint32_t fg,uint32_t bg) {
@@ -933,13 +1269,28 @@ private:
         bool word=false;
         for(const char16_t* p=text_;*p && !word;++p)word=(*p>=u'0' && *p<=u'9') || (*p>=u'A' && *p<=u'Z') || (*p>=u'a' && *p<=u'z') || *p==0xd3 || *p==0xf3 || (*p>=0x104 && *p<=0x17c);
         if(!word)return;
-        for(size_t i=0;i<barCount_;++i)if(x+2>=bars_[i].from && x<bars_[i].to) {fg=bars_[i].text;bg=bars_[i].colour;break;}
+        bool onBar=false;
+        for(size_t i=0;i<barCount_;++i)if(x+2>=bars_[i].from && x<bars_[i].to) {fg=bars_[i].text;bg=bars_[i].colour;onBar=true;break;}
         // A theme shows the chosen entry in a bold font: report it as a
         // selection (another background) like a highlight bar.
         // Text read off a picture has one common background whatever its
         // colour (black and white text are read on different pages).
         if(inPicture_)bg=0xc0c0c0;
         if(boldLine_)bg=bg==0x0000a0?0x00a000:0x0000a0;
+        // r410: text over a picture is read from the pixels of one exact colour. Glyphs in that colour are read
+        // directly; a box in that colour is a bar whose text is the holes in it - the same letters once more when
+        // they are black on a white box (a GRUB theme's countdown label in its progress bar), and cut where the box
+        // ends: the bar's edge crossing a letter gave "...executed ar", which then overwrote the start of the
+        // line read right ("artomatically"). Such a part waits until both colours are read (see Recognize).
+        if(inPicture_) {
+            const size_t x0=left+x,x1=left+(partEnd_>x?partEnd_:x+1);
+            if(!onBar) {if(directCount_<sizeof(direct_)/sizeof(direct_[0]))direct_[directCount_++]={uint16_t(x0),uint16_t(x1),uint16_t(y)};}
+            else if(heldCount_<sizeof(held_)/sizeof(held_[0])) {
+                Held& h=held_[heldCount_++];h={uint16_t(x0),uint16_t(x1),uint16_t(y),uint16_t(blockHeight_),fg,bg,{}};
+                size_t n=0;while(text_[n] && n+1<sizeof(h.text)/sizeof(h.text[0])) {h.text[n]=text_[n];++n;}
+                h.text[n]=0;return;
+            }
+        }
         emit(text_,left+x,y,fg,bg,blockHeight_);
     }
     struct Bar {size_t from,to;uint32_t colour,text;};
@@ -951,6 +1302,8 @@ private:
     Set sets_[maxSets]={};uint32_t clock_=0;
     struct Learned {uint8_t cap,x,font;uint16_t quarter,quarterY;uint32_t stamp;};
     Learned learned_[8]={};
+    struct CellPitch {uint8_t font;uint16_t quarter;uint8_t pitch;uint32_t stamp;};
+    CellPitch cellPitch_[4]={};
     uint8_t* alpha_=nullptr;uint8_t* raw_=nullptr;uint8_t* scratch_=nullptr;uint32_t* colInk_=nullptr;float* dp_=nullptr;uint32_t* back_=nullptr;float* pen_=nullptr;uint32_t* inkPrefix_=nullptr;Cand* cand_=nullptr;uint8_t* candCount_=nullptr;size_t blockHeight_=0,scanHeight_=0;
     uint32_t rowBg_[maxScan]={};bool rowInk_[maxScan]={},rowPicture_[maxScan]={},pictureMask_[maxScan]={};
     bool inPicture_=false,boldLine_=false;size_t bitmapFonts_=0;uint32_t* synthetic_=nullptr;size_t syntheticCapacity_=0;

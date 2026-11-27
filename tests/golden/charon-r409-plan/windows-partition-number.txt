@@ -1,0 +1,1 @@
+CharonDOS + Windows 11 + Debian, empty disk: Windows partition number by position 3 (Microsoft reserved partition counted), 2 (not counted)

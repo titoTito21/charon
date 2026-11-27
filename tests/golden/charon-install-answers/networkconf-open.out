@@ -1,0 +1,5 @@
+# Written by Charon: the Wi-Fi connection chosen in Charon (read by network.sh).
+CHARON_NET_TYPE=wifi
+CHARON_NET_METHOD=dhcp
+CHARON_WIFI_SSID=Biblioteka
+CHARON_WIFI_SECURITY=open

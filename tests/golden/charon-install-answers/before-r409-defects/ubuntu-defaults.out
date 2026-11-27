@@ -1,0 +1,31 @@
+#cloud-config
+# Written by Charon from spoken answers.
+autoinstall:
+  version: 1
+  locale: en_US.UTF-8
+  keyboard: {layout: us}
+  timezone: America/New_York
+  identity:
+    hostname: "charon-pc"
+    realname: "user"
+    username: "user"
+    password: "$5$charonhosttests1$WzxqaZSgROh.v47PCFj0GhdYegM7YfeXZEQqFudoOx5"
+  ssh: {install-server: false}
+  updates: security
+  storage:
+    layout:
+      name: direct
+      match: {size: largest}
+  packages: [efibootmgr, espeak-ng, alsa-utils, espeakup, orca, ubuntu-desktop-minimal]
+  early-commands:
+    - mkdir -p /run/charon/EFI /mnt/charon; for d in $(blkid -t TYPE=vfat -o device); do mount -o ro $d /mnt/charon 2>/dev/null || continue; [ -f /mnt/charon/EFI/HAK/CHARONVOICE.EFI ] && [ ! -d /run/charon/EFI/HAK ] && cp -r /mnt/charon/EFI/HAK /run/charon/EFI/; [ -d /mnt/charon/charon-install/ubuntu ] && cp /mnt/charon/charon-install/ubuntu/*.sh /mnt/charon/charon-install/ubuntu/*.wav /mnt/charon/charon-install/ubuntu/label.txt /mnt/charon/charon-install/ubuntu/charon-tone /run/charon/ 2>/dev/null; umount /mnt/charon; done; true
+    - rm -f /run/charon/EFI/HAK/continue.bin /run/charon/EFI/HAK/continue-set /run/charon/EFI/HAK/installed-by.txt /run/charon/EFI/HAK/reader-only; true
+    - echo en_US > /run/charon/lang.txt; sh /run/charon/live-speech.sh > /run/charon/live-speech.log 2>&1; true
+    - L=$(cat /run/charon/label.txt 2>/dev/null); for d in /dev/disk/by-label/CIDATA; do [ -e $d ] && [ -n "$L" ] && fatlabel $d "$L"; done; true
+  late-commands:
+    - mkdir -p /target/boot/efi/EFI/HAK /target/var/lib/charon
+    - cp -r /run/charon/EFI/HAK/. /target/boot/efi/EFI/HAK/ 2>/dev/null; cp /run/charon/*.sh /run/charon/*.wav /run/charon/charon-tone /run/charon/voice.conf /target/var/lib/charon/ 2>/dev/null; chmod 755 /target/var/lib/charon/charon-tone; true
+    - curtin in-target -- sh /var/lib/charon/install-charon.sh || true
+    - curtin in-target -- env CHARON_CHROOT=1 sh /var/lib/charon/speech.sh speakup orca orca,speakup graphical > /target/var/lib/charon/speech.log 2>&1 || true
+    - sh /run/charon/live-speech.sh done; true
+  shutdown: reboot

@@ -13,6 +13,8 @@ already stores outgoing arguments with mov into a fixed frame, so it is omitted.
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import hashlib,json,os,shutil,subprocess,sys
+sys.path.insert(0,str(Path(__file__).resolve().parent))
+import charon_private_paths
 
 root=Path(__file__).resolve().parents[1]           # outputs/nvda-haiku
 container=root.parents[1]                          # kont
@@ -27,7 +29,9 @@ trace='--trace' in sys.argv
 driver='--driver' in sys.argv
 imageName='CHARONVOICE' if driver else 'CHARON'
 clang=str(llvm/'clang.exe');clangxx=str(llvm/'clang++.exe');lld=str(llvm/'ld.lld.exe');nm=str(llvm/'llvm-nm.exe')
-target=['--target=x86_64-unknown-elf']
+# r410: no absolute path of the build computer in __FILE__ or debug information.
+privateMap=charon_private_paths.prefix_map((build,'build'),(root,'charon'),(container,'host'))
+target=['--target=x86_64-unknown-elf']+privateMap
 flags=target+'-O2 -ffreestanding -fno-builtin -fno-stack-protector -fno-pic -fno-pie -mcmodel=large -mno-red-zone -ffunction-sections -fdata-sections -fno-unwind-tables -fno-asynchronous-unwind-tables'.split()
 cxx=flags+'-std=c++17 -fno-exceptions -fno-rtti'.split()
 log=(build/'build.log').open('w',encoding='utf-8')
@@ -114,7 +118,8 @@ SECTIONS {
 }
 ''',newline='\n')
 run([lld,'--emit-relocs','-z','max-page-size=4096','-T',build/'image.lds',build/'closed.o','-o',build/'CHARON.elf'])
-run([imagetool,'GenImage','-c','PE','-t','UEFI_DRIVER' if driver else 'UEFI_APPLICATION','-b','0x100000','-o',build/(imageName+'.EFI'),build/'CHARON.elf'])
+# r410: ImageTool copies the ELF's path, as given, into the PE debug entry: a bare file name from inside the build directory.
+run([imagetool,'GenImage','-c','PE','-t','UEFI_DRIVER' if driver else 'UEFI_APPLICATION','-b','0x100000','-o',imageName+'.EFI','CHARON.elf'],cwd=build)
 # r387: memory-protection requirements of the Microsoft UEFI CA (and of
 # firmware with image protection): no section both writable and executable,
 # read-only data really read-only (.data.rel.ro and .got moved to .data
@@ -142,4 +147,5 @@ harden(build/(imageName+'.EFI'))
 report=run([sys.executable,container/'work/check-charon-pe.py',build/(imageName+'.EFI')])
 (build/'image.json').write_text(report)
 print(report)
+charon_private_paths.check(build/(imageName+'.EFI'))
 print('PASS Windows LLVM build of CHARON.EFI; audio and boot behaviour still need a VM test')

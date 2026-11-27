@@ -1,0 +1,411 @@
+Charon r409: four defects of the install dialogue, and "everything works when Charon runs from memory"
+=====================================================================================================
+Date: 2026-11-23. Tree: work/charon-src-r395. Backups of the edited files as they were before:
+work/backup-r409-defects/. Another agent edited the same tree during this work (src/linux, the reader
+tables and generators: r409 comments about voice.conf, Linda, Stormux, CHARON_CHROOT); line numbers
+below are of 2026-11-23 about 12:30 and will move.
+
+Words used: RAN AND PASSED = executed here, result seen. COMPILED ONLY = part of a build that
+succeeded, never executed. AUDITED = read in the source, not executed. NOT VERIFIED = neither.
+
+Results in numbers (all RAN AND PASSED on the host)
+  new host test   python3.15 tests/charon-install-answers-host.py          304 passed, 0 failed, 0 skipped
+                  (221 after items 1-5; 304 with items 6, 7 and the network hand-over: 30 vectors)
+  existing        python3.15 tools/charon-os/tests/run-tests.py            108 passed, 0 failed
+  existing        tools/build-charondos.py --host-only + tests/CharonDosTests.py   44/44 cases
+  build           tools/build-charon-windows.py -> work/charon-win-r409e/CHARON.EFI             PASS
+  build           the same with --driver -> work/charon-win-r409e-drv/CHARONVOICE.EFI           PASS
+  (charon-win-r409a..d are earlier builds of the same day, all PASS; the VM trials of section 5.4 used
+  r409c = items 1-5. The tree compiled before the first edit too.)
+  The charon-os and CharonDOS runs were made after items 1-4 and not repeated after the later edits;
+  none of those touches a file these two tests read (CharSettings.h, BootMenu.h, src/dos unchanged).
+Nothing was packaged or released.
+
+
+1. \EFI\HAK was copied whole into every installed system and onto Windows media
+--------------------------------------------------------------------------------
+Root cause. Every path that takes Charon along copied the whole folder and removed a few named
+files afterwards; none knew of folders that must stay behind. The planned \EFI\HAK\answers (saved
+answer sets; an administrator's file may hold clear-text passwords) and \EFI\HAK\plan (plan state
+with the Windows answer file and its password) would have gone to every installed system's EFI
+partition and onto Windows media.
+
+Copy sites found (all of them):
+  a. CopyTree of \EFI\HAK to Windows media          CharonWsInstall2.h:663 (RunWindows)
+  b. CopyTree to the new system's EFI partition      CharonWsImages.h:168 (images::CharonOnto; ready images
+                                                     CharonWsInstall3.h, CharonDOS CharonWsDosSystem.h)
+  c. cpio archive for the Debian installer           CharonWsInstall.h HakTree (:243) / SkipInArchive (:219)
+  d. shell "cp -r /mnt/charon/EFI/HAK" in the Ubuntu installer's early-commands   CharonWsInstall2.h:71
+  e. Charon's copy in memory, from which "Install Charon on this computer" and the volume in memory
+     are made                                        CharonSelfCopy.h List, CharonWsSelfInstall.h Wanted
+  Read and found NOT to copy the tree: src/linux/install-charon.sh (copies addon/* and makes a symbolic
+  link to EFI/HAK; not edited), tools/charon-addon/Install-Charon.ps1 and zainstaluj-charona.sh (named
+  files and the folders drivers, packages, addon, tools only), the Debian late_command and the Windows
+  FirstLogon xcopy (they copy what a.-c. already filtered), the file manager's own copy command (the
+  user's explicit act; left alone), src/dos and src/pc (no copy of \EFI\HAK).
+
+Change. One list, src/efi/CharonPrivate.h (new): names[]={"answers","plan"}, IsPrivate(name) and
+IsPrivatePath(path) without regard to case, applied only directly inside \EFI\HAK (a folder "plan"
+inside a package is ordinary content), ShellRemove() for the shell form. After the coordinator's
+addition the header names two operations:
+  GIVE  (into another system or onto media; private folders left out):
+        CopyCharonTree            CharonWsCore.h:594   (CopyTree got an optional skip callback, :569)
+        used at a. and b.         CharonWsInstall2.h:663, CharonWsImages.h:168
+        SkipInArchive(name,top)   CharonWsInstall.h:219-225, HakTree :252
+        UbuntuUserData            CharonWsInstall2.h:73-75: one more early-command, generated from the list:
+                                  for d in /run/charon/EFI/HAK/*; do case "$(basename "$d" | tr A-Z a-z)" in
+                                  answers|plan) rm -rf "$d";; esac; done; true
+        selfinstall::Wanted       CharonWsSelfInstall.h:87 (items marked privateItem are never written)
+  CARRY (Charon's own home on the same computer; private folders kept):
+        the copy in memory holds them, marked     CharonSelfCopy.h:34, :90-93
+        CarryCharonTree            CharonWsCore.h:598
+        images::CharonOnto(esp,ownHome)  CharonWsImages.h:159-168; ownHome is true only when the disk
+        Charon lives on was erased whole: CharonWsInstall3.h:396 (ready image), CharonWsDosSystem.h:627.
+
+How verified. RAN AND PASSED on the host (tests/charon-install-answers-host.py, part 5): a folder
+\EFI\HAK with 13 ordinary files, among them packages\CharonDOS\plan\readme.txt, packages\Demo\answers\
+kept.txt, answers.txt and planning\notes.txt, and 5 private files under Answers\ and PLAN\ (other letter
+case on purpose) goes through the REAL CopyCharonTree, HakTree (the cpio is parsed back), selfcopy::List
++ selfinstall::Wanted and CarryCharonTree over the tree's own efi_file_protocol on a host folder:
+none of the GIVE paths copies a private file, each copies every other file, nothing unexpected;
+the copy in memory and CarryCharonTree hold everything. The Ubuntu shell command is taken from the
+generated user-data and run by sh on a scratch copy: Answers and PLAN gone, the 15 other files there.
+COMPILED ONLY: the same code in CHARON.EFI. NOT VERIFIED: in a VM (the folders do not exist yet in any
+release); the Ubuntu command inside the real installer (its autoinstall path has never been run at
+all, see charon-r406-results.txt); VM result of the carry on Charon's own disk: section 5.
+
+What remains. (1) The Debian, Ubuntu and Windows installer paths GIVE only: when such an installer
+erases Charon's own disk, answers and plan are not carried (there is no place Charon itself writes
+before the installer's restart). The plan batch must add that. (2) src/linux/install-charon.sh was
+only read. (3) Because the other agent changes the generators, the Ubuntu line was added by a small
+edit; if UbuntuUserData is rewritten the line must stay (the host test fails without it).
+
+
+2. The answer store held 48 keys of 159 bytes; generator buffers were 8-16 KB
+------------------------------------------------------------------------------
+Root cause (CharonWsAsk.h as it was). maxAnswers=48, valueUnits=160. Slot() returned the LAST slot for
+a 49th key (the new answer silently overwrote another key's value); Put cut a value at 159 bytes; the
+check-box join stopped at 160 bytes with a bare "break" (checked boxes dropped); the typed-text
+conversion cut at 159 bytes. Nothing was said in any of these cases. Buffers: preseed 12000, Ubuntu
+user-data 8000, image user-data 9000, Autounattend.xml 16000, CHARONPC.CFG 2048 (CfgLine cut silently),
+two 400-byte Windows command lines whose overflow flag nobody read.
+
+Change.
+  Store (CharonWsAsk.h:22-48, :60-120): 384 keys; values under 512 bytes in the key's own slot, longer
+  ones (under 4096 bytes) in one of 32 long slots, chosen by Put itself. Static storage, about 330 KB
+  (.bss), never on the stack. Put returns false and stores NOTHING when there is no room (385th key,
+  33rd long value, 4096 bytes or more): the old value stays, Overflow()/LostKey() remember it.
+  ask::Complete() says by voice which answer could not be kept; ask::Keep() (used by Run for every typed
+  or chosen answer) says "This answer did not fit..." and the question is asked again. Run: the
+  index array is static (was 384 bytes x 8 on the stack after the enlargement), a table longer than
+  the store is refused aloud, defaults that do not fit stop the dialogue with Complete(); a typed
+  answer may have 255 characters (was 79), check boxes 64 (was 24); a stored value too long for the
+  typing line is kept unless something is typed, instead of being cut by Enter (:264-270).
+  Callers: install::Classic stops before anything is started when !ask::Complete() (CharonWsInstall2.h:815);
+  RunImage checks it and makes a trial run of the generator BEFORE a disk is chosen (CharonWsInstall3.h:343-348;
+  the configuration used to be generated only after the image was on the disk).
+  Buffers, all static: preseed 48000 (CharonWsInstall.h:481), Ubuntu user-data 32000 (CharonWsInstall2.h:155),
+  Autounattend.xml 64000 (:651), image user-data 32000 (CharonWsInstall3.h:401), CHARONPC.CFG 8192
+  (CharonWsDosSystem.h:464). An overflow is now said in its own words (install::AnswersDoNotFit,
+  CharonWsInstall.h:31) and nothing is started; CfgLine no longer writes a cut line (CfgOverflow,
+  CharonWsDosSystem.h:322-332, said in MakeProfile); the two command lines pass their overflow on
+  (CharonWsInstall2.h:502, :509).
+  Places that assumed the old sizes: only inside CharonWsAsk.h (Slot, Run); no other file used
+  maxAnswers, valueUnits or ask::A(). Bounded helper buffers left as they are, with the reason: ReaderArguments
+  and ReaderPackages (200 bytes) and the desktop package list (400) are filled from fixed tables (longest
+  today 238 bytes); they cut silently if a table ever outgrows them - to be turned into Text with an
+  overflow flag when the tables become generated (spec 3.1).
+
+How verified. RAN AND PASSED on the host (harness command "store", 23 checks): 384 keys stored and read
+back; the 385th refused, recorded, said by Complete(); lengths 159, 511, 512, 4095 bytes uncut, 4096
+refused with the old value kept; 32 long values, the 33rd refused; Clear; Has() on a long check-box
+value; a key copied from another key and onto itself; the real ask::Run with scripted keys: a typed
+answer of 750 bytes with no long slot left is reported by voice and asked again, then stored; a table
+whose defaults do not fit is refused by voice; Text reports overflow. The declared buffer sizes are
+read from the sources and compared with the plan, and the largest test output uses under a quarter
+of each. COMPILED ONLY: in CHARON.EFI. NOT VERIFIED: in a VM; the size of .bss in the firmware image was
+not measured separately (the image built and its size did not grow by the 330 KB: zero-filled data).
+
+What remains. The spec's new question kinds (number, list, address, file) and the "long" flag are not
+implemented; the store is ready for them. Secret answers are still limited to 79 characters.
+
+
+3. No host test of the dialogue or of the generators
+-----------------------------------------------------
+New: tests/charon-install-answers-host.py (runner; one command, no arguments),
+tests/CharonInstallAnswersHost.cpp (harness), tests/charon-install-host/ (stand-in CharonWsCore.h, two
+empty stand-ins, 26 vectors), tests/golden/charon-install-answers/ (52 golden files + before-r409-defects/).
+It follows tools/charon-os/tests/run-tests.py: the tree's Clang (work/llvm-23.1.5), the tree's EFI
+headers as <efi/...>, declarations cut out of the real headers by their first words.
+
+Real code under test, unchanged text: CharonWsAsk.h and CharonWsReaders.h whole (store, Run, Choose,
+Pick, Secret, ResolveReaders, ReaderPackages, ReaderArguments), CharonCrypt.h, CharonPrivate.h,
+CharonSelfCopy.h whole; cut out: the question tables, DeriveDefaults, DebianPreseed + DebianLateCommand,
+UbuntuUserData, ResolveWindowsReaders, WindowsAnswers, ConfirmSilent, ImageUserData + DistroOf +
+DesktopPackages, dossys::ProfileText, SkipInArchive, HakTree, selfinstall::Wanted, and from
+CharonWsCore.h Prompt, Confirm, CopyTree, CopyCharonTree, CarryCharonTree, Fold, the UTF conversions.
+Stand-ins, stated exactly: the rest of CharonWsCore.h (scripted keys, a transcript instead of speech,
+host folders as volumes); one fake disk; the lines of install::Classic, RunImage and RunWindows between
+the questions and the generator are MIRRORED in the harness (FlowLinux, FlowWindows, FlowImage), not
+compiled from the source - a change of order there is not caught; the password hash uses Charon's
+Sha256Crypt with a fixed salt; the CharonDOS dialogue (dossys::Run) is not driven, its choices are
+arguments of ProfileText.
+The one seam made in the sources: the text of CHARONPC.CFG was built inside MakeProfile between file
+operations; it is now dossys::ProfileText(...) (CharonWsDosSystem.h:459-500), a move of the same
+CfgLine calls in the same order.
+
+Vectors. "All defaults" (express mode, Enter at every question) for every generator: debian-defaults,
+ubuntu-defaults, windows-defaults, image-{debian,ubuntu,arch,fedora}-defaults, dos-win{95,98,me,xp}-
+defaults (CharonDOS's own default is "no Windows profile", which writes no file: the four are each
+profile with the answers left as offered). Others: debian-pl-detailed-free (Polish, detailed, second
+desktop, Polish mirror, root, console sign-in, free space), ubuntu-pl-fenrir-free-smallest (console
+reader question), windows-pl-slim-partition (Polish Windows, Slim profile, one partition replaced),
+windows-detailed-no-reader-server (no reader, Server image), debian-no-reader, image-fedora-defaults
+(no-speech confirmation answered yes) and image-fedora-declined (answered no: nothing asked or
+written), image-arch-pl-kde-console, debian-back-one-question (Escape), debian-left, debian-guided,
+dos-win98-pl-no-key, dos-winxp-ready-vhd, dos-win98-no-media, dos-win95-boot-floppy,
+dos-win98-ready-ignores-floppy. For each: <name>.out byte for byte, <name>.answers (questions asked in
+order + every stored answer), every scripted key used, no overflow, and form (XML well-formed; preseed
+line shape; user-data starts with #cloud-config, no tabs; CFG is key=value with CR LF).
+
+"The express flow is unchanged". golden/.../before-r409-defects/ holds the 11 default outputs recorded
+at 11:2x today, AFTER the pure move of ProfileText and the non-generator changes (store, CopyTree
+parameter) and BEFORE any generator change of mine. The test compares today's defaults with them:
+10 identical; ubuntu-defaults differs by exactly the one added early-command of defect 1 (listed in
+EXPECTED_CHANGES in the runner). The CharonDOS outputs are equal by the move described above.
+Limits, stated plainly: (1) the recording already contained the other agent's r409 changes of that
+minute, so it proves "unchanged by this work", not "unchanged since r408"; (2) when the other agent
+changes a generator or a reader table again, golden files and that recording must be re-recorded
+(--update, --record-baseline) after reading the diff - it already happened once during this work (the
+reader "Linda" was added; the key scripts now jump by first letter instead of counting positions).
+NOT VERIFIED: YAML is not parsed (no PyYAML on this host); no generator output was fed to a real
+installer here.
+
+
+4. CharonDOS never asked for the Windows 95 boot floppy
+-------------------------------------------------------
+Root cause. src/pc/PLAN.txt:129-130 (example profile: floppy=BOOT95.IMG "Win95 CDs are not bootable:
+boot floppy", boot=floppy,disk) and the consumer exist (src/pc/pc_config.cpp:181 reads floppy=, :314-316
+gives it to the emulator as drive A:, boot order from boot=), but dossys::Run asked only for the disc
+and MakeProfile always wrote boot=cdrom. A Windows 95 profile made from a disc had nothing to start
+from. No other profile needs a floppy by the plan (98 and ME discs start by themselves; XP too).
+
+Change (CharonWsDosSystem.h). Asked only when the profile is WIN95 and the medium is a disc or an ISO
+(not a ready-made disk image, not "no media now"): AskBootFloppy (:367-437) explains in Polish or
+English why the floppy is needed and that it must be the user's own, then offers, like the media
+question it follows: 1.44 MB images found on every volume (.img .ima .vfd .flp, exactly 1 474 560
+bytes), "I will type an address from which Charon downloads my floppy image" (http/https, typed by
+the user; the file is kept only if it is exactly 1.44 MB), "search again" (connects new devices
+first), "I have no floppy image" (says how to add one later). Charon contains no address of any boot
+disk. MakeProfile copies or downloads it into the profile as BOOT95.IMG (PlaceBootFloppy, :438-457;
+:514-519) and ProfileText writes floppy=BOOT95.IMG, boot=floppy,disk, setup_auto=no (:483-490).
+With a floppy the questions of the unattended Setup (key, name, computer) are not asked and the user
+is told that this installation is not automatic (:598-603).
+Not reused because it does not exist: the header's comment names a list \EFI\HAK\pc-sources.txt, but
+no code reads such a file (neither for discs nor here).
+
+How verified. RAN AND PASSED on the host: ProfileText golden files dos-win95-boot-floppy (floppy and
+boot lines, no setup_ lines), dos-win95-defaults (no floppy: as before), dos-win98-ready-ignores-floppy.
+COMPILED ONLY: the question, the scan, the download and the copy (in CHARON.EFI r409c).
+NOT VERIFIED: the dialogue in a VM; a real Windows 95 disc and boot floppy were not available, so
+whether CharonPC starts Setup from the user's floppy was not run.
+
+What is missing on the consuming side. (1) Unattended Setup from the user's floppy: pc_config.cpp:283
+prepares its own SETUP.IMG only when no floppy is given, from the El Torito start floppy of the disc,
+which a Windows 95 disc does not have; pc_unattend.cpp would have to take the user's floppy as the
+source and it expects a Setup line in AUTOEXEC.BAT, which a Windows 95 start-up disk does not have. So
+with a floppy the user goes through Setup by hand (read by Charon's reader on text screens). (2) A
+floppy image of another size is not accepted (the emulator line is "floppya: 1_44="). (3) The media
+question still lists a 1.44 MB .img as a "ready-made disk image" (unchanged behaviour).
+
+
+5. Charon running from memory: audit, fixes, what the volume in memory guarantees
+----------------------------------------------------------------------------------
+(added during the work by the coordinator: every installation must work the same when Charon runs
+from its copy in memory, also onto the disk Charon lives on; Windows from the RAM disk is the priority.)
+
+5.1 Facts about the copy in memory today (AUDITED: CharonSelfCopy.h, CharonSelfRam.h, BootMenu.h:1603-1607)
+  - What is held: every file under \EFI\HAK of the start volume, listed once, 400 menu-loop turns after
+    the start, then read 256 KB per turn; the running program as HAKBOOT.EFI when the folder has none.
+    Limits: 600 files, 64 folders, paths under 200 characters - what exceeds them is skipped WITHOUT a
+    word (CharonSelfCopy.h List). Left out: continue.bin, continue-set, installed-by.txt, reader-only,
+    windows-iso-url.txt. Since this work: answers\ and plan\ are held too, marked privateItem.
+  - When Charon moves: as soon as the copy is complete, in the menu's loop only. From then on its root,
+    its "own device" and its image's device are a FAT32 volume in memory. New: images::EnsureInMemory
+    (CharonWsImages.h:184-207) finishes the copy and moves at once when an installation asks for a disk
+    to erase and Charon's own disk is present - before, that disk was simply missing from the list
+    until the background copy had finished, with no word of why (COMPILED ONLY).
+  - What is written back, and when: nothing by itself. Settings changed after the move are also written
+    to the start medium while it is still mounted (MirrorSettingsToMedium). Charon is written to a disk
+    only by: images::CharonOnto (ready image, CharonDOS - right after the image or the partition is
+    made, before any restart; with the firmware entries), the cpio a Debian installation carries
+    (written by the installer's late_command at its very end), the copy on Windows media (written by
+    Install-Charon.ps1 at the first logon), the Ubuntu early/late-commands, "Install Charon on this
+    computer".
+  - What survives a restart: nothing of the volume in memory. Whatever must survive has to be on a disk
+    (or in a UEFI variable) before the restart.
+  - For a plan (\EFI\HAK\plan on a disk that is repartitioned) this gives today: the state AS IT WAS
+    WHEN CHARON WAS COPIED INTO MEMORY is in memory and is carried back to the new EFI partition by
+    images::CharonOnto(esp,true) on the two paths where Charon itself makes the new partition (ready
+    image over the whole of its own disk, CharonDOS over the whole of its own disk) - before the first
+    restart. Missing for plans and answer sets: (a) a write of the plan state to the volume in memory
+    AND to the disk after each change (the copy is a snapshot; a helper like MirrorSettingsToMedium for
+    a named file does not exist); (b) on the installer-based paths (Debian, Ubuntu, Windows) the disk
+    is repartitioned by the installer after Charon has handed over, so Charon cannot write anything
+    "as the first step after the layout is created": the state must travel inside the installer's
+    hooks (cpio / media / config set) or the layout must be made by Charon first; (c) the UEFI
+    variable pointer of the multi-boot spec; (d) the silent limits above (600 files) must become
+    spoken; (e) CharonOnto is usable as the "re-create Charon on a fresh EFI partition" helper before
+    the first installer restart (it needs only the volume handle), the firmware entries are
+    dossys::PutOption.
+
+5.2 Audit of the install paths (AUDITED unless marked)
+  Ready image, whole disk = Charon's own disk   refused in UrlToDisk/QcowToDisk until Charon is in memory;
+        now EnsureInMemory first. Source of the copy back: the start volume while mounted, else the
+        volume in memory (images::Reconnect, r408a). Entries written by RegisterImage. VM: see 5.4.
+  Ready image alongside (free space)            no dependence on where Charon runs from; Charon is GIVEN to
+        the new system's own EFI partition; Charon's manager first in the boot order. Not run from memory.
+  Debian (network installer)                    everything in memory before the installer starts (kernel,
+        initrd, Charon as cpio read from Charon's current volume); no work file on any disk; the plan text
+        already says Charon is put back. No refusal, no steering. VM: see 5.4.
+  Ubuntu (autoinstall)                          needs a writable FAT volume for user-data (WorkVolume never
+        takes the volume in memory, r408). With Charon's own partition present it is used and read by the
+        installer before the disk is changed: fine. DEFECT FOUND AND FIXED (COMPILED ONLY): with the start
+        medium gone the installer found no \EFI\HAK on any disk and installed Ubuntu without Charon, in
+        silence; Charon is now given to the work volume first (CharonWsInstall2.h:131-146), and a failure is
+        said with what to do. STILL OPEN: with no FAT volume at all (stick removed, blank disk) the path
+        stops with "No FAT partition has enough free space" - a dead end, not a manual way; it needs the
+        seed served from memory. The Ubuntu path as a whole has never been run (r400, r406).
+  Windows, install media present                Charon and the answer file go onto the media from Charon's
+        current volume: no difference. Express and detailed need exactly one internal disk.
+  Windows, no media                             see 5.3: the RAM-disk way is manual today. THIS IS THE GAP.
+  CharonDOS on Charon's own disk                proven in r408 (VMware); now carries answers/plan.
+  CharonDOS + "Windows 11 beside it"            ends in the Windows path above (needs media).
+  ISO to a stick / started from a RAM disk (Linux for blind people, tools), Arch from the network,
+  netboot.xyz                                   independent of Charon's home. Charon is not added to these
+        systems (SayCharonStays); its text tells the user to "start the computer from the Charon USB
+        stick" afterwards, which is wrong advice when Charon lives on the internal disk. Wording left
+        unchanged in this batch (the other agent is editing these entries).
+  Install Charon on this computer               proven in r408; private folders are not written.
+  Dual boot: Debian biggest_free, Windows into free space / over one partition: generator output is the
+        same wherever Charon runs from (host golden files); not run from memory in a VM.
+
+5.3 Windows from the RAM disk: what exists, why it is not automatic, the design (NOT IMPLEMENTED)
+  Today (CharonWsRamDisk.h, CharonWsInstall2.h Classic): without media Charon offers "download to a USB
+  stick" (then the normal unattended path) or "download to a RAM disk": the ISO from Microsoft is loaded
+  into reserved memory and registered with the firmware's EFI_RAM_DISK_PROTOCOL as a virtual CD (the
+  firmware publishes it in the ACPI NFIT, so an operating system can still find it); its boot manager
+  is started. That is the coordinator's option (a) and it is already the mechanism in the tree. It is
+  manual ("you go through Windows Setup yourself, with Narrator") because the ISO is a read-only disc:
+  no Autounattend.xml, no \charon folder, no NVDA for the WinPE phase, no write-back of Charon. And it
+  has never been proven that Setup finds its sources there (charon-r401-results.txt:53; r402 "NOT
+  tested: RAM-disk way"). Memory rule in the code: 9 GB for the image + 3 GB spare free, else the USB
+  way is offered first (said). Firmware without the protocol: said, no fallback.
+  Design for an automatic RAM-disk installation (to be its own batch; nothing of it was shipped):
+    1. Second RAM disk: a small FAT image built in reserved memory and registered as a virtual DISK
+       (EFI_VIRTUAL_DISK_GUID) next to the virtual CD, holding Autounattend.xml at its root, the NVDA
+       files for the WinPE phase and Charon. Setup looks for Autounattend.xml at the root of removable
+       media; whether an NFIT virtual disk is searched and gets a drive letter in WinPE must be measured.
+    2. The decisive point: memory does not survive Setup's first restart. Today's answer file runs
+       Install-Charon.ps1, the readers and the profile from "%d:\charon" on the MEDIA at the first logon
+       - with a RAM disk there is no media any more by then. The files must reach the Windows partition
+       during the WinPE phase. The documented way is a configuration set (Microsoft-Windows-Setup
+       UseConfigurationSet, $OEM$\$1\... beside the answer file is copied to the system drive); the
+       first-logon commands then use %SystemDrive%\Charon. This needs a second form of WindowsAnswers
+       (host-testable now) and proof on real Setup.
+    3. Fallback when memory is short (never "do it yourself"): a temporary media partition at the end
+       of the target disk (split WIM as for the USB stick, CharonWimSplit.h), an answer file that does
+       not wipe the disk (creates Windows in the free space before it), and a first-logon step that
+       removes the media partition and extends C:. Announced by voice before anything is written. The
+       known defect of the self-installer (an empty "Charon" partition stays when a later step fails)
+       must not be repeated: delete the partition entry on failure.
+    4. Unchanged: BitLocker prevention, reader in WinPE, AutoLogon handling, Charon's hooks.
+  Documentation: NOT re-read in this batch (no page was fetched). The statements about the answer-file
+  search order, UseConfigurationSet/$OEM$ and NFIT support in Windows Setup are from memory of
+  Microsoft's "Windows Setup Automation Overview", the unattend reference and the UEFI specification
+  (RAM Disk Protocol) and are to be treated as UNVERIFIED until the batch that implements them reads
+  the pages and measures in VMware. Nothing was measured here (no Windows VM was run).
+
+5.4 VM trials (run by a helper agent with the r409c builds; evidence work/r409-ram-evidence)
+  STATE WHEN THIS FILE WAS CLOSED: the helper was still running; its report was NOT collected. What
+  follows for trial A is read from its evidence files only, not from a finished report.
+  Trial A (VMware, one internal disk with Charon as the only medium, ready Debian 13 image over the whole of
+  Charon's own disk; two runs, r409ram-a and r409ram-a2): r409ram-a-esp-verify-final.txt and
+  r409ram-a2-esp-verify-final.txt say: new EFI partition (GPT entry 15) holds Charon, 220 files identical,
+  0 different, 0 missing; the markers \EFI\HAK\answers\test.ini and \EFI\HAK\plan\plan.txt are PRESENT and
+  identical (the carry of section 1 worked on Charon's own disk); the Debian loaders are there. NOT YET
+  KNOWN from the evidence read: whether Debian's first start finished, whether "Charon voice" loaded and
+  the "Charon" entry started Charon, what was heard, whether EnsureInMemory spoke in the early run.
+  Trial B (Debian network installer onto Charon's own disk): the VM work/r409ram-b/r409ram-b.vmx was
+  RUNNING when this file was closed. No result. It must be collected from the helper or stopped and
+  deleted by hand.
+  Trial C (stick removed after the move to memory) and Windows: NOT RUN.
+
+
+6. Charon's voice and reader settings reach the installed system (voice.conf)
+-----------------------------------------------------------------------------
+Root cause. src/linux/speech.sh reads /var/lib/charon/voice.conf and the three Linux paths copy that
+file, but nothing wrote it.
+Change. CharonWsInstall.h: VoiceConf (pure text), CurrentVoice (settings record through
+LoadCharSettings, declared ahead of BootMenu.h; the manifest whose key equals synthKey through
+synths::ScanAll/Find), VoiceConfNow. Lines: CHARON_SYNTH = the manifest's name without ".manifest"
+(rhvoice, espeak; tvox for key 0; left out when no manifest has the key), CHARON_VOICE = the voice's id
+without the "<synth>-" prefix (natan, magda, slt), CHARON_RATE and CHARON_PITCH = the reader's rate and
+pitch, 5..20 tenths (speech.sh computes (value-10)*10), CHARON_PUNCTUATION = none|some|most|all from
+the punctuation setting 0..3. Written: Debian - a file charon/voice.conf in the cpio (AppendCharon);
+Ubuntu - \charon-install\ubuntu\voice.conf, and the early-commands copy now names it (the late
+command already did; without this the file never reached /run/charon); ready images -
+\EFI\HAK\voice.conf on the new EFI partition (RunImage); Windows - \charon\voice.conf on the media, taken
+to ProgramData\Charon by the existing xcopy.
+Verified. RAN AND PASSED on the host: golden files voiceconf-defaults and voiceconf-rhvoice-natan; the
+names are compared with the list speech.sh reads; ubuntu-defaults differs from the recording made
+before this work by the two documented lines only. COMPILED ONLY: CurrentVoice, the four writes.
+NOT VERIFIED: in a VM; that punctuation 0..3 means none/some/most/all in Charon (taken from the default
+1 = "some", not read in the reader's code).
+Remains. No Windows script reads voice.conf yet (Charon-Readers.ps1 takes only -Readers -First -Language
+-Source): the file is delivered, nothing applies it. The default express output is unchanged except
+for the Ubuntu copy line.
+
+
+7. "Install Charon on this computer" gives up add-on synthesizers in steps
+--------------------------------------------------------------------------
+Change (CharonWsSelfInstall.h): FurtherVoices/KeptVoice/FurtherVoicePack before Wanted. When everything
+does not fit the chosen EFI partition, first the further voice packs are left out
+(\EFI\HAK\synths\rhvoice\rhvoice-<name>.chsp other than rhvoice-pl.chsp, rhvoice-en.chsp and the pack of
+the voice Charon speaks with now) and this is said; only if that is still too much are all add-on
+synthesizers left out, as before (said as before). A new Charon partition is always sized for
+everything.
+Verified. RAN AND PASSED on the host: the real Wanted/FurtherVoicePack on nine paths (base packs in
+both letter cases, current voice, two other voices, the module, the table, eSpeak NG's data, and the
+"everything wanted" state). COMPILED ONLY: the size steps and the spoken text. NOT VERIFIED: the 40 MB
+partition case of r408 was not run again; the names of the base packs and of the voice packs are those
+of tests/charon-r409-rhvoice-voices-results.txt and were not checked against a staged tree.
+
+
+8. The Wi-Fi connection joined in Charon reaches the installed system (network.conf)
+------------------------------------------------------------------------------------
+Found in the tree: net::Joined() (CharonWsNet.h, added by the Windows work) keeps the joined network's
+name and passphrase in memory, and RunWindows writes \charon\charon-network.txt from it. Added here
+(CharonWsInstall.h NetworkConf, NetworkConfNow, OnlyWifi): network.conf with the names src/linux/network.sh
+reads - CHARON_NET_TYPE=wifi, CHARON_NET_MAC, CHARON_NET_METHOD=dhcp, CHARON_WIFI_SSID,
+CHARON_WIFI_SECURITY=open|wpa-psk, CHARON_WIFI_PSK. Written only by RunImage, onto the new EFI partition
+of that installation (firstboot.sh applies it and deletes it there); the buffer is wiped; nothing is
+spoken or logged. "network.conf" is on the list of CharonPrivate.h, so no copy of \EFI\HAK passes one
+on. An SSID with control characters is not handed over. Enterprise networks cannot be joined in Charon
+at all. Debian and Ubuntu installers: when Charon's only connection is Wi-Fi the dialogue now says that
+the installer needs a cable and that ready images work over Wi-Fi, and asks whether to continue
+(install::Classic).
+Verified. RAN AND PASSED on the host: golden files networkconf-wpa and networkconf-open, every name is
+one network.sh reads; the copy tests with a file Network.conf (never given, carried). COMPILED ONLY: the
+rest.
+NOT DONE, against the coordinator's wishes, stated plainly: (1) the passphrase is handed over, not the
+computed key (Charon has no PBKDF2-HMAC-SHA1); (2) the remembered network is NOT wiped after the files
+are written (net::ForgetJoined is not called by RunImage or RunWindows), so the passphrase stays in
+memory until the restart or the next join; (3) no country code, no static address, no proxy; (4) Debian
+and Ubuntu get no network.conf (their copy commands do not take one); (5) nothing was run in a VM.
+
+Correction to section 1: the shared list now has three names (answers, plan, network.conf) and the
+Ubuntu command reads "... in answers|plan|network.conf) rm -rf ...".
+Golden files: the ready-image outputs differ from the recording made before this work by one line that
+the Linux work changed (network.sh and network.conf in the first runcmd); the test lists that line.
+

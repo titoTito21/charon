@@ -3,8 +3,8 @@
 #  - the screen reader add-on as a UEFI driver option (Driver####, "Charon voice")
 #  - the Charon boot manager as a boot entry ("Charon"), second in the boot order:
 #    right after the system's own entry, before everything else.
-esp=/boot/efi
-state=/var/lib/charon
+esp=${CHARON_ESP:-/boot/efi}          # CHARON_ESP, CHARON_STATE: for the host tests only
+state=${CHARON_STATE:-/var/lib/charon}
 # The EFI partition is not at /boot/efi everywhere (/efi, /boot; the caller may also have
 # mounted it at /run/charon-esp).
 if [ ! -f $esp/EFI/HAK/CHARONVOICE.EFI ]; then
@@ -35,6 +35,43 @@ charon_second() {
   [ -n "$out" ] || out=$2
   echo "$out"
 }
+# r409, a multi-system plan (several systems installed one after another). While a plan runs,
+# Charon keeps its state in EFI/HAK/plan on the EFI partition and must stay FIRST in the boot
+# order: it starts each installer, and each restart has to come back to it.
+#   EFI/HAK/plan/plan.txt   the plan is running
+#   EFI/HAK/plan/current    the number of the step Charon started last (digits only)
+#   EFI/HAK/plan/stepN.done / stepN.failed   written here, read by Charon at its next start
+#   EFI/HAK/first-entry     after the plan: the label of the entry that must stay first
+#                           ("CharonDOS", or "Charon"); looked at at every start, so that a
+#                           later update of a boot loader does not take the first place for good
+plan_active() { [ -f $esp/EFI/HAK/plan/plan.txt ]; }
+# entry_of LABEL: the number of the boot entry with exactly that label.
+entry_of() { efibootmgr 2>/dev/null | sed -n "s/^Boot\\([0-9A-Fa-f]\\{4\\}\\)\\*\\{0,1\\} $1\$/\\1/p;s/^Boot\\([0-9A-Fa-f]\\{4\\}\\)\\*\\{0,1\\} $1[[:space:]].*/\\1/p" | tr abcdef ABCDEF | head -n1; }
+# put_first ORDER NUMBER: the boot order with entry NUMBER first, the others as they were.
+put_first() {
+  out=$2
+  for n in $(echo "$1" | tr ',abcdef' ' ABCDEF'); do
+    case ",$out," in *",$n,"*) continue;; esac
+    out="$out,$n"
+  done
+  echo "$out"
+}
+# plan-done [TEXT] / plan-failed TEXT [LOG]: this system reports the end of its step to Charon.
+# The step number is argument plan-step=N when given, else the file "current". One line of
+# result; on failure the last lines of LOG follow. Nothing happens outside a plan.
+if [ "$1" = plan-done ] || [ "$1" = plan-failed ]; then
+  kind=${1#plan-}; shift
+  step=; case "$1" in plan-step=*) step=${1#plan-step=}; shift;; esac
+  plan_active || exit 0
+  [ -n "$step" ] || step=$(tr -cd 0-9 < $esp/EFI/HAK/plan/current 2>/dev/null)
+  [ -n "$step" ] || { echo "charon: plan: the number of the step is not known; no marker written"; exit 1; }
+  marker=$esp/EFI/HAK/plan/step$step.$kind
+  rm -f $esp/EFI/HAK/plan/step$step.done $esp/EFI/HAK/plan/step$step.failed
+  { printf '%s\r\n' "${1:-ok}" && { if [ $kind = failed ] && [ -n "$2" ] && [ -f "$2" ]; then tail -n 12 "$2" | tr -d '\r' | sed 's/$/\r/'; fi; }; } > $marker.new 2>/dev/null \
+    && mv $marker.new $marker && { sync; echo "charon: plan: step $step reported as $kind"; exit 0; }
+  echo "charon: plan: the marker $marker could not be written"; exit 1
+fi
+if [ "$1" = plan-active ]; then plan_active; exit $?; fi
 # r406: `charon-register check`, at every start. Some firmware (VMware's, some computers')
 # never loads driver options, so the reader add-on registered below would never speak.
 # The add-on leaves a mark when firmware did load it: the variable CharonVoiceLoaded. When a
@@ -50,6 +87,27 @@ if [ "$1" = check ]; then
   c=$(charon_entries | head -n1)
   o=$(efibootmgr | sed -n 's/^BootOrder: //p' | tr abcdef ABCDEF)
   [ -n "$c" ] || exit 0
+  # r409: a plan is running - Charon first, nothing else is decided here (no reader-only: the
+  # reader comes with Charon itself while it is first).
+  if plan_active; then
+    rm -f $state/order-check
+    case "$o" in "$c"|"$c",*) ;; *)
+      n=$(put_first "$o" "$c")
+      efibootmgr --bootorder "$n" >/dev/null && echo "charon: plan: Charon put back first in the boot order ($n)";;
+    esac
+    exit 0
+  fi
+  # r409: after a plan the entry named in first-entry stays first, Charon right behind it.
+  if [ -s $esp/EFI/HAK/first-entry ]; then
+    label=$(head -n1 $esp/EFI/HAK/first-entry | tr -d '\r\n')
+    f=$(entry_of "$label")
+    if [ -n "$f" ]; then
+      rm -f $state/order-check
+      n=$(put_first "$(put_first "$o" "$c")" "$f")
+      if [ "$n" != "$o" ] && efibootmgr --bootorder "$n" >/dev/null; then echo "charon: boot order corrected: $label first, as the plan left it ($n)"; fi
+      exit 0
+    fi
+  fi
   # Once, at the first start after registering: an installer, or a grub-install run after this
   # script, may have rewritten the boot order. The system first, Charon second - unless Charon
   # was put first on purpose (beside other systems; the reader started through the manager).
@@ -134,7 +192,12 @@ if [ -f $esp/EFI/HAK/HAKBOOT.EFI ]; then
   new=$(charon_entries | head -n1)
   if [ -n "$new" ]; then
     # The system's own boot manager stays first; Charon is second; the others follow.
-    if [ $wasfirst = yes ]; then want="$new${order:+,$order}"; else want=$(charon_second "$order" "$new"); fi
+    # r409: during a multi-system plan Charon is first whatever the installer did; after one,
+    # the entry of first-entry is first and Charon follows it.
+    keep=; [ -s $esp/EFI/HAK/first-entry ] && keep=$(entry_of "$(head -n1 $esp/EFI/HAK/first-entry | tr -d '\r\n')")
+    if plan_active; then want=$(put_first "$order" "$new")
+    elif [ -n "$keep" ]; then want=$(put_first "$(put_first "$order" "$new")" "$keep")
+    elif [ $wasfirst = yes ]; then want="$new${order:+,$order}"; else want=$(charon_second "$order" "$new"); fi
     efibootmgr --bootorder "$want" >/dev/null && echo "charon: boot manager registered as Boot$new; boot order $want"
     # Checked once more at the next start: see "check" above.
     : > $state/order-check

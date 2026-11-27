@@ -1,0 +1,13 @@
+# r409: Windows 11 Enterprise evaluation (26H2) fetched by Charon: the profile list ends with AtlasOS (no "Windows Server as a workstation"); AtlasOS cannot work on 26H2, so it is dropped aloud and no profile command is written.
+lang=en
+flow=windows
+mode=quick
+arg wversion=ent
+arg windex=1
+arg language_asked=1
+arg wlocale=en-US
+keys=ENTER "test" ENTER "test" ENTER
+keys=ENTER END ENTER
+put diskmode=whole
+arg partition=3
+arg esp=0

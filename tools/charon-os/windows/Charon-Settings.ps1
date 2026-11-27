@@ -21,7 +21,7 @@ Narrator). -Console gives the same functions as numbered text menus.
   -Set a=1,b=2        change members or rows and save, without questions
   -Defaults           restore the defaults and save
   -Repair             rewrite a record Charon does not accept (values out of range)
-  -Format X           record format to write when it cannot be detected (1-9, A, B, C)
+  -Format X           record format to write when it cannot be detected (1-9, A, B, C, D, E)
   -ReaderOnly on|off  create or remove \EFI\HAK\reader-only
   -Addon on|off|status   the reader add-on (asks first; -Yes answers yes)
   -Synths             list the synthesizer add-ons found on the partition
@@ -60,8 +60,9 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $here 'CharonOs.Common.ps1')
 . (Join-Path $here 'CharonOs.Fields.ps1')
 
-$script:Known = '123456789ABC'          # record formats this program knows (CharSettings.h V1..V12)
-$script:Newest = 'C'
+$script:Known = '123456789ABCDE'        # record formats this program knows (CharSettings.h V1..V14)
+$script:Newest = 'E'
+$script:RecordBytes = $null              # the chosen record as it is on the partition
 $script:SlotNames = @('charon-settings-a.bin', 'charon-settings-b.bin')   # BootMenu.h SettingsSlot
 $script:S = @{}                          # members as Charon would use them
 $script:Seq = [uint64]0
@@ -115,15 +116,18 @@ function Read-CharonRecord([byte[]]$b, [switch]$Lenient) {
     else { foreach ($i in 23..27) { & $r $i 0 0 } }
     if ($age -ge 6) {
         foreach ($i in 28..30) { & $r $i 5 20 }
-        & $r 31 1 10; & $r 32 0 7; & $r 33 0 3
+        & $r 31 1 10
+        if ($age -lt 13) { & $r 32 0 7; & $r 33 0 3 }     # format E: the custom profile's items in the upper bits
         if ($age -eq 6) { & $r 34 0 0; & $r 35 0 0 } else { & $r 34 5 20; & $r 35 5 20 }
     }
     if ($age -ge 8) {
-        & $r 36 0 3; & $r 37 0 7; & $r 38 0 3; & $r 39 0 63
+        if ($age -ge 12) { & $r 36 0 31 } else { & $r 36 0 3 }
+        & $r 37 0 $(if ($age -ge 13) { 63 } else { 7 })
+        if ($age -ge 12) { & $r 38 0 15 } else { & $r 38 0 3 }
+        & $r 39 0 63
         if ($age -ge 9) {
+            # Byte 41 bit 7 (extraLinger) is accepted in formats C and later (CharSettings.h, r408).
             if ($age -lt 11) { & $r 40 0 63; & $r 41 0 31 }
-            # CharSettings.h line 120: byte 41 above 127 (bit 7, extraLinger) is rejected in every format.
-            & $r 41 0 127
             if ($age -eq 9) { & $r 42 0 0; & $r 43 0 0 }
             & $r 43 0 15
         } else { foreach ($i in 40..43) { & $r $i 0 0 } }
@@ -133,6 +137,7 @@ function Read-CharonRecord([byte[]]$b, [switch]$Lenient) {
     if ($null -eq $bad -and $age -ge 5) {
         if (([int]$b[25] -band 3) -gt 2) { $bad = 25 } elseif (-not (Test-AutoDelay ([int]$b[27]))) { $bad = 27 }
     }
+    if ($null -eq $bad -and $age -ge 12 -and ([int]$b[38] -shr 2) -gt $(if ($age -ge 13) { 3 } else { 2 })) { $bad = 38 }   # profile 3 (custom): format E
     if ($null -eq $bad -and $age -ge 9 -and ((([int]$b[41] -shr 5) -band 3) -gt 2 -or ([int]$b[41] -band 3) -gt 2)) { $bad = 41 }
     $sequence = [BitConverter]::ToUInt64($b, 8)
     if ($sequence -eq 0) { $script:DecodeReason = 'sequence 0'; return $null }
@@ -142,7 +147,6 @@ function Read-CharonRecord([byte[]]$b, [switch]$Lenient) {
     }
     $m = @{}
     foreach ($name in $script:CharonMembers) { $m[$name] = [int]$script:CharonDefaults[$name] }
-    $m.readerExtra = 153                                    # CharSettings{} default (extraLinger set)
     $m.language = [int]$b[16]; $m.wrap = [int]($b[17] -ne 0)
     $m.sounds = [int]($age -eq 0 -or $b[18] -ne 0); $m.explicitMessages = [int]($age -ge 2 -and $b[19] -ne 0)
     if ($age -ge 3) { $m.startMelody = [int]$b[20]; $m.backgroundMelody = [int]$b[21] }
@@ -154,11 +158,17 @@ function Read-CharonRecord([byte[]]$b, [switch]$Lenient) {
     }
     $m.readerRate = $m.rate; $m.readerVolume = $m.speechVolume
     if ($age -ge 6) {
-        $m.pitch = [int]$b[28]; $m.readerRate = [int]$b[29]; $m.readerPitch = [int]$b[30]; $m.readerVolume = [int]$b[31]; $m.detail = [int]$b[32]; $m.timers = [int]$b[33]
+        $m.pitch = [int]$b[28]; $m.readerRate = [int]$b[29]; $m.readerPitch = [int]$b[30]; $m.readerVolume = [int]$b[31]; $m.detail = [int]($b[32] -band 7); $m.timers = [int]($b[33] -band 3)
         if ($age -eq 6 -and $m.timers -eq 0) { $m.timers = 2 }
         if ($age -ge 7) { $m.messageRate = [int]$b[34]; $m.messagePitch = [int]$b[35] }
     }
-    if ($age -ge 8) { $m.punctuation = [int]$b[36]; $m.capitals = [int]$b[37]; $m.screenLanguage = [int]$b[38]; $m.readerFlags = [int]$b[39] }
+    if ($age -ge 8) { $m.punctuation = [int]($b[36] -band 3); $m.capitals = [int]($b[37] -band 7); $m.screenLanguage = [int]($b[38] -band 3); $m.readerFlags = [int]$b[39] }
+    if ($age -ge 12) { $m.formatGroups = [int](($b[36] -shr 2) -band 7); $m.profile = [int](($b[38] -shr 2) -band 3) }
+    if ($age -ge 13) {
+        $m.profileItems = [int](([int]$b[32] -shr 3) -bor (([int]$b[33] -shr 2) -shl 5) -bor ((([int]$b[37] -shr 3) -band 1) -shl 11))
+        $m.readerBar = [int](($b[37] -band 16) -ne 0); $m.absoluteColours = [int](($b[37] -band 32) -ne 0)
+    }
+    if ($age -lt 9) { $m.formatFlags = 60 }                 # no formatting byte: attributes on, outputs off (r393)
     if ($age -ge 9) { $m.formatFlags = [int]$b[40]; $m.readerExtra = [int]$b[41] }
     if ($age -ge 10) { $m.synthKey = [int]$b[42]; $m.synthVoice = [int]$b[43] }
     return @{ Version = $v; Sequence = $sequence; Members = $m }
@@ -173,7 +183,8 @@ function Test-CharonMember([string]$Name, [int]$Value) {
         'readerVolume' { @(1, 10) } 'detail' { @(0, 7) } 'timers' { @(0, 3) } 'messageRate' { @(5, 20) }
         'messagePitch' { @(5, 20) } 'punctuation' { @(0, 3) } 'capitals' { @(0, 7) } 'screenLanguage' { @(0, 3) }
         'readerFlags' { @(0, 63) } 'formatFlags' { @(0, 255) } 'readerExtra' { @(0, 255) } 'synthKey' { @(0, 255) }
-        'synthVoice' { @(0, 15) } default { @(0, 255) }
+        'synthVoice' { @(0, 15) } 'formatGroups' { @(0, 7) } 'profile' { @(0, 3) } 'profileItems' { @(0, 4095) }
+        'readerBar' { @(0, 1) } 'absoluteColours' { @(0, 1) } default { @(0, 255) }
     }
     if ($Name -eq 'autoSeconds') { if (Test-AutoDelay $Value) { return $null } else { return ($script:CharonAutoDelays -join ', ') } }
     if ($Value -lt $r[0] -or $Value -gt $r[1]) { return ('{0}..{1}' -f $r[0], $r[1]) }
@@ -200,12 +211,21 @@ function New-CharonRecord([hashtable]$m, [uint64]$Sequence, [string]$V) {
     }
     if ($age -ge 6) {
         $b[28] = [byte]$m.pitch; $b[29] = [byte]$m.readerRate; $b[30] = [byte]$m.readerPitch; $b[31] = [byte]$m.readerVolume
-        $b[32] = [byte]$m.detail; $b[33] = [byte]$m.timers
+        $b[32] = [byte]($m.detail -band 7); $b[33] = [byte]($m.timers -band 3)
         if ($age -ge 7) { $b[34] = [byte]$m.messageRate; $b[35] = [byte]$m.messagePitch }
     }
-    if ($age -ge 8) { $b[36] = [byte]$m.punctuation; $b[37] = [byte]$m.capitals; $b[38] = [byte]$m.screenLanguage; $b[39] = [byte]$m.readerFlags }
+    if ($age -ge 8) { $b[36] = [byte]($m.punctuation -band 3); $b[37] = [byte]($m.capitals -band 7); $b[38] = [byte]($m.screenLanguage -band 3); $b[39] = [byte]$m.readerFlags }
+    if ($age -ge 12) {                                      # format D
+        $b[36] = [byte]($b[36] -bor (($m.formatGroups -band 7) -shl 2)); $b[38] = [byte]($b[38] -bor (($m.profile -band 3) -shl 2))
+    }
+    if ($age -ge 13) {                                      # format E
+        $items = [int]$m.profileItems
+        $b[32] = [byte]($b[32] -bor (($items -band 31) -shl 3)); $b[33] = [byte]($b[33] -bor ((($items -shr 5) -band 63) -shl 2))
+        $high = (($items -shr 11) -band 1) -shl 3; if ($m.readerBar) { $high = $high -bor 16 }; if ($m.absoluteColours) { $high = $high -bor 32 }
+        $b[37] = [byte]($b[37] -bor $high)
+    }
     if ($age -ge 9) {
-        $format = $m.formatFlags; $extra = $m.readerExtra -band 0x7f
+        $format = $m.formatFlags; $extra = $m.readerExtra
         if ($age -lt 11) { $format = $format -band 63; $extra = $extra -band 31 }
         $b[40] = [byte]$format; $b[41] = [byte]$extra
     }
@@ -242,15 +262,14 @@ function Test-SameMembers([hashtable]$A, [hashtable]$B) { foreach ($n in $script
 function Import-CharonSettings {
     $a = Read-CharonSlot 0; $b = Read-CharonSlot 1
     $script:Slots = @($a, $b)
-    $script:RecordVersion = $null; $script:Seq = [uint64]0; $script:WriteBlocked = $null
+    $script:RecordVersion = $null; $script:Seq = [uint64]0; $script:WriteBlocked = $null; $script:RecordBytes = $null
     $script:S = @{}; foreach ($n in $script:CharonMembers) { $script:S[$n] = [int]$script:CharonDefaults[$n] }
-    $script:S.readerExtra = 153
     $chosen = $null
     if ($a.Status -eq 'notfound' -and $b.Status -eq 'notfound') { $script:RecordState = 'none' }
     elseif ($a.Status -ne 'ok' -and $b.Status -ne 'ok') { $script:RecordState = 'invalid' }
     elseif ($a.Status -eq 'ok' -and $b.Status -eq 'ok' -and $a.Record.Sequence -eq $b.Record.Sequence -and -not (Test-SameMembers $a.Record.Members $b.Record.Members)) { $script:RecordState = 'invalid' }
     else {
-        if ($b.Status -ne 'ok' -or ($a.Status -eq 'ok' -and $a.Record.Sequence -ge $b.Record.Sequence)) { $chosen = $a.Record } else { $chosen = $b.Record }
+        if ($b.Status -ne 'ok' -or ($a.Status -eq 'ok' -and $a.Record.Sequence -ge $b.Record.Sequence)) { $chosen = $a.Record; $script:RecordBytes = $a.Bytes } else { $chosen = $b.Record; $script:RecordBytes = $b.Bytes }
         $script:RecordState = 'ok'; $script:RecordVersion = $chosen.Version; $script:Seq = [uint64]$chosen.Sequence
         foreach ($n in $script:CharonMembers) { $script:S[$n] = [int]$chosen.Members[$n] }
     }
@@ -264,9 +283,23 @@ function Import-CharonSettings {
     if ($binary -and (Get-FormatAge $binary) -ge 0) { $script:Target = $binary; $script:TargetWhy = T 'the format the installed boot manager writes (found in HAKBOOT.EFI)' 'format zapisywany przez zainstalowany menedżer rozruchu (znaleziony w HAKBOOT.EFI)' }
     elseif ($script:RecordVersion) { $script:Target = $script:RecordVersion; $script:TargetWhy = T 'the format of the record on the partition' 'format zapisu znajdującego się na partycji' }
     elseif ($Format) { $script:Target = $Format.ToUpperInvariant(); $script:TargetWhy = T 'chosen with -Format' 'wybrany przełącznikiem -Format' }
-    else { $script:Target = $script:Newest; $script:TargetWhy = T 'no record and no boot manager file to detect the format from: the newest format, read by Charon r397 and later' 'brak zapisu i pliku menedżera rozruchu, z których dałoby się odczytać format: najnowszy format, czytany przez Charona r397 i nowsze' }
+    else { $script:Target = $script:Newest; $script:TargetWhy = T 'no record and no boot manager file to detect the format from: the newest format, read by Charon r410 and later' 'brak zapisu i pliku menedżera rozruchu, z których dałoby się odczytać format: najnowszy format, czytany przez Charona r410 i nowsze' }
     if ((Get-FormatAge $script:Target) -lt 0) { throw (T "Unknown record format $($script:Target)." "Nieznany format zapisu $($script:Target).") }
+    if ($script:RecordState -eq 'none') { Set-FormatDefaults }      # a new record starts from the defaults of its format
     $script:Dirty = $false
+}
+# The two bytes whose defaults differ in the older formats (formats A and B: 60 and 25; a new
+# format C record: 255 and 25, byte 41 without bit 7).
+function Set-FormatDefaults {
+    $age = Get-FormatAge $script:Target
+    if ($age -lt 11) { foreach ($n in $script:CharonDefaultsAB.Keys) { $script:S[$n] = [int]$script:CharonDefaultsAB[$n] } }
+    elseif ($age -eq 11) { foreach ($n in $script:CharonDefaultsC.Keys) { $script:S[$n] = [int]$script:CharonDefaultsC[$n] } }
+}
+# Bit 7 of byte 41 (extraLinger) as a record of format A, B or C will hold it: what the record
+# of the same format on the partition has, otherwise off (Charon before r408 rejects it there).
+function Get-LingerKept {
+    if ($script:Target -ceq 'C' -and $script:RecordVersion -ceq 'C' -and $script:RecordBytes -and $script:RecordBytes.Length -eq 48) { return ([int]$script:RecordBytes[41] -band 128) }
+    return 0
 }
 # SaveCharSettings: the next sequence goes to the slot of its parity; that file is deleted,
 # created, written, flushed to the disk, read back and compared. The other slot, which
@@ -275,6 +308,8 @@ function Export-CharonSettings {
     if ($script:WriteBlocked) { throw $script:WriteBlocked }
     if ($script:RecordState -eq 'invalid') { throw (T 'The settings on the partition are invalid; Charon would use defaults and refuse to save. Use Repair first.' 'Ustawienia na partycji są nieprawidłowe; Charon użyłby domyślnych i odmówił zapisu. Najpierw użyj naprawy.') }
     if ($script:Seq -eq [uint64]::MaxValue) { throw (T 'The sequence number of the record cannot grow any more.' 'Numer kolejny zapisu nie może już wzrosnąć.') }
+    if ((Get-FormatAge $script:Target) -lt 12) { $script:S.readerExtra = ([int]$script:S.readerExtra -band 127) -bor (Get-LingerKept) }   # formats A to C: bit 7 stays as the record has it
+    if ((Get-FormatAge $script:Target) -eq 12 -and [int]$script:S.profile -gt 2) { throw (T 'The custom verbosity profile (profile = 3) is not stored by settings format D of the installed Charon.' 'Własny profil szczegółowości (profile = 3) nie jest zapisywany w formacie ustawień D zainstalowanego Charona.') }
     foreach ($n in $script:CharonMembers) {
         if ((Get-FormatAge $script:CharonMemberSince[$n]) -gt (Get-FormatAge $script:Target)) { continue }
         $range = Test-CharonMember $n $script:S[$n]
@@ -298,7 +333,7 @@ function Test-CharonRepairable {
     return $false
 }
 # A record with a correct structure and checksum whose values Charon rejects: the values
-# out of range take their defaults, bit 7 of byte 41 is cleared, and the result is saved
+# out of range take their defaults, and the result is saved
 # under the next sequence number.
 function Repair-CharonSettings {
     $best = $null
@@ -306,7 +341,6 @@ function Repair-CharonSettings {
     if (-not $best) { throw (T 'Nothing can be recovered from the settings files.' 'Z plików ustawień nie da się nic odzyskać.') }
     $notes = @()
     $m = $best.Lenient.Members
-    if ($m.readerExtra -band 128) { $m.readerExtra = $m.readerExtra -band 127 }
     foreach ($n in $script:CharonMembers) {
         if (Test-CharonMember $n $m[$n]) { $notes += ('{0}: {1} -> {2}' -f $n, $m[$n], $script:CharonDefaults[$n]); $m[$n] = [int]$script:CharonDefaults[$n] }
     }
@@ -388,8 +422,8 @@ function Get-RowValue($Row) {
 }
 function Set-RowValue($Row, [int]$Value) {
     $v = [int]$script:S[$Row.Member]
-    if ($Row.Kind -eq 'check') { if ($Value) { $v = $v -bor $Row.Mask } else { $v = $v -band (255 -bxor $Row.Mask) } }
-    elseif ($Row.Kind -eq 'choice') { $v = ($v -band (255 -bxor ($Row.Mask -shl $Row.Shift))) -bor (($Value -band $Row.Mask) -shl $Row.Shift) }
+    if ($Row.Kind -eq 'check') { if ($Value) { $v = $v -bor $Row.Mask } else { $v = $v -band (65535 -bxor $Row.Mask) } }
+    elseif ($Row.Kind -eq 'choice') { $v = ($v -band (65535 -bxor ($Row.Mask -shl $Row.Shift))) -bor (($Value -band $Row.Mask) -shl $Row.Shift) }
     else { $v = $Value }
     if ($script:S[$Row.Member] -ne $v) { $script:S[$Row.Member] = $v; $script:Dirty = $true }
 }
@@ -406,7 +440,7 @@ function Get-PageRows([string]$Page) { return , @($script:CharonRows | Where-Obj
 function Get-PageTitle($Page) { if ($script:CharonPl) { return $Page.Pl } else { return $Page.En } }
 function Reset-CharonDefaults {
     foreach ($n in $script:CharonMembers) { $script:S[$n] = [int]$script:CharonDefaults[$n] }
-    if ((Get-FormatAge $script:Target) -lt 11) { foreach ($n in $script:CharonDefaultsAB.Keys) { $script:S[$n] = [int]$script:CharonDefaultsAB[$n] } }
+    Set-FormatDefaults
     $script:Dirty = $true
 }
 
@@ -472,7 +506,7 @@ function Get-InfoLines {
     $lines += Get-AddonText
     $lines += Get-ReaderOnlyText
     $lines += (T $script:CharonLingerNoteEn $script:CharonLingerNotePl)
-    $lines += ('Charon-Settings.ps1 ' + $script:CharonRelease + (T ', settings formats 1 to C' ', formaty ustawień od 1 do C'))
+    $lines += ('Charon-Settings.ps1 ' + $script:CharonRelease + (T ', settings formats 1 to E' ', formaty ustawień od 1 do E'))
     return , $lines
 }
 function Write-ShowLines {
@@ -504,7 +538,7 @@ function Set-FromPair([string]$Pair) {
     }
     $range = Test-CharonMember $member $value
     if ($range) { throw (T "The value $value of $member is out of range ($range)." "Wartość $value pola $member jest poza zakresem ($range).") }
-    if ($member -eq 'readerExtra' -and ($value -band 128)) { throw (T $script:CharonLingerNoteEn $script:CharonLingerNotePl) }
+    if ($member -eq 'readerExtra' -and (Get-FormatAge $script:Target) -lt 12 -and ($value -band 128) -ne (Get-LingerKept)) { throw (T $script:CharonLingerNoteEn $script:CharonLingerNotePl) }
     if ((Get-FormatAge $script:Target) -lt 11 -and (($member -eq 'formatFlags' -and $value -gt 63) -or ($member -eq 'readerExtra' -and $value -gt 31))) {
         throw (T "The value $value of $member has bits that settings format $($script:Target) of the installed Charon does not store." "Wartość $value pola $member ma bity, których format ustawień $($script:Target) zainstalowanego Charona nie zapisuje.")
     }
@@ -894,11 +928,11 @@ function Show-SettingsDialog {
 
 # ---- main ----------------------------------------------------------------------------------
 Initialize-CharonConsole
-if ($Version) { Out-Line ('Charon-Settings.ps1 ' + $script:CharonRelease + ' (settings formats 1-C)'); exit 0 }
+if ($Version) { Out-Line ('Charon-Settings.ps1 ' + $script:CharonRelease + ' (settings formats 1-E)'); exit 0 }
 $code = 0
 $nonInteractive = (-not $GuiSelfTest) -and ($Show -or $Set.Count -or $Defaults -or $Repair -or $ReaderOnly -or $Addon -or $Synths)
 try {
-    if ($Format -and $Format.Length -ne 1) { throw 'Format: 1-9, A, B or C.' }
+    if ($Format -and $Format.Length -ne 1) { throw 'Format: 1-9, A, B, C, D or E.' }
     $root = Open-CharonEsp
     $script:Hak = Get-CharonHak $root
     Set-CharonLanguage $script:Hak

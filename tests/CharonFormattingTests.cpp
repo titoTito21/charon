@@ -35,7 +35,7 @@ int main() {
     Check(mark!=std::u16string::npos && a.find(u"Ubuntu")>mark,"marker before the highlighted word");
     // after the styled word, the reader's own words return to the plain voice
     Check(a.find(formatMark,mark+1)!=std::u16string::npos,"plain voice again for own words");
-    Check(a[mark+4]!=u'0',"highlight + bright: timbre set");
+    Check(a[mark+7]>u'm' && a[mark+2]>u'm',"highlight: livelier range and higher pitch (r399: no echo)");
     Check(a[mark+5]==u'a'+15,"icon colour = white (15)");
     // voice only: no icon payload
     ok=Annotate<speechtext::ownOpen,speechtext::ownClose>(in,g,base,flagVoice|flagsDefault,1,out,400);
@@ -52,11 +52,11 @@ int main() {
         std::u16string c=S(composed);
         Check(c.find(formatMark)==std::u16string::npos,"compose: no private marker left");
         const size_t esc=c.find(u"\x1b" u"f");
-        Check(esc!=std::u16string::npos && c.size()>esc+14 && c[esc+14]==u' ',"compose: ESC f + 12 bytes + space");
+        Check(esc!=std::u16string::npos && c.size()>esc+16 && c[esc+16]==u' ',"compose: ESC f + 14 bytes + space");
         Check(c.find(u"Ubuntu")>esc,"compose: switch before Ubuntu");
         std::printf("  %s\n",Narrow(c).c_str());
         // a trailing marker is dropped
-        char16_t tail[64]=u"Menu \xE003mmm0-ammm0--";speechtext::Compose(tail,false,r,sticky,composed,800);
+        char16_t tail[64]=u"Menu \xE003mmm0-ammm0---0";speechtext::Compose(tail,false,r,sticky,composed,800);
         Check(S(composed)==u"Menu","compose: trailing marker dropped");
     }
     // ---- dictionary -----------------------------------------------------
@@ -96,10 +96,10 @@ int main() {
     // ---- settings V10 ---------------------------------------------------
     {
         CharSettings v;v.sequence=5;v.formatFlags=63;v.readerExtra=2|4|16;uint8_t b[48];
-        Check(EncodeSettings(v,b,48) && b[7]=='C' && b[40]==63 && b[41]==22,"settings V12 encode");
+        Check(EncodeSettings(v,b,48) && b[7]=='E' && b[40]==63 && b[41]==22,"settings V14 encode");
         CharSettings w;Check(DecodeSettings(b,48,w) && w.formatFlags==63 && w.readerExtra==22,"settings V10 decode");
-        b[7]='9';b[40]=0;b[41]=0;const uint32_t crc=SettingsCRC(b,44);for(int i=0;i<4;++i)b[44+i]=uint8_t(crc>>(8*i));
-        CharSettings x;Check(DecodeSettings(b,48,x) && x.formatFlags==60 && x.readerExtra==25,"settings V9 decodes to r393 defaults");
+        b[7]='9';b[40]=0;b[41]=0;b[36]&=3;b[32]&=7;b[33]&=3;b[37]&=7;const uint32_t crc=SettingsCRC(b,44);for(int i=0;i<4;++i)b[44+i]=uint8_t(crc>>(8*i));
+        CharSettings x;Check(DecodeSettings(b,48,x) && x.formatFlags==60 && x.readerExtra==153,"settings V9 decodes to the defaults (r393 formatting, r400 extras)");
         v.readerExtra=3;Check(!EncodeSettings(v,b,48),"hidden menu mode 3 rejected");
         CharSettings y;y.sequence=9;y.synthKey=0xa7;y.synthVoice=2;Check(EncodeSettings(y,b,48) && b[42]==0xa7 && b[43]==2,"settings V11 synth bytes");
         CharSettings z;Check(DecodeSettings(b,48,z) && z.synthKey==0xa7 && z.synthVoice==2,"settings V11 decode synth");
@@ -138,7 +138,7 @@ int main() {
         std::u16string c=S(composed);const size_t esc=c.find(u"\x1b" u"f");Check(esc!=std::u16string::npos && c[esc+12]==EventChar(Event::warnUser),"compose: event byte kept");
         // settings V12 and the reading word
         CharSettings v;v.sequence=7;v.formatFlags=uint8_t(flagEvents|flagFamilies|flagVoice);v.readerExtra=uint8_t(25|(2<<5));uint8_t b[48];
-        CharSettings w;Check(EncodeSettings(v,b,48) && b[7]=='C' && DecodeSettings(b,48,w) && w.formatFlags==v.formatFlags && w.readerExtra==v.readerExtra,"settings V12 events/families/stereo");
+        CharSettings w;Check(EncodeSettings(v,b,48) && b[7]=='E' && DecodeSettings(b,48,w) && w.formatFlags==v.formatFlags && w.readerExtra==v.readerExtra,"settings V12 events/families/stereo");
         v.readerExtra=uint8_t(25|(3<<5));Check(!EncodeSettings(v,b,48),"stereo mode 3 rejected");
         const uint32_t reading=PackReading(1,1,0,47,uint8_t(flagEvents|flagFamilies|flagVoice),uint8_t(25|(2<<5)));
         Check(ReadingFormat(reading)==uint8_t(flagEvents|flagFamilies|flagVoice) && ReadingStereo(reading)==stereoSpeech && ((reading>>20)&31)==25,"reading word carries r397 bits");

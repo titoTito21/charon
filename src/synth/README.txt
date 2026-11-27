@@ -6,8 +6,11 @@ ABI: src/efi/CharonSynthModule.h (fixed). Build, stage and test on Windows:
   python tools/build-charon-synths.py NEW_BUILD_DIR --stage NEW_STAGE_DIR --test
 
 Result: NEW_STAGE_DIR/EFI/HAK/synths/{espeak,rhvoice}.tts, .manifest, the
-data packs espeak/espeak-ng-data.chsp and rhvoice/rhvoice.chsp, LICENCES.txt,
-licences/, and NEW_STAGE_DIR/test-wav (WAVs + host-test-results.json).
+data packs espeak/*.chsp and rhvoice/*.chsp, LICENCES.txt, licences/,
+RHVOICE-VOICES.txt, rhvoice-voices.tsv, and NEW_STAGE_DIR/test-wav (WAVs +
+host-test-results.json). r409: also NEW_STAGE_DIR/rhvoice-base (the manifest
+of a package with Natan and Slt only) and rhvoice-voice-pack.json (which
+files are the further voices).
 Copy EFI/HAK/synths to Charon's disk; for test machines
 CHARON_SYNTHS=NEW_STAGE_DIR work/charon-vm.py prepare ... does it.
 
@@ -43,8 +46,24 @@ Layout
 ABI 2: Prepare(voice) loads one voice: eSpeak mounts espeak-ng-data.chsp
 (phoneme tables, once) and espeak-pl.chsp or espeak-en.chsp; RHVoice mounts
 rhvoice-pl.chsp (Polish + Natan) or rhvoice-en.chsp (English + Slt) and
-creates one RHVoice engine per voice. Both voices stay prepared if they fit;
-RHVoice releases the other voice only when preparing runs out of memory.
+creates one RHVoice engine per voice.
+
+RHVoice voices (r409): rhvoice/VOICES.tsv lists every Polish and English
+voice of RHVoice 1.18.5 (13: Natan, Alicja, Cezary, Magda, Michal; Slt, Alan,
+Bdl, Clb, Dasha-Eng, Evgeniy-Eng, Ksp, Lyubov) with its Charon id
+("rhvoice-" + lower-case RHVoice name), commit, licence and its names in
+Speech Dispatcher, Debian/Ubuntu, Arch, NVDA and SAPI 5. Natan and Slt stay
+in the two language packs; each further voice is its own optional pack
+rhvoice/rhvoice-<name>.chsp (voice.info, voice.params, 16000/voice.data,
+bpf.txt, eq.txt) used as an RHVoice resource directory beside its language's
+data. The module offers a voice when its pack exists (probe only at start),
+so packs may be added or removed without rebuilding; the manifest is what
+Charon lists. Two voices stay prepared (the chosen one and the other
+language's): a new voice replaces the prepared voice of its own language,
+else the least recently used one; a failed load is retried after releasing
+the other voice. ESC 'p'/'e' select the last used prepared voice of that
+language. Sources of the further voices: git clones at the commits RHVoice
+1.18.5 pins, work/rhvoice-voices-r409/download (see VOICES.tsv).
 Begin on an unprepared voice returns -3. Prepare/Begin/Render/Cancel are
 ms_abi (CHARON_SYNTH_API).
 

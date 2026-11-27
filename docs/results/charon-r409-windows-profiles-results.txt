@@ -1,0 +1,316 @@
+Charon r409 - Windows profiles, the unofficial image, screen readers in every stage, network, voice
+====================================================================================================
+2026-11-23. Host: Windows 11, Windows PowerShell 5.1.26100.9818 (no pwsh on this host), Python 3.15,
+LLVM 23.1.5, VMware Workstation 17.6.3. Nothing was packaged or released. Trial material and all
+evidence: work\charon-r409-profiles (scripts, evidence\win11, evidence\server, evidence\tiny11).
+The three trial machines (win11, server, tiny11) were made here and are stopped and deleted.
+
+How to read the words: RAN = executed for real in a virtual machine and measured; HOST = executed by a
+host test; COMPILED = builds, never executed; READ = taken from a source that was read, not run.
+
+1. The profile list as the dialogue shows it (question "Windows profile:", express and detailed mode)
+----------------------------------------------------------------------------------------------------
+Polish label | English label | -Profile value
+ 1 bez zmian | unchanged | none
+ 2 odchudzony, bez preinstalowanych aplikacji | slim, without the preinstalled apps | Slim
+ 3 Win11Debloat, ustawienia domyślne: prywatność i usunięcie aplikacji | Win11Debloat, its defaults:
+   privacy and app removal | Script
+ 4 Win11Debloat, tylko prywatność, aplikacje zostają | Win11Debloat, privacy only, apps stay | DebloatLite
+ 5 Win11Debloat, wyłączone funkcje AI | Win11Debloat, AI features off | NoAI
+ 6 WinUtil, zestaw Standard | WinUtil, Standard preset | WinUtil
+ 7 WinUtil, zestaw Minimal | WinUtil, Minimal preset | WinUtilMinimal
+ 8 ReviOS, do Windows 11 25H2, jeden krok ręczny | ReviOS, up to Windows 11 25H2, one manual step | ReviOS
+ 9 AtlasOS, tylko Windows 11 24H2 i 25H2, jeden krok ręczny | AtlasOS, Windows 11 24H2 and 25H2 only,
+   one manual step | AtlasOS
+10 Windows Server jako stacja robocza, tylko Windows Server | Windows Server as a workstation, Windows
+   Server only | ServerDesktop   (left out of the list when Charon itself fetched media that is not Server)
+The answer file gets one first-logon command, as before:
+  powershell.exe ... %ProgramData%\Charon\Charon-WindowsProfile.ps1 -Profile <value> -Language pl|en -Yes
+
+Trial machine for 3-7 and 9: Windows 11 Enterprise evaluation, build 26300.9457 (the fwlink ISO Charon uses),
+installed unattended, NVDA 2026.3 installed by Charon-Readers.ps1 (first reader), snapshot "base"; every
+profile from that snapshot: probe, profile as the answer file runs it, probe, restart, probe with NVDA,
+probe with Narrator. "Spoke" = the reader was made to read a new window and the default output device's
+peak meter inside the guest showed sound (probe.ps1); values are in evidence\win11\<profile>\*.json.
+
+Profile        | source, pin                                   | command line of the tool                | result (RAN)
+Script         | github.com/Raphire/Win11Debloat release       | Win11Debloat.ps1 -RunDefaults -Silent   | exit 0, 72 s; user apps 117 -> 100,
+               | 2026.10.30, Win11Debloat.zip, 759 285 bytes,   |                                         | provisioned 47 -> 32
+               | SHA-256 6830bf501d2740c3317133ac0ecdc2a3ab80ed7f6c83e7f0f20dc66afbf758a7
+DebloatLite    | the same file                                 | -RunDefaultsLite -Silent                | exit 0, 58 s; removed only Bing Search
+               |                                               |                                         | and the Widgets/Web Experience pack
+NoAI           | the same file                                 | -Silent -DisableCopilot -DisableRecall  | exit 0, 26 s; no app removed
+               |                                               | -DisableClickToDo -DisableAISvcAutoStart -DisableEdgeAI -DisableNotepadAI -DisablePaintAI
+WinUtil        | github.com/ChrisTitusTech/winutil release     | winutil.ps1 -Config <Charon's selection> | see below
+               | 26.11.13, winutil.ps1, 1 309 739 bytes,
+               | SHA-256 e9d05a59d564b4fbb61fcfa1a594504a0f81e8d27c787119e72a99b57ddbe66d
+WinUtilMinimal | the same file                                 | winutil.ps1 -Preset Minimal             | exit 0, 12 s
+ServerDesktop  | Charon's own code                             | (three registry values, audio services)  | see 1.3
+Both hashes are Charon's own SHA-256 of the downloaded file; both equal the digest GitHub publishes for the
+asset, and Win11Debloat's equals the SHA256SUMS file of its release. The script refuses another file by
+voice and log ("SHA-256 of the file from ... does not match ... File refused.", Get-Download) before anything
+is changed; the log of every run shows "sha256 ... verified".
+Switches checked against the tools themselves (READ): every Win11Debloat switch above is in the param() block
+of Win11Debloat.ps1 2026.10.30; winutil.ps1 26.11.13 has param([string]$Config, [ValidateSet("Standard",
+"Minimal","Advanced","")][string]$Preset, [switch]$Offline) and "Headless runs never build a window".
+
+In all five runs, after the profile, after a restart, with NVDA and with Narrator (RAN):
+  NVDA: running, started by Windows after the restart, spoke - OK.   Narrator: started, spoke - OK.
+  Audiosrv and AudioEndpointBuilder Automatic/Running; sign-in and after-sign-in lists still "nvda_nvda_v1";
+  NVDA's folder, eSpeak NG data and its Accessibility\ATs key present; 3 OneCore and 2 SAPI voices before and
+  after; Narrator.exe present; Edge present; Defender real-time and tamper protection on; Windows Update
+  services wuauserv Manual and UsoSvc Automatic as before, no update policy written (WinUtil sets Delivery
+  Optimization DODownloadMode=0); the guard's before/after comparison reported nothing missing.
+  Services changed by WinUtil (both presets): DiagTrack and WerSvc, CscService Disabled, StorSvc and
+  MapsBroker Manual; Standard also lfsvc (location) Disabled. No audio, speech or reader service.
+Not verified: the Charon boot entry after a profile (it was never installed on the trial machines: see 7.1).
+
+1.1 Win11Debloat "defaults" removes Sound Recorder and Quick Assist (RAN: both are in the list of removed
+    provisioned packages). Charon's own Slim keeps them on purpose. The label says "its defaults"; nothing
+    was changed in the tool's list.
+1.2 WinUtil Standard: two entries of the preset are left out, each for a measured reason (RAN):
+    - WPFTweaksDiskCleanup runs "cleanmgr.exe /d C: /VERYLOWDISK", which ends with a "Disk Space
+      Notification" window opened BEHIND the other windows and waits for OK: the headless run with
+      "-Preset Standard" stood still for 17 minutes until the button was pressed from outside
+      (evidence\win11\WinUtil-preset-standard-run1; screenshot seen during the run).
+    - WPFTweaksDisableExplorerAutoDiscovery fails on a fresh account ("Cannot find path HKCU:\...\Shell\Bags")
+      and makes WinUtil end with code 1.
+    Charon therefore writes the other ten entries of the preset into a selection file and runs
+    "-Config <file>" (the format, a JSON list of entry names, READ from Invoke-WPFImpex). Run 2 with eleven
+    entries (without DiskCleanup): 35 s, no window, services changed as listed, readers OK, tool exit code 1
+    because of the second entry. The final ten-entry selection was NOT run again (the machine was already
+    deleted); each of its ten entries ran without error in run 2.
+1.3 ServerDesktop (RAN on Windows Server 2025 Standard evaluation, build 26100.32230, installed unattended
+    with image 2, NVDA installed by Charon-Readers.ps1): exit 0 in 12 s; after the restart Server Manager is
+    not running (it was before), NVDA started by itself and spoke, Narrator spoke. Values written:
+    HKLM\SOFTWARE\Policies\Microsoft\Windows\Server\ServerManager DoNotOpenAtLogon=1 and
+    HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Reliability ShutdownReasonOn=0, ShutdownReasonUI=0.
+    Measured on that image: the audio services are ALREADY Automatic and running after installation, and the
+    feature Wireless-Networking is already installed; so on Server 2025 the audio part is a check. The
+    shutdown dialogue itself was not looked at (only the values). On a client Windows the profile refuses
+    (code path READ, not run).
+1.4 AtlasOS (defect 2). RAN on build 26300: refused before any download, exit 2, in words: "the AtlasOS
+    profile works only on: Windows 11 24H2 and 25H2. This Windows is build 26300 ..."; the sentence was
+    spoken through NVDA (host meter: sound in 171 of 450 tenths of a second; the log says so). The dialogue
+    names the limit in the label, and when Charon itself fetched a version the pinned playbooks refuse
+    (Windows 11 26H2 and the Enterprise evaluation: build 26300; Windows 10 for AtlasOS; LTSC 2024, which has
+    no Windows Security app, r405) it says so at once and installs without a profile (HOST: vector
+    windows-ent-profile-atlas-dropped). Release format checked (READ, GitHub API and the repository's docs):
+    0.6.1 ships AtlasManager.exe + Atlas-v0.6.1.atlaspkg, no .apbx. docs/front-door.md documents
+    "Install-Atlas.ps1 -Option ... -Unattended" but says "Atlas Manager is the only way to install Atlas.
+    Run the front door yourself only on a test PC or a virtual machine, and don't point users to it", and
+    it exits with code 5 until Windows and Store apps are fully updated; Home, LTSC, IoT LTSC and Server are
+    refused. Not an unattended mode for users: the pinned 0.5.0-hotfix playbook stays (its address answers
+    HTTP 200, 48 024 713 bytes).
+1.5 ReviOS (defect 3). The pinned source is live (READ): Revi-PB-26.04.apbx, HTTP 200, 1 179 888 bytes,
+    GitHub digest = the pinned SHA-256 03c74cf3...32c1. A failed download or a wrong hash is said by voice
+    (Get-Download). Not run. ReviOS and AtlasOS as a whole were never run to the end (r405: stopped at
+    Tamper Protection on LTSC).
+1.6 Defect 1 (the dialogue could not choose a script): each script profile is now its own value; the
+    dialogue passes no address. -ScriptUrl remains for use by hand only.
+
+2. Add-ons: none added, all three deferred
+------------------------------------------
+- Open-Shell: no silent-install switch is documented in its repository's README (READ); the four newest
+  releases (4.4.199-4.4.202) are pre-releases, and the stable one predates the release note "Improve screen
+  reader, keyboard, and High Contrast accessibility". Not run.
+- Harden System Security: delivered through the Microsoft Store only (the GitHub release has no assets);
+  needs Store and winget at first logon and changes lock-screen and UAC behaviour; no reader test was run.
+- O&O ShutUp10++: closed source, the download address answers with an HTML page, no published hash, and the
+  configuration file must be made in its window. Cannot be pinned or checked.
+Per the rule "do not add untested add-ons" there is no add-on question in the dialogue.
+
+3. Unofficial image: Tiny11 25H2 by NTDEV - implemented; the whole installation ran
+------------------------------------------------------------------------------------
+Dialogue: a group of its own, last in the list: "Windows, obrazy nieoficjalne" / "Windows, unofficial
+images", one entry "Tiny11 25H2 by NTDEV, an unofficial Windows 11 image, in English". Before anything else:
+the warning (unofficial, not made or verifiable by Microsoft, Microsoft does not permit redistribution of
+modified media, Charon checks only that the file is the author's, parts may be missing, no licence, image of
+October 2025, official Windows with the slim profile is similar) and the typed word UNOFFICIAL /
+NIEOFICJALNY (ConfirmUnofficial: Prompt + SameFold; Enter alone does not pass). Express or detailed mode
+only; USB stick only (no RAM disk); refused when other Windows media are plugged in.
+Source (verified 2026-11-23): https://archive.org/details/tiny11_25H2 , uploader ntdevdemo@outlook.com.
+  tiny11_25H2_Oct25.iso  5 514 559 488 bytes  SHA-256 in the item's description:
+  92484F2B7F707E42383294402A9EABBADEAA5EDE80AC633390AE7F3537E36275   <- the one Charon offers and pins
+  tiny11_25H2_Nov25.iso  5 730 246 656 bytes  only archive.org's SHA-1/MD5: not offered
+  Core, arm64 and Nano11 files: not offered.
+RAN: the file was downloaded whole from archive.org (curl, 40 minutes) and its SHA-256 is exactly the one
+above. archive.org answers range requests (206, Content-Range .../5514559488). The certificate chains
+(archive.org: Go Daddy Root G2; the data servers: ISRG Root X2) end in roots that are in Charon's trust list
+(READ). The image is UDF, has sources\install.wim of 4 655 058 126 bytes (over 4 GB: Charon's splitter is
+needed), boot.wim, efi\boot\bootx64.efi and a 2000-byte autounattend.xml in its root (kept as
+evidence\..\tiny11\tiny11-own-autounattend.xml: image 1, an empty product key, online account pages hidden).
+In Charon (COMPILED, not executed): the stream is hashed while it is written to the stick; a different hash
+removes boot.wim and the install image from the stick and says so; the image's root autounattend.xml is not
+written (and an old copy is deleted), so the stick's only answer file is Charon's \Autounattend.xml.
+Answer-file precedence (Microsoft, "Windows Setup Automation Overview", implicit search order): removable
+media root comes before %WINDIR%\System32\Sysprep; the image also has its own file there.
+RAN, whole installation (evidence\tiny11): a disc with the file set Charon leaves (the ISO's files without
+its autounattend.xml; Autounattend.xml produced by Charon's real WindowsAnswers through the host test,
+express mode, NVDA and Narrator checked; \charon with the scripts, NVDA 2026.3, the r408 EFI\HAK tree;
+\charon\pe = the bytes Charon embeds for NVDA in Setup). Differences from the real thing: a read-only disc
+made by a trial script instead of a FAT32 stick made by Charon's EFI code (install.wim not split), and test
+commands appended to the first-logon list.
+  - First attempt: Setup stopped at its "Product key" page. Fixed: for this image the answer file carries the
+    same empty <ProductKey> the image's own file has (it is no key and no licence). Second attempt:
+  - installed without any key press to the desktop: "Windows 10 Pro" registry name, edition Professional,
+    25H2, build 26200.6584, en-US; Setup's log names D:\autounattend.xml (Charon's) as the file used;
+    account "user"; PreventDeviceEncryption=1, C: not encrypted; the image's own file is still in
+    System32\Sysprep and was not the one used;
+  - NVDA installed and running, 3 OneCore + 2 SAPI voices, Narrator.exe and Narrator QuickStart present,
+    audio services running, Defender on, Windows Update services running, Store and winget present, Edge
+    absent (the image removes it; NVDA's and Charon's downloads do not need it);
+  - after a restart the sign-in screen appears (one automatic sign-in only), NVDA runs there as SYSTEM and
+    speaks; after signing in by keyboard NVDA runs as the user and speaks; Narrator started by hand speaks.
+  - NOT working there, as on official Windows: Charon's boot entry and reader (see 7.1).
+Not run: Charon's own download, hash check, split and write to a stick (EFI code); a profile on Tiny11.
+
+4. The reader in every stage (NVDA chosen as the first reader; Narrator checked beside it)
+------------------------------------------------------------------------------------------
+Measured on the Tiny11 run from outside: the host's peak meter of the machine's audio (every stretch of sound
+is a line in evidence\tiny11\install-timeline.txt), a screenshot every 30 s, process lists.
+Stage                                   | what spoke                               | status
+1 Windows Setup, WinPE                  | sound from 1.5 min after start, then a   | RAN: speech present. Which program: not
+                                        | short phrase every 30 s while copying    | determined in this run (r407: NVDA with
+                                        |                                          | eSpeak NG, measured on official media)
+2 after Setup's first restart:          | nothing for 3 minutes (13:36:48 start,   | RAN: SILENT. No session and no reader
+  specialize, devices                   | first sound 13:39:48)                    | exist; the answer file's commands of
+                                        |                                          | this pass run as SYSTEM without a desktop
+3 OOBE pages that still show            | sound from "Checking for updates" on     | RAN: speech present; by the answer file
+  ("Checking for updates", "Just a      |                                          | it is NARRATOR (registered for the
+  moment")                              |                                          | sign-in screen in specialize), not NVDA
+4 sign-in screen, UAC prompt            | NVDA as SYSTEM alone on the sign-in      | RAN: NVDA speaks. DEFECT: on the UAC
+                                        | screen (after a restart and after        | prompt in the first-logon session both
+                                        | signing out)                             | Narrator and NVDA run as SYSTEM (7.2)
+5 first logon, scripts running          | Windows voice (System.Speech) until NVDA | RAN. From NVDA's start on, the scripts
+                                        | is installed (about 1 minute), then NVDA | speak THROUGH NVDA (changed in r409)
+6 restart after a profile               | NVDA, started by Windows                 | RAN, five profiles + ServerDesktop
+7 installed desktop                     | NVDA; Narrator not running beside it     | RAN (process lists: one reader)
+With Narrator as the only reader the same lists and commands are used with "narrator" (not run in r409).
+What was changed for this: Charon-WindowsProfile.ps1, Charon-Readers.ps1 and Charon-Network.ps1 hand their
+messages to the running NVDA through NV Access's controller client (nvdaControllerClient.dll, LGPL 2.1, from
+https://download.nvaccess.org/releases/2026.3/nvda_2026.3_controllerClient.zip, x64, SHA-256 7ef3aaa0...4908;
+an installed NVDA does not contain it, so it lies beside the scripts and Charon copies it to the media) and
+use a Windows voice only when NVDA is not running: one voice at a time. RAN: the AtlasOS refusal was heard
+through NVDA (host meter, and the log line "messages are spoken through NVDA"); the other profile runs used
+the same code but their logs were not checked for that line. Before Setup starts
+Charon now says that about three minutes after the first restart are silent, then Narrator, then the chosen
+reader (COMPILED).
+Not closed: stage 3 (NVDA instead of Narrator in OOBE) and the first minute of stage 5. NVDA's installer fails
+in the specialize pass (r407, tried), so NVDA does not exist before the first logon. A way that was not
+tried: unpack NVDA with Charon's own unpacker in specialize and register it under Accessibility\ATs.
+Official media: stages 1-3 were not run again in r409 (r407 results); stages 4-7 ran on the win11 machine.
+NVDA 2026.3 facts found (RAN): it installs no Windows service (no "nvda" service); the sign-in screen and UAC
+copy is started through Accessibility\ATs\nvda_nvda_v1 (StartExe nvda.exe, --ease-of-access).
+The guard: Protect-Speech / Compare-SpeechState now also watch NVDA's program, eSpeak NG data, ATs key,
+configuration and (if a later NVDA has one) its service, the audio services' final state, and
+Restore-Readers starts NVDA or Narrator again when a tool stopped the one that was running.
+
+5. Network of the installed Windows
+-----------------------------------
+How Charon connects (READ, CharonWsNet.h): DHCP only; Wi-Fi WPA2-PSK or open through the firmware's
+supplicant; no static address, DNS or proxy of its own; the password was wiped right after use. Now the
+joined network (name, password) is kept in memory (net::Joined, used by the Linux side as well) and for
+Windows written as \charon\network.conf on the install media (the same NAME=value text as for Linux,
+NetworkConfNow). It is not under \EFI\HAK (CharonPrivate.h lists network.conf as never copied anyway) and
+NOT in the answer file, so it does not reach Setup's cached copy in Windows\Panther. The answer file only
+gets, right after the copy command: Charon-Network.ps1 -Language pl|en (HOST: vector windows-wifi-network; no
+name or password in the file).
+Charon-Network.ps1 (new): reads the file, deletes it (overwritten first; also the copy on the media when it
+is writable), builds a WLAN profile of Microsoft's WLAN_profile v1 schema (WPA2PSK/AES with passPhrase or
+64-digit networkKey, or open; connectionMode auto), "netsh wlan add profile filename=... user=all", deletes
+the XML, "netsh wlan connect", waits up to 120 s for http://www.msftconnecttest.com/connecttest.txt and says
+the outcome. 802.1X: refused with a spoken message, exit 2 (Charon itself cannot join such a network).
+Documentation used: learn.microsoft.com/windows/win32/nativewifi/wlan-profileschema-schema ,
+.../wpa2-personal-profile-sample , .../wlan-profileschema-sharedkey-security-element ,
+learn.microsoft.com/windows-server/networking/technologies/netsh/netsh-wlan ,
+learn.microsoft.com/powershell/module/nettcpip/new-netipaddress , .../dnsclient/set-dnsclientserveraddress .
+Which pass: first logon. WinPE has no WLAN service, so nothing during Setup can use Wi-Fi; Charon's
+installation needs no network before the first logon (NVDA and Charon's files are on the media). Profiles
+and reader downloads now wait for the connection: up to five minutes, announced at the start and every
+minute (Wait-Internet in the profile script, Wait-Network in Charon-Readers.ps1), then three tries as before.
+RAN (Windows Server 2025 machine, which has the WLAN service but no radio; evidence\server\network-test.txt):
+  - the generated profiles (passphrase with & and <, open, 64-hex key) are VALID against Windows' own
+    schema files (%SystemRoot%\L2Schemas\WLAN_profile_v1..v5.xsd); a profile with a wrong authentication
+    value is rejected by the same check ("The Enumeration constraint failed");
+  - "netsh wlan add profile" itself cannot be exercised without a radio: "There is no wireless interface on
+    the system." (exit 1, WlanSvc running). So the import and the connection are NOT verified;
+  - network.conf from the media, no Wi-Fi adapter: file deleted, the password is in no log, spoken message
+    "Windows has no driver for this computer's Wi-Fi adapter ... I did not keep the network password", exit 3;
+  - 802.1X refused, exit 2;
+  - static address (the script's -Address/-Gateway/-Dns, by hand: Charon has none to pass): set on the
+    Ethernet adapter, DHCP off, online check true, then put back to DHCP.
+Ethernet with DHCP: every trial machine was installed and downloaded that way.
+Not done: Wi-Fi driver injection; a proxy; a real Wi-Fi join; WPA3-only networks (Charon cannot join them).
+
+6. Charon's voice for NVDA (voice.conf)
+---------------------------------------
+Charon-Readers.ps1 now reads %ProgramData%\Charon\voice.conf (CHARON_SYNTH, _VOICE, _RATE, _PITCH,
+_PUNCTUATION) before NVDA is started. rhvoice: the engine add-on RHVoice-1.18.201.nvda-addon (release 1.18.2,
+SHA-256 f15a127a...a7b9 = GitHub's digest) and the voice's add-on (addresses of src/synth/rhvoice/VOICES.tsv,
+Charon's own SHA-256 of each of the ten files, in the script) are unpacked into NVDA's add-on folder, NVDA's
+configuration gets synth RHVoice, the voice, rate, pitch (5..20 -> 25..100, 10 = 50) and the punctuation
+level, and the same goes to NVDA's sign-in-screen configuration. A voice without an NVDA add-on (Dasha,
+Evgeniy, Lyubov) is replaced by the first voice of its language, a failed download by another voice of the
+language, else NVDA keeps its own synthesizer; each case is spoken and logged. espeak: NVDA's eSpeak NG.
+RAN (Server 2025 machine, NVDA 2026.3; evidence\server\rhvoice): natan (Polish) and slt (English): NVDA's
+log "Loaded synthDriver RHVoice", configuration as written, sound measured; lyubov -> announced, Slt used;
+espeak -> "Loaded synthDriver espeak". Found and fixed on the way: NVDA must be stopped before its add-ons
+are replaced. Not done: RHVoice for Narrator/SAPI 5 (the voice installers' silent mode is not documented and
+was not tried; Narrator keeps its Windows voice, logged); the sign-in screen with RHVoice was not listened to;
+whether Charon's EFI side writes voice.conf for Windows was not run here.
+
+7. Defects found that are outside this change (not fixed)
+---------------------------------------------------------
+7.1 Install-Charon.ps1 -Mode Manager fails on every trial machine: "Reading variable BootOrder failed (error
+    1314)", at first logon (three installations: build 26300, Server 2025, Tiny11 26200) and again from an
+    elevated prompt; "-Status" works, and a separate test that enables SeSystemEnvironmentPrivilege the same
+    way reads BootOrder (14 bytes). So after these installations there is NO Charon boot entry and no reader
+    add-on: the rule "every install leaves Charon reader + boot entry" does not hold in VMware today. Cause
+    not found.
+7.2 UAC prompt in the first-logon session: Narrator.exe and nvda.exe both run as SYSTEM on the secure desktop
+    (win11 machine, where Narrator had also been started by a stray key, and the clean Tiny11 machine). Likely
+    left from Narrator's run in OOBE in the same session; a check after a restart was inconclusive (the prompt
+    was not caught).
+7.3 The host test's "put" keeps only the last key (two "put" lines: the first is lost).
+7.4 Build of the tree failed once at 13:10 in CharonWsPlan.h (FinishExtras not defined, another change in
+    progress); it builds again since.
+
+8. Verification summary
+-----------------------
+PowerShell parse (5.1; pwsh not installed): Charon-WindowsProfile.ps1, Charon-Readers.ps1,
+  Charon-Network.ps1, Install-Charon.ps1: 0 errors.
+tools\charon-os\tests\run-tests.py: 108 passed, 0 failed (HOST).
+tests\charon-install-answers-host.py: 310 passed, 0 failed (HOST); windows-defaults.out is byte-identical to
+  before-r409-defects; new vectors: windows-profile-debloat, -debloat-lite, windows-pl-profile-noai,
+  windows-profile-winutil, -winutil-minimal, windows-server-profile-workstation,
+  windows-ent-profile-atlas-dropped, windows-ltsc10-profile-revios, windows-tiny11-unofficial (re-recorded
+  once: the empty ProductKey), windows-wifi-network. The harness mirrors the two new lines of Classic().
+EFI build (tools\build-charon-windows.py, -Wall -Wextra -Werror, HTTPS on): work\charon-win-r409prof5,
+  CHARON.EFI SHA-256 07eab9534d34e3f075f2df26c9a0d0274cd55024ba3eeeaefdce2f5e5d1f8fb3: PASS. COMPILED only:
+  none of the EFI changes was executed in firmware (dialogue group, typed word, stream hash, answer-file
+  removal on the stick, network.conf, the new spoken note).
+There are no host tests of tools\charon-addon; its scripts were run in the machines as described.
+
+9. Changed files
+----------------
+src\efi\CharonWsInstall2.h: windowsProfiles :225; DropUnfitProfile :243; tiny11Sha256, UnofficialChosen :262;
+  windowsUnofficial :279; help text :393; empty ProductKey for Tiny11 :482; Charon-Network command :567;
+  WindowsNetworkOntoMedia :706 (called before WindowsAnswers); copy list with Charon-Network.ps1 and
+  nvdaControllerClient.dll :818; note about the silent minutes :830; Classic(): unofficial path :898 and
+  following, question copy and DropUnfitProfile :990.
+src\efi\CharonWsInstall3.h: Entry.unofficial :32; unofficialGroup :101; group :113; ConfirmUnofficial :125;
+  call :545.
+src\efi\CharonWsWinUsb.h: hash state :123; StreamSink :202; PresetSha256, RemoveMediaFile (after Product());
+  answer-file removal :347; hash check :385; refusal :407.
+src\efi\CharonWsNet.h: JoinedWifi, Joined, ForgetJoined :95; WifiJoin keeps the network :385.
+tools\charon-addon\Charon-WindowsProfile.ps1: $ScriptTools :298, $ScriptPresets :308, NVDA guard :351 and
+  Get-SpeechState, Speak-ThroughNvda :392, Find-Nvda :529, Restore-Readers :607, Wait-Internet :763, refusal
+  wording :987, Invoke-ScriptProfile :1092, Invoke-ServerDesktop :1200, ValidateSet, labels, Invoke-Main.
+tools\charon-addon\Charon-Readers.ps1: Speak-ThroughNvda :92, Wait-Network :124, RHVoice tables :289,
+  Set-NvdaVoice :360, call :455.
+tools\charon-addon\Charon-Network.ps1 (new, 333 lines); nvdaControllerClient.dll and
+  nvdaControllerClient-LICENSE.txt (new); CHARON-WINDOWS-PROFILES.txt.
+tests\charon-install-answers-host.py (one cut added), tests\CharonInstallAnswersHost.cpp (FlowWindows),
+  tests\charon-install-host\vectors\windows-*.txt (ten new), tests\golden\charon-install-answers (their files).
+For packaging later: \EFI\HAK\addon must carry Charon-Network.ps1, nvdaControllerClient.dll and its licence.

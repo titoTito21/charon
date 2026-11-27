@@ -37,46 +37,58 @@ import zlib
 # labelFor() lines 1118-1300 (names, PL/EN), src/efi/BootMenuModel.h (rows, bits).
 #
 # RECORD (little endian):
-#   0..6  "CHARS00", 7 version char '1'..'9','A','B','C'
+#   0..6  "CHARS00", 7 version char '1'..'9','A','B','C','D','E'
 #   8..15 sequence (uint64, non-zero)
 #   16 language 17 wrap 18 sounds 19 explicitMessages 20 startMelody 21 backgroundMelody
 #   22 rate 23 speechVolume 24 effectsVolume 25 verbosity | progress<<2
 #   26 rememberLast | welcome<<1   27 autoSeconds
-#   28 pitch 29 readerRate 30 readerPitch 31 readerVolume 32 detail 33 timers
-#   34 messageRate 35 messagePitch 36 punctuation 37 capitals 38 screenLanguage
-#   39 readerFlags 40 formatFlags 41 readerExtra 42 synthKey 43 synthVoice
+#   28 pitch 29 readerRate 30 readerPitch 31 readerVolume
+#   32 detail (bits 0-2) | profileItems bits 0-4 << 3 (format E)
+#   33 timers (bits 0-1) | profileItems bits 5-10 << 2 (format E)
+#   34 messageRate 35 messagePitch
+#   36 punctuation (bits 0-1) | formatGroups << 2 (bits 2-4, formats D and E)
+#   37 capitals (bits 0-2) | profileItems bit 11 << 3 | readerBar << 4 | absoluteColours << 5 (format E)
+#   38 screenLanguage (bits 0-1) | profile << 2 (bits 2-3, formats D and E; 3 = custom only in E)
+#   39 readerFlags 40 formatFlags 41 readerExtra (bit 7 = loading sound) 42 synthKey 43 synthVoice
+#   Bits not named here must be zero: DecodeSettings rejects the record otherwise. A reader
+#   of the record masks byte 32 with 7, byte 33 with 3, byte 36 with 3, byte 37 with 7, byte 38 with 3.
 #   CRC-32 (IEEE, reflected, init/final 0xffffffff = zlib.crc32) of bytes [0, crcAt) at crcAt
-#   size / crcAt: versions 1-6: 32 / 28; 7-8: 40 / 36; 9, A, B, C: 48 / 44
+#   size / crcAt: versions 1-6: 32 / 28; 7-8: 40 / 36; 9, A, B, C, D, E: 48 / 44
 #   slot file A = \EFI\HAK\charon-settings-a.bin holds ODD sequences, B = ...-b.bin EVEN.
-VERSIONS = '123456789ABC'          # ascending; index = age
-NEWEST = 'C'
+VERSIONS = '123456789ABCDE'        # ascending; index = age
+NEWEST = 'E'
 MEMBERS = ['language', 'wrap', 'sounds', 'explicitMessages', 'startMelody', 'backgroundMelody', 'rate',
            'speechVolume', 'effectsVolume', 'verbosity', 'progress', 'rememberLast', 'autoSeconds', 'welcome',
            'pitch', 'readerRate', 'readerPitch', 'readerVolume', 'detail', 'timers', 'messageRate', 'messagePitch',
            'punctuation', 'capitals', 'screenLanguage', 'readerFlags', 'formatFlags', 'readerExtra',
-           'synthKey', 'synthVoice']
-# CharSettings{} defaults (CharSettings.h lines 50-56). readerExtra's default 153 has bit 7
-# (extraLinger) set, which DecodeSettings (line 120, bytes[41]>127) rejects: the programs
-# never write bit 7, so the storable default is 25.
+           'synthKey', 'synthVoice', 'formatGroups', 'profile', 'profileItems', 'readerBar', 'absoluteColours']
+# CharSettings{} defaults (CharSettings.h, struct CharSettings): what Charon r410 holds without a
+# record and what a new record of format D or E gets. profileItems 1083 = profileItemsNormal.
 DEFAULTS = dict(language=0, wrap=0, sounds=1, explicitMessages=0, startMelody=1, backgroundMelody=0, rate=10,
                 speechVolume=10, effectsVolume=10, verbosity=1, progress=1, rememberLast=0, autoSeconds=10, welcome=7,
                 pitch=10, readerRate=10, readerPitch=10, readerVolume=10, detail=7, timers=2, messageRate=14,
-                messagePitch=10, punctuation=1, capitals=1, screenLanguage=0, readerFlags=47, formatFlags=255,
-                readerExtra=25, synthKey=0, synthVoice=0)
-# Defaults of the two bytes in formats A and B (CharSettings.h lines 34-39: 60 and 25).
+                messagePitch=10, punctuation=1, capitals=1, screenLanguage=0, readerFlags=47, formatFlags=252,
+                readerExtra=153, synthKey=0, synthVoice=0, formatGroups=7, profile=0, profileItems=1083,
+                readerBar=0, absoluteColours=0)
+# Defaults of the two bytes in formats A and B (CharSettings.h V10 comment: 60 and 25).
 DEFAULTS_AB = dict(formatFlags=60, readerExtra=25)
+# Defaults of the two bytes in a NEW record of format C (r397 to r409: formatting on, 255; byte 41
+# without bit 7, because the readers of r397 to r407 reject a format C record that has it).
+DEFAULTS_C = dict(formatFlags=255, readerExtra=25)
 # member -> first version that stores it
 MEMBER_SINCE = dict(language='1', wrap='1', sounds='2', explicitMessages='3', startMelody='4', backgroundMelody='4',
                     rate='5', speechVolume='6', effectsVolume='6', verbosity='6', progress='6', rememberLast='6',
                     autoSeconds='6', welcome='7', pitch='7', readerRate='7', readerPitch='7', readerVolume='7',
                     detail='7', timers='7', messageRate='8', messagePitch='8', punctuation='9', capitals='9',
-                    screenLanguage='9', readerFlags='9', formatFlags='A', readerExtra='A', synthKey='B', synthVoice='B')
+                    screenLanguage='9', readerFlags='9', formatFlags='A', readerExtra='A', synthKey='B', synthVoice='B',
+                    formatGroups='D', profile='D', profileItems='E', readerBar='E', absoluteColours='E')
 AUTO_DELAYS = [0, 3, 5, 10, 15, 20, 30, 60, 255]
 
 # UI rows in the order of Charon's menu pages.
 # kind: 'check' (one bit: member & mask), 'choice' (value = (member >> shift) & mask, choices listed),
 #       'slider' (whole member, low..high; unit 'percent' = VoicePercent(tenths), 'tenth' = value*10 %)
-# since: first record format that stores the row.
+# since: first record format that stores the row. The custom profile (profile = 3) needs format E;
+# format D takes 0..2 (the programs refuse 3 when they write format D).
 PAGES = [
     ('general', 'Charon settings', 'Ustawienia Charona'),
     ('welcome', 'Welcome', 'Powitanie'),
@@ -187,6 +199,14 @@ ROWS = [
                   (2, 'always reveal', 'zawsze odsłaniaj')]),
     dict(id='stopCountdown', page='reader', kind='check', member='readerExtra', mask=4, since='A',
          en='Stop boot-manager countdowns', pl='Zatrzymuj odliczanie menedżerów rozruchu'),
+    dict(id='linger', page='reader', kind='check', member='readerExtra', mask=128, since='D',
+         en='Loading sound after the system takes over', pl='Dźwięk wczytywania po przekazaniu sterowania systemowi'),
+    dict(id='profile', page='reader', kind='choice', member='profile', shift=0, mask=3, since='D',
+         en='Verbosity profile', pl='Profil szczegółowości',
+         choices=[(0, 'normal', 'zwykły'),
+                  (1, 'beginner: full descriptions and key hints', 'dla początkujących: pełne opisy i podpowiedzi klawiszy'),
+                  (2, 'expert: short, sounds instead of words', 'dla zaawansowanych: krótko, dźwięki zamiast słów'),
+                  (3, 'custom: the items ticked under Text formatting', 'własny: pozycje zaznaczone w Formatowaniu tekstu')]),
     # ---- formatting ----
     dict(id='formatVoice', page='formatting', kind='check', member='formatFlags', mask=1, since='A',
          en='Voice formatting: pitch, rate, volume and timbre, as in Emacspeak',
@@ -213,18 +233,69 @@ ROWS = [
          en='Attributes in braille, dots 7 and 8', pl='Atrybuty na brajlu, punkty 7 i 8'),
     dict(id='dictionary', page='formatting', kind='check', member='readerExtra', mask=16, since='A',
          en='Firmware pronunciation dictionary, for example TPM, XHCI', pl='Słownik wymowy firmware, na przykład TPM, XHCI'),
+    dict(id='groupKind', page='formatting', kind='check', member='formatGroups', mask=1, since='D',
+         en='Kind of element: another tone for the default entry, a submenu, an edit field, a help line',
+         pl='Rodzaj elementu: inny ton dla pozycji domyślnej, podmenu, pola edycji, wiersza pomocy'),
+    dict(id='groupState', page='formatting', kind='check', member='formatGroups', mask=2, since='D',
+         en='State and warnings: another voice and sound for errors, warnings, countdowns, messages that disappear',
+         pl='Stan i ostrzeżenia: inny głos i dźwięk dla błędów, ostrzeżeń, odliczania, znikających komunikatów'),
+    dict(id='groupPosition', page='formatting', kind='check', member='formatGroups', mask=4, since='D',
+         en='Position and structure: a sound at the start and end of a list, submenu depth, pitch by place in the list',
+         pl='Położenie i struktura: dźwięk początku i końca listy, wcięcie podmenu, wysokość głosu według miejsca na liście'),
+    dict(id='absoluteColours', page='formatting', kind='check', member='absoluteColours', mask=1, since='E',
+         en='Absolute colours: every colour has its own pitch, on a uniform screen too',
+         pl='Kolory bezwzględnie: każdy kolor ma swoją wysokość głosu, także na jednolitym ekranie'),
+    dict(id='readerBar', page='formatting', kind='check', member='readerBar', mask=1, since='E',
+         en='Reader bar: the bottom screen line shows what the reader says',
+         pl='Pasek czytnika: dolny wiersz ekranu pokazuje, co mówi czytnik'),
+    # the custom verbosity profile's 12 items (CharonFormatting.h item*, bit = 1 << n)
+    dict(id='itemPosition', page='formatting', kind='check', member='profileItems', mask=1, since='E',
+         en='Custom profile: position in the list, for example 2 of 5',
+         pl='Profil własny: położenie na liście, na przykład 2 z 5'),
+    dict(id='itemKind', page='formatting', kind='check', member='profileItems', mask=2, since='E',
+         en='Custom profile: kind and state of an entry in words, submenu, default',
+         pl='Profil własny: rodzaj i stan pozycji słowami, podmenu, domyślna'),
+    dict(id='itemHints', page='formatting', kind='check', member='profileItems', mask=4, since='E',
+         en='Custom profile: key hints', pl='Profil własny: podpowiedzi klawiszy'),
+    dict(id='itemIntro', page='formatting', kind='check', member='profileItems', mask=8, since='E',
+         en="Custom profile: menu introduction with the program's name and the number of entries",
+         pl='Profil własny: zapowiedź menu z nazwą programu i liczbą pozycji'),
+    dict(id='itemHelp', page='formatting', kind='check', member='profileItems', mask=16, since='E',
+         en='Custom profile: the help line read with a new screen',
+         pl='Profil własny: wiersz pomocy czytany przy nowym ekranie'),
+    dict(id='itemScreen', page='formatting', kind='check', member='profileItems', mask=32, since='E',
+         en='Custom profile: the kind of screen in words, entry editor, command line',
+         pl='Profil własny: nazwa rodzaju ekranu, edytor wpisu, wiersz poleceń'),
+    dict(id='itemSounds', page='formatting', kind='check', member='profileItems', mask=64, since='E',
+         en='Custom profile: sounds instead of words', pl='Profil własny: dźwięki zamiast słów'),
+    dict(id='itemStructure', page='formatting', kind='check', member='profileItems', mask=128, since='E',
+         en='Custom profile: structure in words, start of list, end of list, level',
+         pl='Profil własny: struktura słowami, początek listy, koniec listy, poziom'),
+    dict(id='itemWaitLong', page='formatting', kind='check', member='profileItems', mask=256, since='E',
+         en='Custom profile: hidden menu, long wait, 5 seconds with the full hint',
+         pl='Profil własny: ukryte menu, długie czekanie, 5 sekund z pełną podpowiedzią'),
+    dict(id='itemWaitShort', page='formatting', kind='check', member='profileItems', mask=512, since='E',
+         en='Custom profile: hidden menu, short wait, 1 second',
+         pl='Profil własny: ukryte menu, krótkie czekanie, 1 sekunda'),
+    dict(id='itemCountdown', page='formatting', kind='check', member='profileItems', mask=1024, since='E',
+         en='Custom profile: the countdown sentence, what starts and when',
+         pl='Profil własny: zdanie o odliczaniu, co wystartuje i kiedy'),
+    dict(id='itemLineNumbers', page='formatting', kind='check', member='profileItems', mask=2048, since='E',
+         en='Custom profile: line number in an editor', pl='Profil własny: numer wiersza w edytorze'),
     # ---- synth (rows built at run time from \EFI\HAK\synths\*.manifest) ----
     # synthKey: 0 = 'TVox, built in' / 'TVox, wbudowany'; add-on = '<name>, add-on' / '<name>, dodatek'
     # synthVoice: index into the manifest's voice lines (spoken name); a new synthesizer resets it to 0.
 ]
-# Not offered as a row: readerExtra bit 7 'Loading sound after the system takes over' /
-# 'Dźwięk wczytywania po przekazaniu sterowania systemowi' (BootMenu.h line 1229): the
-# record reader of this tree rejects byte 41 > 127 (CharSettings.h line 120), so the bit
-# cannot be stored. The programs say so in the information page and always write it as 0.
-LINGER_NOTE_EN = ("'Loading sound after the system takes over' cannot be changed here: Charon's settings reader "
-                  "rejects a record with this option on, so it is always written as off.")
-LINGER_NOTE_PL = ("Opcji „Dźwięk wczytywania po przekazaniu sterowania systemowi” nie da się tu zmienić: Charon odrzuca "
-                  "zapis ustawień z włączoną tą opcją, więc zawsze jest zapisywana jako wyłączona.")
+# readerExtra bit 7, 'Loading sound after the system takes over' (row 'linger'): DecodeSettings
+# accepts it in formats C and later since r408; the readers of r397 to r407 reject a format C
+# record that has it. The programs therefore offer the row from format D on; when they write
+# format A, B or C they keep the bit as the record on the partition has it and never turn it on.
+LINGER_NOTE_EN = ("'Loading sound after the system takes over' can be changed here when the installed Charon writes "
+                  "settings format D or later. In an older format this program keeps the option as the record has it: "
+                  "Charon releases before r408 reject a record with it on.")
+LINGER_NOTE_PL = ("Opcję „Dźwięk wczytywania po przekazaniu sterowania systemowi” można tu zmienić, gdy zainstalowany Charon "
+                  "zapisuje ustawienia w formacie D lub nowszym. W starszym formacie program zostawia ją tak, jak jest w "
+                  "zapisie: wydania Charona sprzed r408 odrzucają zapis z włączoną tą opcją.")
 
 
 def voice_percent(tenths):
@@ -236,18 +307,19 @@ def voice_percent(tenths):
 
 # ---------------------------------------------------------------------------
 PROGRAM = 'charon-settings'
-RELEASE = 'r408'
+RELEASE = 'r409'
 EFI_GUID = '8be4df61-93ca-11d2-aa0d-00e098032b8c'
 SLOT_FILES = ('charon-settings-a.bin', 'charon-settings-b.bin')
 VOICE_NAME = 'Charon voice'                       # BootMenu.h firmwareVoiceName
 VOICE_FILE = '\\EFI\\HAK\\CHARONVOICE.EFI'        # BootMenu.h firmwareVoiceFile
-CHARON_DEFAULTS = dict(DEFAULTS, readerExtra=153)  # CharSettings{} as Charon holds it without a record
+CHARON_DEFAULTS = dict(DEFAULTS)                   # CharSettings{} as Charon holds it without a record
 RANGE = dict(language=(0, 2), wrap=(0, 1), sounds=(0, 1), explicitMessages=(0, 1), startMelody=(0, 4),
              backgroundMelody=(0, 4), rate=(5, 20), speechVolume=(1, 10), effectsVolume=(0, 10), verbosity=(0, 2),
              progress=(0, 3), rememberLast=(0, 1), welcome=(0, 7), pitch=(5, 20), readerRate=(5, 20),
              readerPitch=(5, 20), readerVolume=(1, 10), detail=(0, 7), timers=(0, 3), messageRate=(5, 20),
              messagePitch=(5, 20), punctuation=(0, 3), capitals=(0, 7), screenLanguage=(0, 3), readerFlags=(0, 63),
-             synthKey=(0, 255), synthVoice=(0, 15))
+             synthKey=(0, 255), synthVoice=(0, 15), formatGroups=(0, 7), profile=(0, 3), profileItems=(0, 4095),
+             readerBar=(0, 1), absoluteColours=(0, 1))
 EXIT_OK, EXIT_ERROR, EXIT_NO_ESP, EXIT_INVALID, EXIT_VALUE, EXIT_REFUSED, EXIT_NO_FIRMWARE = 0, 1, 2, 4, 5, 6, 7
 
 POLISH = False
@@ -409,8 +481,9 @@ def range_violations(b, version):
         for k in (28, 29, 30):
             chk(k, 5 <= b[k] <= 20)
         chk(31, 1 <= b[31] <= 10)
-        chk(32, b[32] <= 7)
-        chk(33, b[33] <= 3)
+        newest = i >= vidx('E')                   # format E: the custom profile's items in the upper bits
+        chk(32, newest or b[32] <= 7)
+        chk(33, newest or b[33] <= 3)
         if version == '7':
             chk(34, b[34] == 0)
             chk(35, b[35] == 0)
@@ -418,14 +491,19 @@ def range_violations(b, version):
             chk(34, 5 <= b[34] <= 20)
             chk(35, 5 <= b[35] <= 20)
     if i >= vidx('9'):
-        chk(36, b[36] <= 3)
-        chk(37, b[37] <= 7)
-        chk(38, b[38] <= 3)
+        if i >= vidx('D'):
+            chk(36, b[36] <= 31)
+            chk(38, b[38] <= 15 and (b[38] >> 2) <= (3 if i >= vidx('E') else 2))
+        else:
+            chk(36, b[36] <= 3)
+            chk(38, b[38] <= 3)
+        chk(37, b[37] <= (63 if i >= vidx('E') else 7))
         chk(39, b[39] <= 63)
         if i >= vidx('A'):
             old = i < vidx('C')
             chk(40, not (old and b[40] > 63))
-            chk(41, not (old and b[41] > 31) and b[41] <= 127 and ((b[41] >> 5) & 3) <= 2 and (b[41] & 3) <= 2)
+            # bit 7 (extraLinger) is accepted in formats C and later (r408)
+            chk(41, not (old and b[41] > 31) and ((b[41] >> 5) & 3) <= 2 and (b[41] & 3) <= 2)
             chk(42, not (version == 'A' and b[42]))
             chk(43, b[43] <= 15 and not (version == 'A' and b[43]))
         else:
@@ -463,18 +541,27 @@ def extract(b, version):
         s['readerRate'] = b[29]
         s['readerPitch'] = b[30]
         s['readerVolume'] = b[31]
-        s['detail'] = b[32]
-        s['timers'] = b[33]
+        s['detail'] = b[32] & 7
+        s['timers'] = b[33] & 3
         if version == '7' and not s['timers']:
             s['timers'] = 2
         if i >= vidx('8'):
             s['messageRate'] = b[34]
             s['messagePitch'] = b[35]
     if i >= vidx('9'):
-        s['punctuation'] = b[36]
-        s['capitals'] = b[37]
-        s['screenLanguage'] = b[38]
+        s['punctuation'] = b[36] & 3
+        s['capitals'] = b[37] & 7
+        s['screenLanguage'] = b[38] & 3
         s['readerFlags'] = b[39]
+    if i >= vidx('D'):
+        s['formatGroups'] = (b[36] >> 2) & 7
+        s['profile'] = (b[38] >> 2) & 3
+    if i >= vidx('E'):
+        s['profileItems'] = (b[32] >> 3) | ((b[33] >> 2) << 5) | (((b[37] >> 3) & 1) << 11)
+        s['readerBar'] = 1 if b[37] & 16 else 0
+        s['absoluteColours'] = 1 if b[37] & 32 else 0
+    if i < vidx('A'):
+        s['formatFlags'] = 60                     # no formatting byte: attributes on, outputs off (r393)
     if i >= vidx('A'):
         s['formatFlags'] = b[40]
         s['readerExtra'] = b[41]
@@ -504,7 +591,9 @@ def member_problem(member, value, target):
     if member == 'autoSeconds':
         return value not in AUTO_DELAYS
     if member == 'readerExtra':
-        return not (0 <= value <= (31 if old else 127) and (value & 3) <= 2 and ((value >> 5) & 3) <= 2)
+        return not (0 <= value <= (31 if old else 255) and (value & 3) <= 2 and ((value >> 5) & 3) <= 2)
+    if member == 'profile':
+        return not 0 <= value <= (3 if vidx(target) >= vidx('E') else 2)   # 3 = custom: format E
     if member == 'formatFlags':
         return not 0 <= value <= (63 if old else 255)
     low, high = RANGE[member]
@@ -544,18 +633,26 @@ def encode_settings(values, sequence, version, base=None):
         b[29] = values['readerRate']
         b[30] = values['readerPitch']
         b[31] = values['readerVolume']
-        b[32] = values['detail']
-        b[33] = values['timers']
+        b[32] = values['detail'] & 7
+        b[33] = values['timers'] & 3
         b[34] = values['messageRate'] if has('messageRate') else 0
         b[35] = values['messagePitch'] if has('messagePitch') else 0
     if has('punctuation'):
-        b[36] = values['punctuation']
-        b[37] = values['capitals']
-        b[38] = values['screenLanguage']
+        b[36] = values['punctuation'] & 3
+        b[37] = values['capitals'] & 7
+        b[38] = values['screenLanguage'] & 3
         b[39] = values['readerFlags']
+        if has('formatGroups'):                   # format D
+            b[36] |= (values['formatGroups'] & 7) << 2
+            b[38] |= (values['profile'] & 3) << 2
+        if has('profileItems'):                   # format E
+            items = values['profileItems']
+            b[32] |= (items & 31) << 3
+            b[33] |= ((items >> 5) & 63) << 2
+            b[37] |= (((items >> 11) & 1) << 3) | (16 if values['readerBar'] else 0) | (32 if values['absoluteColours'] else 0)
         if has('formatFlags'):
             fmt = values['formatFlags']
-            extra = values['readerExtra'] & 0x7f   # bit 7 is rejected by DecodeSettings (CharSettings.h line 120)
+            extra = values['readerExtra']
             if version in 'AB':
                 fmt &= 63
                 extra &= 31
@@ -695,9 +792,9 @@ class Store(object):
         else:
             self.target = NEWEST
             self.target_why = T('no record and no boot manager file to detect the format from; the newest format, '
-                                'read by Charon r397 and later, is used (choose another with --format)',
+                                'read by Charon r410 and later, is used (choose another with --format)',
                                 'brak zapisu i pliku menedżera rozruchu, z którego dałoby się odczytać format; użyty '
-                                'zostanie najnowszy format, czytany przez Charona r397 i nowsze (inny: opcja --format)')
+                                'zostanie najnowszy format, czytany przez Charona r410 i nowsze (inny: opcja --format)')
         self.refused = None
         if self.newer or self.scan_newer:
             mark = self.newer or self.scan_newer
@@ -708,15 +805,24 @@ class Store(object):
 
     def working(self):
         values = dict(self.values)
-        if self.state == 'none' and self.target in 'AB':
-            values.update(DEFAULTS_AB)
+        if self.state == 'none':
+            values = self.default_values()
         return values
 
     def default_values(self):
         values = dict(DEFAULTS)
         if self.target in 'AB':
             values.update(DEFAULTS_AB)
+        elif self.target == 'C':
+            values.update(DEFAULTS_C)
         return values
+
+    def linger_kept(self):
+        """Bit 7 of byte 41 as a record of format A, B or C will hold it: what the record of the
+        same format on the partition has, otherwise off (Charon before r408 rejects it there)."""
+        if self.target == 'C' and self.raw is not None and self.version == 'C':
+            return bytearray(self.raw)[41] & 0x80
+        return 0
 
     def repairable(self):
         if self.state != 'invalid':
@@ -735,7 +841,8 @@ class Store(object):
             raise Fail(EXIT_VALUE, T('The sequence number cannot grow any more.', 'Numer kolejny nie może już wzrosnąć.'))
         following = sequence + 1
         values = dict(values)
-        values['readerExtra'] &= 0x7f                 # what the encoder writes: never bit 7,
+        if vidx(self.target) < vidx('D'):             # formats A to C: bit 7 stays as the record has it,
+            values['readerExtra'] = (values['readerExtra'] & 0x7f) | self.linger_kept()
         if self.target in 'AB':                       # and only the bits formats A and B hold
             values['formatFlags'] &= 63
             values['readerExtra'] &= 31
@@ -776,7 +883,6 @@ class Store(object):
         if not damaged:
             return None
         values = extract(bytearray(damaged['data']), damaged['version'])
-        values['readerExtra'] &= 0x7f
         defaults = self.default_values()
         replaced = []
         for member in MEMBERS:
@@ -1129,7 +1235,7 @@ def row_value(row, values, store):
 
 def set_choice(values, row, value):
     member = values[row['member']]
-    values[row['member']] = (member & ~(row['mask'] << row['shift']) & 0xff) | (value << row['shift'])
+    values[row['member']] = (member & ~(row['mask'] << row['shift']) & 0xffff) | (value << row['shift'])
 
 
 def assignment(values, text, store):
@@ -1158,15 +1264,18 @@ def assignment(values, text, store):
     if row and row['kind'] == 'check':
         if value not in (0, 1):
             return out_of_range
-        values[member] = (values[member] | row['mask']) if value else (values[member] & ~row['mask'] & 0xff)
+        values[member] = (values[member] | row['mask']) if value else (values[member] & ~row['mask'] & 0xffff)
     elif row and row['kind'] == 'choice':
         if value not in [choice[0] for choice in row['choices']]:
             return out_of_range
         set_choice(values, row, value)
+        if member_problem(member, values[member], store.target):
+            return out_of_range
     else:
-        if member == 'readerExtra' and 0 <= value <= 255 and (value & 0x80):
+        if member == 'readerExtra' and vidx(store.target) < vidx('D') and 0 <= value <= 255 \
+                and (value & 0x80) != store.linger_kept():
             return out_of_range + ' ' + T(LINGER_NOTE_EN, LINGER_NOTE_PL)
-        if value < 0 or value > 255 or member_problem(member, value, store.target):
+        if value < 0 or value > 65535 or member_problem(member, value, store.target):
             return out_of_range
         values[member] = value
     return None

@@ -1,0 +1,14 @@
+# CharonDOS Windows profile, written by Charon's installer (r403); format: src/pc/PLAN.txt
+profile=WIN98
+lang=en
+memory=128
+com1=bns
+sound=sb16
+net=ne2000
+reader=none
+disk=DISK.IMG
+disk_format=raw
+disk_create_mb=2048
+cdrom=
+boot=disk
+state=no-media

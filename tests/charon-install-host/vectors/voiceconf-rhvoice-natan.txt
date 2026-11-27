@@ -1,0 +1,8 @@
+# voice.conf when Charon speaks RHVoice Natan, faster, lower, all punctuation.
+lang=pl
+flow=voiceconf
+arg synth=rhvoice
+arg voice=natan
+arg rate=14
+arg pitch=8
+arg punctuation=3

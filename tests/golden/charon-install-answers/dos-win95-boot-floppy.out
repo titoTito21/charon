@@ -1,0 +1,17 @@
+# CharonDOS Windows profile, written by Charon's installer (r403); format: src/pc/PLAN.txt
+profile=WIN95
+lang=pl
+memory=128
+com1=bns
+sound=sb16
+net=ne2000
+reader=hal103demo
+reader_setup=READER\HAL103.EXE
+disk=DISK.IMG
+disk_format=raw
+disk_create_mb=1024
+cdrom=SETUP.ISO
+floppy=BOOT95.IMG
+boot=floppy,disk
+state=install
+setup_auto=no

@@ -99,6 +99,9 @@ struct BcdSummary {
     char16_t name[maxEntries][64]={};
     // r393 (other boot managers' configurations, CharonManagerProfiles.h):
     bool hidden=false,elsewhere=false,automatic=false;
+    // r410 (CharonBcdList.h, read only): the default system asks for the graphical menu that Windows draws after
+    // it has started (boot menu policy Standard, no forced text menu); the store's tools.
+    bool tileMenu=false;uint8_t tools=0;char16_t tool[64]={};
 };
 // Fills 'summary' from a BCD hive in memory; false when nothing was found.
 inline bool ReadBcd(const uint8_t* data,size_t size,BcdSummary& summary) {
@@ -152,6 +155,7 @@ inline void DescribeBcd(const BcdSummary& s,bool pl,char16_t* out,size_t capacit
     if(s.elsewhere) {put(pl?u"konfiguracja na innej partycji":u"configuration on another partition");}
     if(s.automatic && s.count)put(pl?u" i pozycje wykryte automatycznie":u" and entries found automatically");
     else if(s.automatic)put(pl?u"pozycje wykryte automatycznie":u"entries found automatically");
+    if(s.tools) {put(pl?u"; narzędzia: ":u"; tools: ");put(s.tool);if(s.tools>1)put(pl?u" i inne":u" and others");}
     if(s.hidden) {put(at?u"; ":u"");put(pl?u"menu ukryte":u"menu hidden");}
     if(s.timeout>=0 && s.count>1) {
         put(u"; ");

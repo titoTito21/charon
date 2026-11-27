@@ -1,0 +1,22 @@
+#cloud-config
+# Written by Charon from spoken answers.
+hostname: "charon-pc"
+locale: en_US.UTF-8
+timezone: America/New_York
+keyboard: {layout: us}
+bootcmd:
+  - [sh, -c, 'L=en_US.UTF-8; if [ -f /etc/locale.gen ] && ! grep -q "^$L" /etc/locale.gen; then echo "$L UTF-8" >> /etc/locale.gen; locale-gen >/dev/null 2>&1; fi; true']
+users:
+  - name: "user"
+    gecos: "user"
+    passwd: "$5$charonhosttests1$WzxqaZSgROh.v47PCFj0GhdYegM7YfeXZEQqFudoOx5"
+    lock_passwd: false
+    groups: [sudo, wheel, audio, adm]
+    sudo: "ALL=(ALL) ALL"
+    shell: /bin/bash
+ssh_pwauth: false
+growpart: {mode: auto, devices: ['/']}
+runcmd:
+  - [sh, -c, 'e=/boot/efi; [ -d /efi/EFI/HAK ] && e=/efi; if [ ! -d $e/EFI/HAK ]; then mkdir -p /run/charon-esp; for d in $(blkid -t TYPE=vfat -o device); do mount $d /run/charon-esp 2>/dev/null || continue; [ -d /run/charon-esp/EFI/HAK ] && { e=/run/charon-esp; break; }; umount /run/charon-esp; done; fi; mkdir -p /var/lib/charon; for f in install-charon.sh speech.sh progress.sh firstboot.sh charon-tone voice.conf; do cp $e/EFI/HAK/$f /var/lib/charon/ 2>/dev/null; done; sed -i "s|^esp=.*|esp=$e|" /var/lib/charon/install-charon.sh; sh /var/lib/charon/firstboot.sh setup speakup none orca,speakup graphical none no; true']
+  - [sh, -c, 'c=0; for f in /etc/default/grub /etc/default/grub.d/*.cfg; do [ -f "$f" ] && grep -q "console=tty[01] console=ttyS0" "$f" && { sed -i "s/console=tty\([01]\) console=ttyS0\(,[0-9n]*\)\{0,1\}/console=ttyS0\2 console=tty\1/" "$f"; c=1; }; done; [ $c = 1 ] && { if command -v update-grub >/dev/null 2>&1; then update-grub; elif command -v grub2-mkconfig >/dev/null 2>&1; then grub2-mkconfig -o /boot/grub2/grub.cfg; else grub-mkconfig -o /boot/grub/grub.cfg; fi; } >/dev/null 2>&1; true']
+  - [sh, -c, 'sh /var/lib/charon/firstboot.sh done; true']

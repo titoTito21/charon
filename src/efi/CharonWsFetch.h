@@ -34,14 +34,14 @@ inline bool HttpsSink(void* context,const uint8_t* data,size_t size) {
     Pump();
     return true;
 }
-inline void HttpsFail(const https::Client& client,https::Result result) {
+inline void HttpsFail(int transportError,https::Result result) {   // r410 (agent 3): also for a file of a download batch
     static char16_t text[400];
     switch(result) {
         case https::Result::certificateUntrusted:Set(text,400,T(u"Serwer przedstawił certyfikat, któremu Charon nie ufa. Nic nie pobrano.",u"The server showed a certificate Charon does not trust. Nothing was downloaded."));break;
         case https::Result::certificateExpired:Set(text,400,T(u"Według zegara komputera certyfikat serwera jest nieważny. Sprawdź zegar w Narzędziach systemowych.",u"According to the computer's clock the server's certificate is not valid. Check the clock in System tools."));break;
         case https::Result::certificateWrongHost:Set(text,400,T(u"Certyfikat należy do innego serwera. Nic nie pobrano.",u"The certificate belongs to another server. Nothing was downloaded."));break;
         case https::Result::noClock:Set(text,400,T(u"Firmware nie podaje daty, więc certyfikatu nie da się sprawdzić.",u"The firmware gives no date, so the certificate cannot be checked."));break;
-        case https::Result::connectFailed:Set(text,400,T(u"Nie udało się połączyć z serwerem: ",u"Could not connect to the server: "));Cat(text,400,tcp::ErrorText(client.transportError));break;
+        case https::Result::connectFailed:Set(text,400,T(u"Nie udało się połączyć z serwerem: ",u"Could not connect to the server: "));Cat(text,400,tcp::ErrorText(transportError));break;
         default: {
             Set(text,400,T(u"Pobieranie przez HTTPS nie powiodło się: ",u"The HTTPS download failed: "));
             static char16_t wide[160];const char* reason=https::ResultText(result);size_t n=0;for(;reason[n] && n<158;++n)wide[n]=char16_t(uint8_t(reason[n]));
@@ -50,6 +50,7 @@ inline void HttpsFail(const https::Client& client,https::Result result) {
     }
     Fail(text);
 }
+inline void HttpsFail(const https::Client& client,https::Result result) {HttpsFail(client.transportError,result);}
 inline bool DownloadHttps(const char16_t* url,const FileRef& target,uint64_t* received,Memory* memory,const char16_t* what) {
     static https::Client client;static char ascii[2048];static https::Response probe,answer;*received=0;
     size_t n=0;for(;url[n] && n<2046;++n) {if(url[n]>126 || url[n]<33) {Fail(T(u"Adres zawiera niedozwolone znaki.",u"The address contains characters that are not allowed."));return false;}ascii[n]=char(url[n]);}
@@ -80,10 +81,15 @@ inline bool DownloadHttps(const char16_t* url,const FileRef& target,uint64_t* re
 // http:// or https:// into a file, or into memory when `memory` is given.
 inline bool DownloadAny(const char16_t* url,const FileRef& target,uint64_t* received,Memory* memory=nullptr,const char16_t* what=nullptr) {
 #ifdef HAK_CHARON_HTTPS
-    if(IsHttps(url))return DownloadHttps(url,target,received,memory,what);
+    // r409: plain http:// goes through Charon's own client too (it speaks both). The firmware's HTTP service hands
+    // over one small piece per call and was polled once per 10 ms: measured in VMware about 30 KB/s (79 MB in 44
+    // minutes for the Debian installer) against megabytes per second for the own client on the same machine.
+    if(IsHttps(url) || ((url[0]==u'h' || url[0]==u'H') && (url[1]==u't' || url[1]==u'T') && (url[2]==u't' || url[2]==u'T') && (url[3]==u'p' || url[3]==u'P') && url[4]==u':'))
+        return DownloadHttps(url,target,received,memory,what);
 #endif
     return Download(url,target,received,memory,what);
 }
 }  // namespace net
 }  // namespace ws
 }  // namespace hakefi
+#include "CharonWsDownloads.h"   // r410 (agent 3): several files at once (net::many::Download)

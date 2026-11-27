@@ -1,0 +1,22 @@
+CHARON grid 56 125 0 0 0 Clover
+G15 98*00,4*f0|98*0000,4*040e|                                                                                                  Help
+G1a 66*00,53*f0|66*0000,53*040e|                                                                  F2  - Save preboot.log into /EFI/CLOVER/misc/ (FAT32)
+G1c 66*00,25*f0|66*0000,25*040c|                                                                  F3  - Show hidden entries
+G1d 66*00,57*f0|66*0000,57*040e|                                                                  F4  - Save oem DSDT into /EFI/CLOVER/ACPI/origin/ (FAT32)
+G1e 66*00,59*f0|66*0000,59*040e|                                                                  F5  - Save patched DSDT into /EFI/CLOVER/ACPI/origin/ (FA..
+G20 66*00,51*f0|66*0000,51*040c|                                                                  F6  - Save VideoBios into /EFI/CLOVER/misc/ (FAT32)
+G21 66*00,36*f0|66*0000,36*040e|                                                                  F7  - Check sound on selected output
+G23 66*00,52*f0|66*0000,52*040e|                                                                  F8  - Make audio outputs dump into /EFI/CLOVER/misc/
+G24 66*00,52*f0|66*0000,52*040e|                                                                  F9  - Switch screen resolution to next possible mode
+G25 66*00,52*f0|66*0000,52*040c|                                                                  F10 - Save screenshot into /EFI/CLOVER/misc/ (FAT32)
+G27 66*00,17*f0|66*0000,17*040c|                                                                  F11 - Reset NVRAM
+G28 66*00,33*f0|66*0000,33*040e|                                                                  F12 - Eject selected volume (DVD)
+G29 66*00,41*f0|66*0000,41*040e|                                                                  Space - Details about selected menu entry
+G2b 66*00,35*f0|66*0000,35*040e|                                                                  Digits 1-9 - Shortcut to menu entry
+G2c 66*00,14*f0|66*0000,14*040c|                                                                  A - Menu About
+G2e 66*00,16*f0|66*0000,16*040e|                                                                  O - Menu Options
+G2f 66*00,14*f0|66*0000,14*040c|                                                                  R - Soft Reset
+G30 66*00,20*f0|66*0000,20*040c|                                                                  U - Exit from Clover
+G32 66*00,9*f0|66*0000,9*040c|                                                                  S - Shell
+G33 66*00,6*f0|66*0000,6*040c|                                                                  Return
+CHARON grid end

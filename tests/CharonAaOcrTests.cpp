@@ -70,5 +70,31 @@ int main(int argc,char** argv) {
     const Line* wall=find("Boot Ubuntu from wallpaper");CHECK(wall && wall->x==211 && wall->height==16);
     const Line* nimbus=find("Nimbus Mono line 14");CHECK(nimbus && nimbus->x==77);
     CHECK(lines.size()==8 && count>=180);
-    puts("PASS anti-aliased OCR: rEFInd label, countdown, touching hint lines, 28 px light-on-dark, 12 px, Ubuntu Mono 16 over a noisy wallpaper, Nimbus Mono 14, picture rows ignored");
+    // ---- r410: three screens of rEFInd that lost lines until r410 ---------------------------------------
+    {   // (1) an area cropped to its widest line: the line covers nearly the whole width
+        lines.clear();static AlphaOcr crop;
+        const size_t w=64*8+32,h=60;std::vector<uint32_t> q(w*h,0xd0d0d0);
+        Draw(q,w,0,16+76,12,"Use arrow keys to move cursor; Enter to boot;",0x000000);
+        Draw(q,w,0,16,26,"Insert, Tab, or F2 for more options; Esc or Backspace to refresh",0x000000);
+        crop.Recognize(q.data(),w,h,w,0,0,emit,[]() {});
+        CHECK(find("Use arrow keys to move cursor; Enter to boot;"));
+        CHECK(find("Insert, Tab, or F2 for more options; Esc or Backspace to refresh"));
+    }
+    {   // (2) text beside a picture that starts higher and ends lower, the first line on a short white bar
+        lines.clear();static AlphaOcr beside;
+        const size_t w=520,h=200;std::vector<uint32_t> q(w*h,0xd0d0d0);
+        for(size_t y=40;y<150;++y)for(size_t x=40;x<150;++x)q[y*w+x]=uint32_t(((x*7+y*13)&1)?0x40c060:0x804020);   // an icon
+        for(size_t y=30;y<48;++y)for(size_t x=200;x<424;++x)q[y*w+x]=0xffffff;                                   // the selection bar
+        Draw(q,w,0,208,32,"Boot using default options",0x000000);
+        Draw(q,w,0,208,50,"Return to Main Menu",0x000000);
+        Draw(q,w,0,208,104,"Copyright (c) 2006-2010 C. Pfisterer",0x000000);
+        beside.Recognize(q.data(),w,h,w,0,0,emit,[]() {});
+        const Line* bar=find("Boot using default options");
+        CHECK(bar && bar->bg==0xffffff);           // read, and reported on the bar's colour: the selection
+        const Line* plain=find("Return to Main Menu");
+        CHECK(plain && plain->bg==0xd0d0d0);
+        CHECK(find("Copyright (c) 2006-2010 C. Pfisterer"));
+        CHECK(lines.size()==3);                    // the icon gives no line
+    }
+    puts("PASS anti-aliased OCR: rEFInd label, countdown, touching hint lines, 28 px light-on-dark, 12 px, Ubuntu Mono 16 over a noisy wallpaper, Nimbus Mono 14, picture rows ignored; r410: a line as wide as its area, text beside a picture, a short selection bar");
 }

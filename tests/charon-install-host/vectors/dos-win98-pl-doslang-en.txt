@@ -1,0 +1,8 @@
+# r410: Charon in Polish, CharonDOS detailed mode with the language answer "English": CHARONPC.CFG lang=en.
+lang=pl
+flow=dos
+arg profile=WIN98
+arg reader=none
+arg medium=SETUP.ISO
+put dos_mode=detailed
+put dos_lang=en

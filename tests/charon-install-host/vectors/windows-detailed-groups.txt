@@ -1,0 +1,18 @@
+# r410. Windows, English, detailed mode with the groups: NVDA settings, the tile boot menu kept (typed word), power,
+# Windows Update, optional features. answers.ini and a saved set are in the .carried file.
+lang=en
+flow=windows
+mode=detailed
+arg language_asked=1
+arg wlocale=en-US
+keys="pc" ENTER BS BS BS BS "ann" ENTER "test" ENTER "test" ENTER
+keys=ENTER ENTER ENTER ENTER
+keys=ENTER ENTER
+keys=ENTER ENTER ENTER ENTER
+keys=ENTER DOWN ENTER
+keys=DOWN ENTER DOWN ENTER "i understand" ENTER DOWN DOWN ENTER DOWN ENTER
+keys=DOWN ENTER DOWN DOWN ENTER DOWN ENTER SPACE DOWN DOWN SPACE ENTER ENTER ENTER ENTER ENTER ENTER ENTER DOWN ENTER ENTER
+keys=F3 "update" ENTER DOWN ENTER DOWN DOWN ENTER
+keys=END UP ENTER ENTER ENTER DOWN ENTER DOWN DOWN ENTER ENTER SPACE ENTER
+keys=F10 ENTER ENTER
+put diskmode=whole

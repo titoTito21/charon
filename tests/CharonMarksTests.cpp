@@ -1,4 +1,6 @@
 // r397 host test: selection marks (MarkRow / LeadMark / TrailMark) and Speakup copy.
+// CharonSystemTools.h (r409 clock.txt) uses efi_file_protocol before CharonResident.h includes its header.
+#include <efi/protocol/file.h>
 #define private public
 #include "../src/efi/CharonResident.h"
 #undef private
@@ -18,7 +20,7 @@ int main() {
     auto& r=*reader;
     Screen({u"  Boot menu",u"",u"  -> Debian GNU/Linux",u"     Windows",u"     UEFI Shell"});
     Check(r.MarkRow(2) && !r.MarkRow(3),"'-> ' marks the selection");
-    Check(r.TextStart(2)==r.TextStart(3)-0 || r.TextStart(2)==5,"text after '-> ' starts like the others");
+    Check(r.TextStart(2)==5 && r.TextStart(3)==5,"text after '-> ' starts like the others");
     Screen({u"  => Fedora",u"     Arch",u"     Memtest"});Check(r.MarkRow(0),"'=> ' marks the selection");
     Screen({u"  \u00bb Fedora",u"    Arch",u"    Memtest"});Check(r.MarkRow(0),"'» ' marks the selection");
     Screen({u"  Fedora   <",u"  Arch",u"  Memtest"});Check(r.MarkRow(0) && !r.MarkRow(1),"trailing '<' marks the selection");

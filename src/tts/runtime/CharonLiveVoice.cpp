@@ -1,4 +1,5 @@
 #include "CharonLiveVoice.h"
+#include "../../efi/CharonFormatting.h"   // r410: the kind table (voice, family, tone) is one table for the reader and the voice
 #include "../tvox_native/tvox_freestanding.h"
 #include "../tvox_native/tvox_dsp_stream.h"
 namespace charon {
@@ -113,7 +114,7 @@ int LiveVoice::StartDsp(){
     const double pitch=pitch_*nextPersona_.pitch;double volume=volume_*nextPersona_.volume;if(volume>4)volume=4;
     if(nextLanguage_==Language::English?tvox_dsp_stream_begin_en(dsp_,next_,nextCount_,nextLeading_,nextTrailing_,pitch,volume)
         :tvox_dsp_stream_begin(dsp_,next_,nextCount_,nextLeading_,nextTrailing_,pitch,volume))return SynthesisError;
-    dspPersona_=nextPersona_;
+    dspPersona_=nextPersona_;leadLeft_=size_t(dspPersona_.lead)*441;
     if(dspPersona_.icon)QueueIcon(dspPersona_);
     if(current_)charon_pool_free(pool_,current_);
     current_=next_;next_=nullptr;front_=Front::None;dspActive_=true;stage_=Stage::Synthesizing;
@@ -133,7 +134,7 @@ int LiveVoice::QueueText(Language language,const char* text,size_t bytes,double 
     for(size_t i=0;i<bytes;++i)text_[i]=text[i];text_[bytes]=0;pitch_=pitch;volume_=volume;language_=language;rate_=rate;
     frontLanguage_=nextLanguage_=language;endLanguage_=language;
     for(size_t i=0;i+1<bytes;++i)if(text[i]==0x1b&&(text[i+1]=='e'||text[i+1]=='p'))endLanguage_=text[i+1]=='e'?Language::English:Language::Polish;
-    textBytes_=bytes;chunkStart_=0;frontPersona_=Persona{};
+    textBytes_=bytes;chunkStart_=0;frontPersona_=Persona{};leadLeft_=0;
     if(useExternal_){const int s=BeginExternalChunk();if(s){Fail(s);return s;}stage_=Stage::Synthesizing;return 0;}
     int status=BeginChunk();
     if(status){Fail(status);return status;}
@@ -191,6 +192,7 @@ int LiveVoice::Pump(const Budget& budget,const AudioEngine::Sink& sink,Progress*
             }
             size_t capacity=AudioEngine::speechCapacity-engine_->BufferedSpeech(channel_);if(!capacity)break;
             size_t amount=budget.dspSamples-progress->dspAllowance;if(amount>pcmBlock)amount=pcmBlock;if(amount>capacity)amount=capacity;
+            if(leadLeft_){const size_t n=leadLeft_<amount?leadLeft_:amount;for(size_t i=0;i<n;++i)pending_[i]=0;leadLeft_-=n;pendingCount_=n;pendingOffset_=0;progress->dspAllowance+=n;PushPending();continue;}   // r410: the pause before these words
             size_t made=0;int status=tvox_dsp_stream_render(dsp_,pending_,amount,&made);
             progress->dspAllowance+=amount;
             if(status<0||made>amount){Fail(SynthesisError);break;}
@@ -255,9 +257,19 @@ bool LiveVoice::ParseSwitch(size_t at,size_t* length){
     v.colour=p[4];v.icons=(p[5]>='a'&&p[5]<='p')?unsigned(p[5]-'a'):0;
     v.range=AcssSteps(p[6],.12,.05,2.5);v.stress=AcssSteps(p[7],.10,.3,2.2);v.richness=AcssSteps(p[8],.06,.4,1.8);
     v.family=(p[9]>='0'&&p[9]<='7')?unsigned(p[9]-'0'):0;v.pitch*=families[v.family].pitch;
-    v.event=(p[10]>='a'&&p[10]<='z')?p[10]:'-';
+    v.event=((p[10]>='a'&&p[10]<='z')||(p[10]>='A'&&p[10]<='Z'))?p[10]:'-';   // r410: 'A'..'Z' = events 26..51
     if(p[11]>='a'&&p[11]<='u'){v.pan=p[11]-'a';v.panSpeech=true;}else if(p[11]>='A'&&p[11]<='U')v.pan=p[11]-'A';
-    v.icon=v.colour!='-'||v.icons||v.event!='-';
+    v.place=(p[12]>='a'&&p[12]<='y')?p[12]:'-';v.lead=(p[13]>='0'&&p[13]<='9')?unsigned(p[13]-'0'):0;
+    v.icon=v.colour!='-'||v.icons||v.event!='-'||v.place!='-';
+    // r410: a mark that follows another with no word between them (the element's sound, then the first word's
+    // voice) keeps the first one's event, place tone and position: before, the second mark replaced them and the
+    // element's sound was never played when voice formatting was on too.
+    if(frontPersona_.icon){
+        if(v.event=='-')v.event=frontPersona_.event;
+        if(v.place=='-')v.place=frontPersona_.place;
+        if(v.pan<0){v.pan=frontPersona_.pan;}
+        v.icon=true;
+    }
     frontPersona_=v;*length=2+formatPayload;return true;
 }
 // r397: Emacspeak ACSS on TVox's prepared frames (28 doubles: F0, AV, AH,
@@ -295,7 +307,8 @@ void LiveVoice::QueueIcon(const Persona& p){
     int16_t* out=icons_[iconSlot_];iconSlot_=(iconSlot_+1)%iconSlots;
     for(size_t i=0;i<iconFrames*2;++i)out[i]=0;
     size_t used=0;
-    const size_t shift=(p.event>='a'&&p.event<='z'&&(p.colour!='-'||p.icons))?4320:0;   // r397: after the event sound
+    const bool hasEvent=(p.event>='a'&&p.event<='z')||(p.event>='A'&&p.event<='Z');
+    const size_t shift=(hasEvent&&(p.colour!='-'||p.icons))?4320:0;   // r397: after the event sound
     auto tone=[&](size_t start,size_t frames,double f0,double f1,double gain,bool square){
         double phase=0;
         for(size_t i=0;i<frames&&start+i<iconFrames;++i){
@@ -318,8 +331,8 @@ void LiveVoice::QueueIcon(const Persona& p){
     if(p.icons&8)tone(shift,1440,420,300,6500,false);                                          // plain again: low falling blip
     // r397 Emacspeak-style auditory icons for events (CharonFormatting.h
     // Event order); the style and colour sounds above follow 90 ms later.
-    if(p.event>='a'&&p.event<='z'){
-        const int e=p.event-'a';const size_t ms=48;   // frames per ms
+    if(hasEvent){
+        const int e=p.event>='a'?p.event-'a':26+(p.event-'A');const size_t ms=48;   // frames per ms
         auto notes=[&](const double* hz,size_t n,size_t each,double gain,bool square){for(size_t k=0;k<n;++k)tone(k*each*ms,each*ms,hz[k],hz[k],gain,square);};
         switch(e){
             case 1:tone(0,60*ms,600,900,8000,false);break;                                   // open-object: rising
@@ -346,7 +359,24 @@ void LiveVoice::QueueIcon(const Persona& p){
             case 22:tone(0,50*ms,1760,1760,7000,false);break;                                // countdown end
             default:break;
         }
+        // r410 screen model (CharonFormatting.h Event::listFirst ..): the PLACE first (list top: a high blip,
+        // list bottom: a low one), the KIND 45 ms later, so one sound carries both. All under 130 ms: Emacspeak's
+        // rule that an icon takes less time than the words it goes with.
+        if(e>=23){
+            const bool first=e==23||e==26||e==29,last=e==24||e==27||e==30;
+            const size_t k=(first||last)?45*ms:0;
+            if(first)tone(0,35*ms,1568,1760,6500,false);
+            if(last)tone(0,35*ms,392,349.2,7000,false);
+            // the KIND's tone comes from the one table of CharonFormatting.h (kindTable)
+            using hakefi::formatting::Kind;
+            const Kind kind=(e>=25&&e<=27)?Kind::defaultItem:(e>=28&&e<=30)?Kind::submenu:e==31?Kind::edit:e==32?Kind::help:e==33?Kind::error:e==34?Kind::countdown:e==35?Kind::transient:Kind::none;
+            if(kind!=Kind::none)for(const auto& n:hakefi::formatting::KindSpec(kind).notes)if(n.ms)tone(k+size_t(n.start)*ms,size_t(n.ms)*ms,n.hz0,n.hz1,n.gain,n.square);
+            if(e>=36&&e<=38)for(int n=0;n<=e-36;++n)tone(size_t(n)*28*ms,14*ms,1200+200*n,1200+200*n,5500,false);   // indent: one tick per level, rising
+        }
     }
+    // r410 (answer 12): the place in the list as a pitch, top high (1760 Hz), bottom low (440 Hz); 45 ms, after the
+    // element's own sound when there is one, so both are heard.
+    if(p.place>='a'&&p.place<='y'){const double hz=double(hakefi::formatting::PlaceHertz(unsigned(p.place-'a')));tone(used?used+480:0,2160,hz,hz,6000,false);}
     // r397 stereo: the icon where its text is on the screen (balance, centre = both full).
     if(used&&p.pan>=0&&p.pan<=20){
         // the far side keeps 20% (an icon is placed, not cut from one ear)
@@ -414,6 +444,7 @@ int LiveVoice::BeginExternalChunk(){
         dspPersona_=frontPersona_;
         if(!(extHonoured_&personaRichness)){if(dspPersona_.richness>1.15)dspPersona_.timbre|=4;else if(dspPersona_.richness<.85)dspPersona_.timbre|=2;}
         if(extHonoured_&personaSmoothness)dspPersona_.timbre&=~2u;   // the module smoothed it itself
+        leadLeft_=size_t(dspPersona_.lead)*441;
         if(dspPersona_.icon)QueueIcon(dspPersona_);
         extActive_=true;extEnded_=false;extCount_=extAt_=0;extPhase_=0;extStep_=double(rate?rate:22050)/22050.0;
         return 0;
@@ -459,6 +490,7 @@ int LiveVoice::PumpExternal(const Budget& budget,const AudioEngine::Sink& sink,P
             }
             size_t capacity=AudioEngine::speechCapacity-engine_->BufferedSpeech(channel_);if(!capacity)break;
             size_t amount=budget.dspSamples-progress->dspAllowance;if(amount>pcmBlock)amount=pcmBlock;if(amount>capacity)amount=capacity;
+            if(leadLeft_){const size_t n=leadLeft_<amount?leadLeft_:amount;for(size_t i=0;i<n;++i)pending_[i]=0;leadLeft_-=n;pendingCount_=n;pendingOffset_=0;progress->dspAllowance+=n;PushPending();continue;}
             const size_t made=RenderExternal(pending_,amount);
             progress->dspAllowance+=amount;
             if(made){Timbre(pending_,made);

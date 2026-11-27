@@ -162,3 +162,30 @@ Result: `work/charon-audio-driver-r408/AudioDxe-r408.efi` (208896 bytes,
 SHA-256 910ada692e0cf72ceed7d2f6c3809b25b51fe3f5db17205f8dc155d89a84726b),
 log beside it. Checked in one QEMU run (emulated HD Audio, sound measured);
 not tested on hardware.
+
+## r409: the poll clock starts when the stream runs (candidate, see tests/charon-r409-audio-stall-results.txt)
+
+`HakWrite` took `LastTick` before `HdaControllerSetStreamState(TRUE)`. VMware
+creates its host sound stream inside that register write, on the processor's
+thread: 23..48 ms on an idle host (measured with a trace build, 25 starts),
+all of it counted against `HAK_RING_MAX_POLL_NS` (70 ms). The cursor (LPIB)
+read right after the call was 0 in every measured start. r409 reads the cursor
+when the call returns and, if it is 0, takes `LastTick`/`LastProgressTick`
+there; a cursor that has moved keeps the clock taken before the call. Later
+polls and both limits are unchanged.
+
+Trace builds (`HAK_AUDIO_TRACE=1`) also print "HAK start run ns", "HAK start
+cursor" and gap/read time of the first three polls, once after the third poll
+or at a fault. Test builds only: `-DHAK_AUDIO_STARTDELAY_MS=n` (a Stall before
+the RUN write, a host that needs that long) and `-DHAK_AUDIO_OLDSTART=1` (the
+clock as up to r408), passed in the environment variable `CL`.
+
+The EDK2 build does not notice a changed `_CL_`/`CL`: delete
+`work/ha/Build/HakAudioDriver/RELEASE_VS2022/X64/OpenCorePkg/Staging/AudioDxe`
+before switching between a trace and a normal build. From a shell that sets
+`NoDefaultCurrentDirectoryInExePath`, clear that variable first (the script
+calls `edksetup.bat` from the current directory).
+
+Result: `work/charon-audio-driver-r409/AudioDxe-r409.efi` (208896 bytes; two
+builds of the same source differ in two bytes), logs beside it. Checked in
+VMware and QEMU/OVMF; not tested on hardware.

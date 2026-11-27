@@ -23,6 +23,8 @@
 #include "CharonReaderControl.h"   // r407: graphicsOwnerGuid
 #include "CharonTrace.h"
 #include "CharonGraphicsTypes.h"
+#include "CharonManagerKeys.h"
+#include "CharonLoaderWords.h"
 #include "CharonOcr.h"
 #include "CharonAaOcr.h"
 #include "CharonBootManagers.h"
@@ -40,9 +42,13 @@
 #include "CharonKeyHelp.h"
 #include "CharonBraille.h"
 #include "CharonFormatting.h"
+#include "CharonScreenModel.h"   // r410
+#include "CharonEntryInfo.h"     // r410: what an entry starts, from the program's configuration
+#include "CharonPixelControls.h" // r410: controls of graphical screens
 #include "CharonProgress.h"
 #include "CharonManagerProbe.h"
 #include "CharonSecretInput.h"   // r407: VeraCrypt password entry
+#include "CharonMessageQueue.h"  // r410: messages waiting for a quiet screen
 #include <efi/protocol/simple-file-system.h>
 #include <efi/protocol/file.h>
 #include <efi/protocol/loaded-image.h>
@@ -73,6 +79,12 @@ struct ResidentOptions {
     // 1 announce and wait 2 s, 2 always reveal; bit 2 stop countdowns).
     uint8_t formatFlags=formatting::flagsDefault;bool brailleAttributes=true,dictionary=true;uint8_t managerFlags=1;bool linger=true;bool reviewOnly=false;   // r401 reviewOnly: Charon itself speaks (its installer dialogue); the reader only serves the review keys. r400: loading cue left playing after ExitBootServices
     uint8_t stereo=0;   // r397: 0 off, 1 sound icons placed by screen column, 2 speech and icons
+    // r410 (settings V13): verbosity profile 0 normal, 1 beginner, 2 expert; formatting groups driven by the
+    // screen model (formatting::group*: element kind, state and warnings, position and structure).
+    uint8_t profile=0,formatGroups=formatting::groupsDefault;
+    // r410 (settings V14): the custom profile's items (formatting::item*), the reader bar on the bottom screen
+    // line, the r399 absolute colour ladder instead of the relative default.
+    uint16_t profileItems=formatting::itemsNormal;bool readerBar=false,absoluteColours=false;
 };
 class ResidentReader {
 public:
@@ -219,6 +231,14 @@ public:
         if(due>1)tick_+=due-1;
         servicing_=true;TimerNotify(nullptr,this);servicing_=false;
     }
+    // r410 (session 4): on Charon's own screens the timer only counts and the work is done when Charon polls the
+    // keyboard. A reader command taken from a key read was therefore carried out at the NEXT read - one key late
+    // when Charon waits for a key (heard in run 16). It is carried out at once, in the same read.
+    void ServiceCommand() {
+        if(!options_.reviewOnly || !command_ || servicing_ || stopped_ || suspended_)return;
+        if(!serviceDue_)serviceDue_=1;
+        Service();
+    }
     efi_status Suspend() {
         if(!installed_ || stopped_)return EFI_NOT_STARTED;
         suspended_=true;return boot_->SetTimer(timer_,TimerCancel,0);
@@ -231,6 +251,10 @@ public:
             options_.punctuation=update->punctuation;options_.capitals=update->capitals;options_.screenLanguage=update->screenLanguage;
             options_.readerFlags=update->readerFlags;options_.reviewOnly=update->reviewOnly;serviceDue_=0;ApplyFlags();
             options_.formatFlags=update->formatFlags;options_.stereo=update->stereo;options_.brailleAttributes=update->brailleAttributes;options_.dictionary=update->dictionary;options_.managerFlags=update->managerFlags;options_.linger=update->linger;   // r393
+            options_.profile=update->profile;options_.formatGroups=update->formatGroups;   // r410
+            options_.profileItems=update->profileItems;options_.absoluteColours=update->absoluteColours;
+            if(options_.readerBar && !update->readerBar) {Guard guard(boot_);BarRestore();}
+            options_.readerBar=update->readerBar;
             if(update->verbosity)options_.verbosity=update->verbosity;
             if(update->rate) {options_.rate=update->rate;options_.pitch=update->pitch;options_.volume=update->volume;options_.effectsVolume=update->effectsVolume;}
         }
@@ -265,6 +289,7 @@ private:
     void RemoveHooks() {
         if(hooksRemoved_)return;
         keys_.Unregister();
+        UnhookPointers();   // r410
         UnhookInput();
         const efi_tpl old=boot_->RaiseTPL(TPL_NOTIFY);
         foreignConOut_=real_->OutputString!=ProxyOutput;
@@ -437,7 +462,9 @@ private:
     }
     bool CaretKnown() const {size_t r,c;return CursorShown() || DrawnCaret(r,c);}
     void EchoFromCaret() {CaretPos(echoRow_,echoCol_);}
+    uint64_t consoleCapture_=0;   // r410: when the program last wrote console text
     void Capture(const char16_t* text) {
+        consoleCapture_=tick_;
         // r407: characters written into a secret entry (CharonSecretInput.h) are kept as '*'.
         const bool notice=secret_.active && secretinput::PublicNotice(text);
         const size_t inked=secret_.active?secretinput::Inked(text):0;
@@ -1380,7 +1407,14 @@ private:
             }
             if(minY==height)return 0;
             const size_t y0=minY>=16?minY-16:0,y1=maxY+17<height?maxY+17:height;
-            const size_t x0=minX>=16?minX-16:0,x1=maxX+17<width?maxX+17:width;
+            // r410: the columns kept are at least twice as wide as the ink (where the area allows): the readers
+            // tell a text row from a picture by the share of the row its background holds, and in an area cut to
+            // its widest line that line had no background left beside it: Windows Recovery's longest line, the
+            // long lines of rEFInd's About screen and its second hint line were not read.
+            size_t x0=minX>=16?minX-16:0,x1=maxX+17<width?maxX+17:width;
+            {const size_t ink=maxX+1-minX,want=ink*2<width?ink*2:width;
+             if(x1-x0<want) {const size_t more=want-(x1-x0),leftMore=more/2<x0?more/2:x0;x0-=leftMore;x1=x1+(more-leftMore)<width?x1+(more-leftMore):width;
+                 if(x1-x0<want)x0=x1>=want?x1-want:0;}}
             area+=y0*stride+x0;left+=x0;top+=y0;width=x1-x0;height=y1-y0;
         }
         size_t lines=0;
@@ -1388,6 +1422,20 @@ private:
         bool baselineRows=false;  // r367: TrueType/bitmap lines sit in rows by their baseline
         auto emit=[&](const char16_t* text,size_t x,size_t y,uint32_t fg,uint32_t bg) {
             if(SecretScreen())return;   // r407
+            // r410: a "line" made only of upright strokes is a frame's edge read as letters (a GRUB theme's
+            // terminal box gave "l l" on every row, and the reader said it): it is not text.
+            {bool strokes=true,any=false;
+             for(const char16_t* p=text;*p && strokes;++p) {if(*p==u' ')continue;any=true;strokes=*p==u'l' || *p==u'I' || *p==u'|' || *p==u'!';}
+             if(any && strokes)return;}
+            // r410: the same upright stroke alone at both ends of a line is the frame around the text (a GRUB
+            // theme's terminal box read "j Opcje zaawansowane j"): the text between them is the line.
+            char16_t inner[maxColumns+1];
+            {size_t n=0;while(text[n])++n;
+             auto stroke=[](char16_t c) {return c==u'l' || c==u'I' || c==u'|' || c==u'j';};   // not a digit: "1 of 1"
+             if(n>=5 && n<=maxColumns && stroke(text[0]) && text[1]==u' ' && text[n-1]==text[0] && text[n-2]==u' ') {
+                 size_t s=2,e=n-2;while(s<e && text[s]==u' ')++s;while(e>s && text[e-1]==u' ')--e;
+                 if(e>s) {for(size_t k=s;k<e;++k)inner[k-s]=text[k];inner[e-s]=0;x+=s*8;text=inner;}
+             }}
             if(!lines++) {
                 // Replace what this area showed before (only when it holds
                 // text), but only cells that lie wholly inside the area: a
@@ -1410,6 +1458,19 @@ private:
                  rowCleared[row]=true;
                  const size_t c0=(clearLeft+7)/8,c1=right>=15?(right-15)/8+1:0;
                  for(size_t c=c0;c<c1 && c<maxColumns;++c) {if(text_[row][c]!=u' ')dirty_[row]=true;text_[row][c]=u' ';attr_[row][c]=0;cellFont_[row][c]=0;}
+             }}
+            // r410: a line that ends past the grid's last column (a screen wider than 1280 pixels has more than 160
+            // cells: Clover's "5176 GRUBTEST\EFI\CLOVER" at the right edge of its 1600-pixel screen was dropped
+            // whole) keeps the right end of its row when those cells are free. Its cells carry font bit 0x8000 and
+            // are replaced by the next such line of the row; a row that holds other text there is left as it was.
+            {size_t n=0;while(text[n])++n;const size_t row=y/16;
+             if(row<maxRows && n && n<maxColumns && x/8+n>maxColumns) {
+                 const size_t start=maxColumns-n;bool free=true;
+                 for(size_t c=start-1;c<maxColumns && free;++c)free=text_[row][c]==u' ' || (cellFont_[row][c]&0x8000);
+                 if(free) {
+                     for(size_t c=0;c<maxColumns;++c)if(cellFont_[row][c]&0x8000) {text_[row][c]=u' ';attr_[row][c]=0;cellFont_[row][c]=0;dirty_[row]=true;}
+                     x=start*8;captureFont_|=0x8000;
+                 }
              }}
             if(y/16<maxRows)ocrRow_[y/16]=true;   // r397
             CaptureCells(x,y,text,fg,bg,16);
@@ -1450,7 +1511,13 @@ private:
         // in rEFInd's font (Liberation Mono), on a plain background.
         if(!recognized) {
             FeedAudio();
-            auto blended=[&](const char16_t* text,size_t x,size_t y,uint32_t fg,uint32_t bg,size_t h) {captureFont_=uint16_t((3<<8)|(h<255?h:255));emit(text,x,y,fg,bg);};
+            auto blended=[&](const char16_t* text,size_t x,size_t y,uint32_t fg,uint32_t bg,size_t h) {
+                // r410: a selection bar whose colour falls into the same console colour as the screen (rEFInd's
+                // submenu: a white bar on light grey) is given another one, as r397 did for Clover: the row is
+                // the selection, and moving it is heard.
+                {const uint32_t corner=area[0]&0xffffff;unsigned d=0;for(unsigned s=0;s<24;s+=8) {const int v=int((bg>>s)&255)-int((corner>>s)&255);d+=unsigned(v<0?-v:v);}
+                 if(d>=120 && (ConsoleColor(bg)&7)==(ConsoleColor(corner)&7))bg=(ConsoleColor(corner)&7)==1?0x909090u:0x000090u;}   // 120: fewer shades off is a wallpaper, not a bar (r386)
+                captureFont_=uint16_t((3<<8)|(h<255?h:255));emit(text,x,y,fg,bg);};
             // r361: proportional TrueType text of a boot program whose fonts
             // were loaded from its disk (Windows Boot Manager); r363+ bitmap
             // and cell fonts of the running boot manager.
@@ -1466,9 +1533,14 @@ private:
                  if(d>=24 && d<120 && (ConsoleColor(bg)&7)==(ConsoleColor(corner)&7))bg=(ConsoleColor(corner)&7)==1?0x909090u:0x000090u;}
                 captureFont_=uint16_t((4<<8)|(h<255?h:255)|(ttfOcr_.LastBold()?0x4000:0));
                 size_t row=y/16;const size_t column=x/8;
+                // r410: only the line that stood there, a pixel or two away, is "the row it already has": a theme's
+                // terminal draws its lines 15 pixels apart, and "sleep 3" (baseline 129) took the row of
+                // 'echo "Entry two selected"' (114) and overwrote it.
+                const size_t baseline=y;
+                auto moved=[&](size_t r2) {const size_t was=lineBaseline_[r2];return was && (was>baseline?was-baseline:baseline-was)<=2;};
                 if(row<maxRows && column<maxColumns && text_[row][column]==u' ') {
-                    if(row && text_[row-1][column]!=u' ' && (y%16)<=1)y-=16;
-                    else if(row+1<maxRows && text_[row+1][column]!=u' ' && (y%16)>=14)y+=16;
+                    if(row && text_[row-1][column]!=u' ' && (y%16)<=1 && moved(row-1))y-=16;
+                    else if(row+1<maxRows && text_[row+1][column]!=u' ' && (y%16)>=14 && moved(row+1))y+=16;
                 }
                 // r397: a line caught half drawn (Windows Memory Diagnostic:
                 // "!urn tne cacne on ror a!! tests." for "Turn the cache on for
@@ -1480,6 +1552,7 @@ private:
                     suspect=(next>=u'a' && next<=u'z') || next==u'!';}
                  if(suspect && suspectRetries_<2) {suspectRead_=true;return;}}
                 {const size_t r2=y/16;if(r2<maxRows && caretLineX_[r2]==SIZE_MAX)caretLineX_[r2]=x;}   // r396: the line's first pixel, for the caret's column
+                if(y/16<maxRows)lineBaseline_[y/16]=uint16_t(baseline);   // r410
                 emit(text,x,y,fg,bg);
             };
             auto fonts=[&]() {
@@ -2191,6 +2264,7 @@ private:
     // Identification only from what the program itself shows on screen.
     const char16_t* ProgramName() const {
         const bool pl=options_.polish;
+        if(options_.reviewOnly)return u"Charon";   // r410 (session 4): Charon's own screens
         // r363: the boot manager recognized when it started comes first (its
         // menu may list another one, e.g. Limine's "Windows Boot Manager").
         if(bootManager_ && bootManager_[0]==u'W')return pl?u"Menedżer rozruchu Windows":u"Windows Boot Manager";
@@ -2202,6 +2276,8 @@ private:
         if(ScreenHas(u"Haiku"))return u"Haiku";
         if(ScreenHas(u"Device Manager") || ScreenHas(u"Boot Maintenance Manager"))return pl?u"Ustawienia firmware":u"Firmware setup";
         if(ScreenHas(u"Boot Manager") || ScreenHas(u"Boot Menu") || ScreenHas(u"Boot menu"))return pl?u"Menedżer rozruchu":u"Boot manager";
+        // r410 (session 4): the firmware's internal Shell has no image name; its prompt or pager names it.
+        if(model_.manager==screenmodel::Manager::shell || ScreenHas(u"Shell> ") || ScreenHas(u"UEFI Interactive Shell"))return pl?u"Powłoka UEFI":u"UEFI Shell";
         return pl?u"Program":u"Program";
     }
     static void Add(char16_t* out,size_t capacity,const char16_t* text) {
@@ -2381,12 +2457,47 @@ private:
     // r397 Emacspeak event icons: the event of this read (one per utterance;
     // a warning wins). Spoken with the next utterance, then cleared.
     formatting::Event event_=formatting::Event::none,infoEvent_=formatting::Event::none;size_t lastMenuIndex_=SIZE_MAX,lastMenuCount_=0;bool lastCursorShown_=false,cursorSeen_=false,cursorAppeared_=false,screenReplaced_=false,menuMoved_=false,enterPending_=false;uint64_t enterTick_=0;
+#ifdef HAK_CHARON_GRID_DUMP
+    // r410 (test builds): "CHARON grid rows cols cursorRow cursorCol cursorShown manager", then one line per row
+    // with text: "Grr <attribute runs count*hex,...>|<font runs>|<UTF-8 text>", then "CHARON grid end".
+    void DumpGrid() {
+        using charontrace::Byte;
+        auto str=[](const char* s) {for(;*s;++s)Byte((unsigned char)*s);};
+        auto num=[](size_t v) {char b[24];int n=0;do {b[n++]=char('0'+v%10);v/=10;} while(v);while(n)Byte((unsigned char)b[--n]);};
+        auto hex=[](unsigned v,int digits) {for(int s=(digits-1)*4;s>=0;s-=4)Byte((unsigned char)"0123456789abcdef"[(v>>s)&15]);};
+        str("CHARON grid ");num(rows_);Byte(' ');num(columns_);Byte(' ');num(row_);Byte(' ');num(column_);Byte(' ');Byte(CursorShown()?'1':'0');Byte(' ');
+        {char name[96];Utf8(ProgramName(),name,sizeof(name));str(name);}
+        Byte('\r');Byte('\n');
+        for(size_t r=0;r<rows_ && r<maxRows;++r) {
+            size_t end=columns_;while(end && (text_[r][end-1]==u' ' || !text_[r][end-1]) && !(attr_[r][end-1]&0x70))--end;
+            if(!end)continue;
+            Byte('G');hex(unsigned(r),2);Byte(' ');
+            for(size_t c=0;c<end;) {size_t e=c;while(e<end && attr_[r][e]==attr_[r][c])++e;num(e-c);Byte('*');hex(attr_[r][c],2);if(e<end)Byte(',');c=e;}
+            Byte('|');
+            for(size_t c=0;c<end;) {size_t e=c;while(e<end && cellFont_[r][e]==cellFont_[r][c])++e;num(e-c);Byte('*');hex(cellFont_[r][c],4);if(e<end)Byte(',');c=e;}
+            Byte('|');
+            for(size_t c=0;c<end;++c) {
+                const char16_t ch=text_[r][c]?text_[r][c]:u' ';
+                if(ch<0x80)Byte((unsigned char)ch);
+                else if(ch<0x800) {Byte((unsigned char)(0xc0|(ch>>6)));Byte((unsigned char)(0x80|(ch&63)));}
+                else {Byte((unsigned char)(0xe0|(ch>>12)));Byte((unsigned char)(0x80|((ch>>6)&63)));Byte((unsigned char)(0x80|(ch&63)));}
+            }
+            Byte('\r');Byte('\n');
+        }
+        str("CHARON grid end\r\n");
+    }
+#endif
     void Raise(formatting::Event e) {if(event_==formatting::Event::none || e==formatting::Event::warnUser)event_=e;}
-    bool EventsOn() const {return (options_.formatFlags&formatting::flagEvents)!=0;}
+    // r410: event icons are sounds: they follow the sound-icon switch (Insert G), and the expert profile always has them.
+    bool EventsOn() const {return ((options_.formatFlags&formatting::flagEvents) && (options_.formatFlags&formatting::flagIcons)) || Item(formatting::itemSounds);}
+#include "CharonResidentModel.inc"
+#include "CharonResidentControls.inc"
     // r397: rows the pixel OCR wrote since the last read.
     bool ocrRow_[maxRows]={};
     size_t usedColumns_=80;   // r397: one past the rightmost column anything was drawn in
     void Flush() {
+        if(enterDrawing_)SnapshotEntry();   // r410: the screen as it appeared, for "what changed since this screen appeared"
+        element_=formatting::Element{};
         // r401: beside Charon (reviewOnly) nothing is read automatically, and the
         // review keys read the screen model, which the console hook keeps: the
         // changed rows are just taken note of. No analysis at raised priority
@@ -2439,6 +2550,9 @@ private:
         }
         for(auto& o:ocrRow_)o=false;
         majorityBg_=MajorityBackground();
+#ifdef HAK_CHARON_GRID_DUMP
+        DumpGrid();   // r410: test builds only - the screen as the reader holds it, for the recorded-screen corpus
+#endif
         // r397 Speakup enable_win: changes inside a silenced window are not read.
         if(winSilent_ && winTop_!=SIZE_MAX && !winCorner_)for(size_t r=winTop_;r<=winBottom_ && r<rows_;++r) {
             if(!dirty_[r])continue;bool outside=false;
@@ -2614,6 +2728,7 @@ private:
         if(scrolledOut_[0]) {Add(info,1600,scrolledOut_);scrolledOut_[0]=0;}
         // A program swapped in by a chain loader is named before its screen.
         {char16_t named[96]={};WatchImage(named);if(named[0]) {Add(speech,1600,named);Raise(formatting::Event::newProgram);}}
+        ModelScreenIntro(speech,1600);   // r410: an entry editor or a command line is named
         if(tabSaid[0]) {Add(speech,1600,tabSaid);Raise(formatting::Event::tab);}
         // r380: a framed window (top border with corners) is named once.
         char16_t windowSaid[maxColumns+16]={};
@@ -2757,6 +2872,14 @@ private:
         }
         if(highlight_!=SIZE_MAX && highlight_<rows_ && RowText(highlight_,line,sizeof(line)/2)
             && (RowText(highlight_,selected,sizeof(selected)/2,true) || ColourText(highlight_,selected,sizeof(selected)/2) || RowText(highlight_,selected,sizeof(selected)/2))
+            && [&]() {   // r410: iPXE's "(N)" on the selected row is its countdown: a tick, not the entry again
+                    const long left=TrimRowCountdown(selected);
+                    if(left>=0 && !KeyRecent() && highlight_==lastHighlightRow_ && equal(selected,lastHighlight_)) {
+                        countdownSeen_=tick_;
+                        if((options_.timers&2) && options_.effects && options_.effects->Tone)options_.effects->Tone(options_.effects->context,left?TickHz(left):880,left?40:500);
+                        if((options_.timers&1) && left>0 && left%10==0) {char16_t t[48];NavOut o{t,48,0};t[0]=0;o.N(size_t(left));o.S(SecondsWord(size_t(left),options_.polish));Add(info,1600,t);}
+                    }
+                    return true;}()
             && !(highlight_==lastHighlightRow_ && equal(selected,lastHighlight_))
             && !(!KeyRecent() && highlight_==clearedRow_ && tick_-clearedTick_<300 && equal(selected,clearedHighlight_) && [&]() {   // r397: repainted, unchanged
                     size_t i=0;for(;selected[i];++i)lastHighlight_[i]=selected[i];lastHighlight_[i]=0;lastHighlightRow_=highlight_;menuAnnounced_=true;return true;}())) {
@@ -2768,6 +2891,8 @@ private:
             // column is a menu: name the program once per screen, then give
             // the position of every newly highlighted entry.
             size_t index=0,count=0;MenuBlock(highlight_,index,count);
+            ModelPosition(highlight_,index,count);   // r410: from the screen model when it is sure of this list
+            bool introducedNow=false;
             // r397 events of the selection: a new menu (a submenu entered or
             // left), a jump, going round the list's end, a changed value or
             // check box, a greyed-out item, or an ordinary move.
@@ -2784,12 +2909,18 @@ private:
                       Raise((a&0x80) && (a&15)==8?formatting::Event::disabled:formatting::Event::selectObject);}
                 lastMenuIndex_=index;lastMenuCount_=count;menuMoved_=true;
             }
+            if(count>=2 && !menuAnnounced_ && !Item(formatting::itemIntro)) {menuAnnounced_=true;menuIntro_=true;introducedNow=true;introKind_=1;introImage_=currentImage_;}   // r410: no words, the open-object sound
             if(count>=2 && !menuAnnounced_) {
-                Add(speech,1600,ProgramName());
+                introducedNow=true;
+                // r410 (user, answer 2): the program's name only when the KIND of screen changed (first menu of a
+                // program, back from an editor or command line); a menu after a menu (submenu, another page) has none.
+                const bool sayName=!(introKind_==1 && introImage_==currentImage_);
+                introKind_=1;introImage_=currentImage_;
+                if(sayName)Add(speech,1600,ProgramName());else Add(speech,1600,u"");
                 char16_t intro[64]={};size_t at=0;intro[at++]=speechtext::ownOpen;
                 static const char16_t* plMenu[]={u": kurewskie menu, ",u": menu, ja pierdolę, ",u": znowu jakieś menu, kurwa, "};
                 static const char16_t* enMenu[]={u": fucking menu, ",u": another bloody menu, ",u": menu, goddammit, "};
-                const char16_t* head=OwnPhrase(u": menu, ",plMenu,enMenu,3);while(*head)intro[at++]=*head++;
+                const char16_t* head=model_.list.sure && model_.list.depth && element_.kind!=formatting::Kind::none?(options_.polish?u": podmenu, ":u": submenu, "):OwnPhrase(u": menu, ",plMenu,enMenu,3);if(!sayName && head[0]==u':' && head[1]==u' ')head+=2;while(*head)intro[at++]=*head++;
                 Number(intro,at,count);
                 const char16_t* unit=options_.polish?(count%10>=2 && count%10<=4 && (count%100<10 || count%100>=20)?u" pozycje":u" pozycji"):u" items";
                 while(*unit)intro[at++]=*unit++;intro[at++]=speechtext::ownClose;intro[at]=0;
@@ -2840,18 +2971,26 @@ private:
             // r397: a greyed-out (dark grey) selected item is unavailable, as NVDA says.
             {const size_t ts=TextStart(highlight_);const uint8_t a=ts<columns_?attr_[highlight_][ts]:0;
              if((a&0x80) && (a&15)==8 && ((a>>4)&7)!=0 && count>=2)Append16(speech,1600,options_.polish?u"\xE001" u", niedostępne" u"\xE002":u"\xE001" u", unavailable" u"\xE002");}
-            if(count>=2 && options_.positions) {
-                char16_t where[32]={};size_t at=0;where[at++]=speechtext::ownOpen;where[at++]=u',';where[at++]=u' ';
+            ModelItemWords(speech,1600);   // r410: "submenu", "default, starts in N seconds"
+            if(count>=2 && options_.positions && ModelSayPosition(introducedNow)) {
+                char16_t where[56]={};size_t at=0;where[at++]=speechtext::ownOpen;where[at++]=u',';where[at++]=u' ';
                 Number(where,at,index+1);
                 const char16_t* of=options_.polish?u" z ":u" of ";while(*of)where[at++]=*of++;
-                Number(where,at,count);where[at++]=speechtext::ownClose;where[at]=0;Append16(speech,1600,where);
+                Number(where,at,count);
+                // r410: a list the program shows only a part of (scroll marks): the count is of the rows on the screen
+                if(modelScrolls_) {const char16_t* shown=options_.polish?u" widocznych":u" shown";while(*shown)where[at++]=*shown++;}
+                where[at++]=speechtext::ownClose;where[at]=0;Append16(speech,1600,where);
             }
+            if(introducedNow)ModelMenuHint(speech,1600);else ModelEntryHint(speech,1600);   // r410 beginner hints
         }
         // Everything else, by screen segment: a changed segment is read with
         // the whole column block it belongs to (help panels, wrapped
         // messages); unchanged segments (menu items losing their highlight,
         // repaints) stay silent.
         for(size_t r=0;r<rows_;++r)for(size_t c=0;c<columns_;++c)done_[r][c]=false;
+        // r410 (user, answer 2): the screen's help line is read with a new screen, but not in the expert profile
+        // (Insert+End reads it on demand). Only rows the screen model is sure are help.
+        if(!Item(formatting::itemHelp) && model_.helpSure)for(size_t i=0;i<model_.helpCount;++i)if(model_.help[i]<rows_)for(size_t c=0;c<columns_;++c)done_[model_.help[i]][c]=true;
         // r399 (user): a terminal/boot loader that cleared and repainted the
         // same content plus a new line reads only the new line (NVDA-style),
         // not the whole screen. Only with NO menu selection (a terminal, not a
@@ -2958,7 +3097,7 @@ private:
                         if(options_.timers&2) {
                             if(options_.effects && options_.effects->Tone) {
                                 if(left==0) {charontrace::Value("reader countdown end",0);{options_.effects->Tone(options_.effects->context,880,500);endToneUntil_=tick_+50;}timerEndAt_=0;}
-                                else {charontrace::Value("reader countdown tick",uint64_t(left));options_.effects->Tone(options_.effects->context,1000,40);}
+                                else {charontrace::Value("reader countdown tick",uint64_t(left));options_.effects->Tone(options_.effects->context,TickHz(left),40);}
                             }
                             // The last second ends with the long tone even when the
                             // program starts before it shows 0.
@@ -2967,6 +3106,25 @@ private:
                         if((options_.timers&1) && left>0 && left%10==0) {Add(info,1600,now);++changedRows;}
                         continue;
                     }
+                }
+                // r410 (user, answer 3): the row the screen model is sure is the countdown is spoken once; after that
+                // its changes are ticks, also when the text around the number was read differently from one second
+                // to the next (a GRUB theme's label inside its progress bar: "...automatically in 5s." was spoken
+                // again and again, once as "artomatically").
+                if(!KeyRecent() && model_.countdown.found && model_.countdown.sure && r==model_.countdown.row) {
+                    const uint16_t left=model_.countdown.seconds;
+                    if(modelTickImage_==currentImage_ && modelTickLast_!=0xffff) {
+                        if(left!=modelTickLast_) {
+                            modelTickLast_=left;countdownSeen_=tick_;
+#ifdef HAK_CHARON_TRACE
+                            charontrace::Value("CHARON model countdown tick",left);
+#endif
+                            if((options_.timers&2) && options_.effects && options_.effects->Tone)options_.effects->Tone(options_.effects->context,left?TickHz(long(left)):880,left?40:500);
+                        }
+                        for(size_t c=0;c<columns_;++c)done_[r][c]=true;
+                        continue;
+                    }
+                    modelTickImage_=currentImage_;modelTickLast_=left;
                 }
                 const int percent=Percent(now);
                 if(percent>=0) {Progress(percent);if(options_.progress)counter=true;}
@@ -3057,6 +3215,7 @@ private:
             // line) with the position; the rest of the screen on the message voice.
             size_t cut=0;while(info[cut] && !(info[cut]==u'.' && info[cut+1]==u' '))++cut;
             for(size_t k=0;k<cut && k<1599;++k)speech[k]=info[k];speech[cut<1599?cut:1599]=0;
+            {size_t k=0;for(;speech[k] && k<159;++k)iconName_[k]=speech[k];iconName_[k]=0;iconNameImage_=currentImage_;}   // r410 (session 5): "what this entry starts" before the first key
             size_t rest=info[cut]?cut+2:cut,k=0;while(info[rest+k]) {info[k]=info[rest+k];++k;}info[k]=0;
             const char16_t* position=pendingIcon_;while(*position && *position!=u' ')++position;
             if(*position) {Append16(speech,1600,u"\xE001" u"," u"\xE002");Append16(speech,1600,position);}
@@ -3070,6 +3229,7 @@ private:
             // cursor; Enter to boot;" after rEFInd's About) stays a message.
             {size_t cut=0;while(info[cut] && !(info[cut]==u'.' && info[cut+1]==u' '))++cut;
              for(size_t k=0;k<cut && k<1599;++k)speech[k]=info[k];speech[cut<1599?cut:1599]=0;
+             {size_t k=0;for(;speech[k] && k<159;++k)iconName_[k]=speech[k];iconName_[k]=0;iconNameImage_=currentImage_;}   // r410: for "what this entry starts"
              size_t rest=info[cut]?cut+2:cut,k=0;while(info[rest+k]) {info[k]=info[rest+k];++k;}info[k]=0;
              if(!SaidAlready(lastIconInfo_,info)) {size_t i=0;for(;info[i] && i<255;++i)lastIconInfo_[i]=info[i];lastIconInfo_[i]=0;} else info[0]=0;}
             const char16_t* position=pendingIcon_;while(*position && *position!=u' ')++position;
@@ -3081,6 +3241,7 @@ private:
             size_t length=0;while(speech[length])++length;
             bool labelSaid=iconLabelLength_ && length>=iconLabelLength_;
             for(size_t k=0;labelSaid && k<iconLabelLength_;++k)labelSaid=speech[length-iconLabelLength_+k]==pendingIcon_[k];
+            if(iconLabelLength_) {size_t k=0;for(;k<iconLabelLength_ && k<159;++k)iconName_[k]=pendingIcon_[k];iconName_[k]=0;iconNameImage_=currentImage_;}   // r410: the first icon's name too
             if(labelSaid)Append16(speech,1600,pendingIcon_+iconLabelLength_);
             else if(speech[0]) {Append16(speech,1600,u"\xE001" u", " u"\xE002");Append16(speech,1600,pendingIcon_);} else Add(speech,1600,pendingIcon_);
             iconLabelLength_=0;
@@ -3105,6 +3266,9 @@ private:
                 return;
             }
             speech[0]=0;   // counting down: the menu stays unread, messages go on
+            // r410: but what starts, and when, is said once. The introduction that was thrown away did not say the
+            // program's name: unless the countdown sentence says it, the next introduction does (answer 2).
+            if(!ModelCountdownIntro(speech,1600) || !Item(formatting::itemCountdown))introKind_=0;
         }
         if(info[0] && !messages)Add(speech,1600,info);
         // r389: messages wait until the screen is quiet for 60 ms (a form's
@@ -3119,7 +3283,7 @@ private:
         menuMoved_=false;
         // r397: without reader speech the event goes with the boot message (the message voice's utterance).
         if(info[0] && messages && !quiet_ && !speech[0] && event_!=formatting::Event::none) {infoEvent_=event_;event_=formatting::Event::none;}
-        if(info[0] && messages && !quiet_) {Add(pendingInfo_,1600,info);infoTick_=tick_;}
+        if(info[0] && messages && !quiet_)QueueMessage(info);
         if(!speech[0]) {   // r389: a repaint that only moved the caret
             if(!info[0])CursorEcho();else {EchoFromCaret();keyPending_=false;}
             return;}
@@ -3134,20 +3298,80 @@ private:
     // early) speech cannot start yet: keep the newest text and retry from the
     // timer; a newer screen replaces it, as speech would have.
     // The reader's own phrases (not screen text) in explicit mode.
-    void SendMessages() {
-        if(!pendingInfo_[0])return;
+    formatting::Element messageElement_{};
+    // r410 (session 4, CharonMessageQueue.h): new text for the message voice. Text that still waits and whose
+    // screen has been cleared, or that leaves no room, goes out first; nothing newer is ever dropped behind it.
+    void QueueMessage(const char16_t* info) {
+        if(messagequeue::Next(pendingInfo_,1600,info,pendingGone_)==messagequeue::Step::sendFirst) {
+            // r410 (user, fourth set H4): text that vanished before it was read. Beginner: spoken, in order;
+            // normal and expert: the new screen is read at once, the vanished text is kept in the history only.
+            // An error or a warning is read in full in every profile (answer 11).
+            const bool historyOnly=pendingGone_ && messagequeue::Replaced(ReadsEverything(),PendingAlarm())==messagequeue::Vanished::historyOnly;
+#ifdef HAK_CHARON_TRACE
+            charontrace::Value(historyOnly?"CHARON vanished text to the history only":"CHARON message sent before newer text, gone",pendingGone_);
+#endif
+            if(!historyOnly)SendMessages(true);
+            if(pendingInfo_[0]) {if(!historyOpen_)AddHistory(pendingInfo_,historyMessage);pendingInfo_[0]=0;}   // quiet mode: kept, not spoken
+        }
+        pendingGone_=false;
+        Add(pendingInfo_,1600,info);infoTick_=tick_;
+    }
+    bool pendingGone_=false;   // the screen was cleared while pendingInfo_ waited
+    bool ReadsEverything() const {return Item(formatting::itemHints);}   // the beginner's profile (custom: key hints on)
+    bool PendingAlarm() const {return Alarming(pendingInfo_);}           // error or warning words (answer 11)
+    void SendMessages(bool now=false) {
+        if(!pendingInfo_[0]) {pendingGone_=false;return;}
         auto* fx=options_.effects;
         static char16_t composed[1600];char language[3]={};   // static: timer only, off the program's stack
 #ifdef HAK_CHARON_READER_TRACE
         {char raw[4800];Utf8(pendingInfo_,raw,sizeof(raw));charontrace::Text("reader message raw");charontrace::Text(raw);}
 #endif
-        if(!historyOpen_)AddHistory(pendingInfo_);
+        // r410 (user, answer 11). The message's kind first; then, with state formatting on: an ALARM before the
+        // text (low square tone for an error, a softer sine for a warning), the text 260 / 180 ms after it; an
+        // error stops the reader's own speech and is read at once, in full: later messages wait until it ended
+        // (at most 15 s); an ordinary message is read to its end before the next one (at most 6 s) even when its
+        // text has left the screen. All bounded by the timer's tick count; nothing waits or stalls here.
+        formatting::Kind messageKind=formatting::Kind::none;
+        if(HasWord(pendingInfo_,u"warning") || HasWord(pendingInfo_,u"ostrze\x017c" u"enie") || HasWord(pendingInfo_,u"uwaga"))messageKind=formatting::Kind::warning;
+        else if(Alarming(pendingInfo_))messageKind=formatting::Kind::error;
+        const bool isError=messageKind==formatting::Kind::error,isWarning=messageKind==formatting::Kind::warning;
+        bool alarmed=false;
+        if(StateFormatting() && !quiet_) {
+            const bool busy=fx && fx->MessageIdle && !fx->MessageIdle(fx->context);
+            if(!now && busy && !alarmArmed_ && tick_-messageStart_<(messageError_?1500u:isError?0u:600u))return;
+            if((isError || isWarning) && fx && fx->Beep && fx->Tone) {
+                if(!alarmArmed_) {
+                    alarmArmed_=true;alarmTick_=tick_;
+                    if(isError) {pending_[0]=0;options_.voice->SpeakUtf8(options_.voice,options_.language," ");fx->Beep(fx->context,196,220);}
+                    else fx->Tone(fx->context,523,140);
+#ifdef HAK_CHARON_TRACE
+                    charontrace::Value("CHARON alarm",isError?1:2);
+#endif
+                    if(!now)return;
+                }
+                if(!now && tick_-alarmTick_<(isError?26u:18u))return;
+                alarmed=true;
+            }
+        }
+        alarmArmed_=false;messageStart_=tick_;messageError_=isError && StateFormatting();
+        if(!historyOpen_)AddHistory(pendingInfo_,isError?historyError:isWarning?historyWarning:historyMessage);
+        {size_t k=0;for(;pendingInfo_[k] && k+1<sizeof(lastMessage_)/2;++k)lastMessage_[k]=pendingInfo_[k];lastMessage_[k]=0;lastMessageKind_=uint8_t(messageKind);
+         if(isError || isWarning) {for(k=0;lastMessage_[k];++k)lastAlarm_[k]=lastMessage_[k];lastAlarm_[k]=0;lastAlarmKind_=uint8_t(messageKind);}}   // session 4: an error stays under the shortcut
+        BarShow(pendingInfo_);
         const char16_t* source=pendingInfo_;
+        // r410: an error, a warning and a message that goes away by itself each have their own voice and sound
+        {const formatting::Element keepElement=element_;element_=formatting::Element{};
+         if(HasWord(pendingInfo_,u"warning") || HasWord(pendingInfo_,u"ostrze\x017c" u"enie") || HasWord(pendingInfo_,u"uwaga"))element_.kind=formatting::Kind::warning;
+         else if(Alarming(pendingInfo_))element_.kind=formatting::Kind::error;
+         else if(HasWord(pendingInfo_,u" seconds") || HasWord(pendingInfo_,u" sekund") || HasWord(pendingInfo_,u"press any key") || HasWord(pendingInfo_,u"dowolny klawisz"))element_.kind=formatting::Kind::transient;
+         messageElement_=element_;element_=keepElement;alarmPlayed_=alarmed;}
         {const auto keep=event_;event_=infoEvent_;infoEvent_=formatting::Event::none;   // r397: the message's own event
+         const formatting::Element keepElement=element_;element_=messageElement_;
          if(FormatSpeech(pendingInfo_,formatted_,sizeof(formatted_)/2))source=formatted_;
+         element_=keepElement;
          if(event_==formatting::Event::none)event_=keep;}
         ComposeSpeech(source,false,composed,1600,language);
-        static char utf8[4800];Utf8(composed,utf8,sizeof(utf8));pendingInfo_[0]=0;
+        static char utf8[4800];Utf8(composed,utf8,sizeof(utf8));pendingInfo_[0]=0;pendingGone_=false;
         if(quiet_ || !fx || !fx->SpeakMessage || !utf8[0])return;
 #ifdef HAK_CHARON_READER_TRACE
         charontrace::Text("reader message");charontrace::Text(utf8);
@@ -3192,7 +3416,7 @@ private:
         auto* fx=options_.effects;if(!fx || !fx->SetPitch)return;
         int pitch=int(pitch_);
         if(capPitch_)pitch+=3;   // r390 NVDA capital pitch change (30%)
-        else if(ownSpeech_)pitch-=1;else if(Alarming(text))pitch+=3;
+        else if(ownSpeech_)pitch-=1;else if(Alarming(text) && !(StateFormatting() && (options_.formatFlags&formatting::flagVoice)))pitch+=3;   // r410: with state formatting the error's own (lower, slower) voice says it
         if(pitch<5)pitch=5;if(pitch>20)pitch=20;
         if(unsigned(pitch)!=appliedPitch_) {appliedPitch_=unsigned(pitch);fx->SetPitch(fx->context,appliedPitch_);}
     }
@@ -3213,12 +3437,14 @@ private:
 #ifdef HAK_CHARON_READER_TRACE
         {char t[600];Utf8(text,t,sizeof(t));charontrace::Text("reader say");charontrace::Text(revealing_?"(review of a secret entry: not logged)":t);}
 #endif
-        if(!historyOpen_ && !revealing_)AddHistory(text);   // r407: revealed secret text is spoken once and kept nowhere
+        if(!historyOpen_ && !revealing_) {using formatting::Kind;const Kind k=ownSpeech_?Kind::none:element_.kind;
+            AddHistory(text,k==Kind::error?historyError:k==Kind::warning?historyWarning:(k==Kind::selected || k==Kind::defaultItem || k==Kind::submenu)?historyEntry:0);}   // r407: revealed secret text is spoken once and kept nowhere
         const char16_t* source=text;
         if(!rawSpeech_ && FormatSpeech(text,formatted_,sizeof(formatted_)/2,ownSpeech_))source=formatted_;
         ComposeSpeech(source,ownSpeech_ || rawSpeech_,pending_,sizeof(pending_)/2,pendingLanguage_);
         if(!pending_[0])return;
         PriorityPitch(pending_);
+        BarShow(text);   // r410: the reader bar shows what is being said
         TrySpeakPending();
     }
     void TrySpeakPending() {
@@ -3239,6 +3465,10 @@ private:
             // console also queues must not reach the program.
             if(!data->key.UnicodeChar && data->key.ScanCode>=1 && data->key.ScanCode<=4)self->swallowScan_=data->key.ScanCode;
             if(c==u'\\')self->pauseSwallowChar_=u'\\';
+            // r410 (session 4): Control+Alt with a character that is a reader command (Ctrl+Alt+3 ...) belongs to the
+            // reader: the character the console also queues must not reach the program (systemd-boot took the 3).
+            {const uint32_t held=(data->state.shift&shiftValid)?data->state.shift:0;
+             if(data->key.UnicodeChar && c!=u'\\' && (held&(leftControl|rightControl)) && (held&(leftAlt|rightAlt))) {self->commandSwallowChar_=data->key.UnicodeChar;self->commandSwallowTick_=self->tick_;}}
             if(c==u'?')self->swallowScan_=0x0b;   // Alt+F1
             // r393: Shift+Left/Right are regions only in the paused review.
             if(c==u'(' || c==u')') {if(!self->reviewPause_) {self->command_=0;self->swallowScan_=0;return EFI_SUCCESS;}self->command_=c==u')'?u'}':u'{';}
@@ -3250,6 +3480,10 @@ private:
         // Held keys repeat; one command per press. r390: a press 60 ms after
         // the last one is a repeat; within 200 ms only while repeating. The
         // same key again within 500 ms counts (NVDA: spell, phonetic, code).
+        if(c==navKeyCommand) {NavDrain();return;}   // r410: keys typed into the elements list or the find prompt
+        if(c==clickYesCommand || c==clickNoCommand) {ClickAnswer(c==clickYesCommand);return;}   // r410 H2: the answer to "Start NAME?"
+        clickAsk_=false;   // another reader command: the question is dropped
+        NoteReaderUse();
         const uint64_t gap=tick_-lastCommand_;
         if(c==lastCommandKey_ && (gap<6 || (gap<20 && repeating_))) {lastCommand_=tick_;repeating_=true;return;}
         pressCount_=(c==lastCommandKey_ && gap<60)?pressCount_+1:1;   // r390: 600 ms (QEMU: 0.4 s measured 50 ticks)
@@ -3260,7 +3494,9 @@ private:
         lastCommand_=tick_;lastCommandKey_=c;
         if(helpOpen_ && KeyListCommand(c))return;
         if(historyOpen_ && HistoryCommand(c))return;
+        if(navMode_ && c!=u's') {if(c==u'L' && navMode_==1)OpenElements(false);return;}   // r410: other commands wait until the list or prompt is closed
         if(ReaderExtraCommand(c))return;   // r393
+        if(NavShortcut(c))return;          // r410
         if(c==u'?') {OpenKeyList(!helpOpen_);return;}
         if(inputHelp_ && c!=u'x') {SayOwn(CommandHelp(c));return;}
 #ifdef HAK_CHARON_READER_TRACE
@@ -3674,7 +3910,7 @@ private:
         const bool first=r->a11yCountdownLast_<0;r->a11yCountdownLast_=left;
         if((r->options_.timers&2) && fx && fx->Tone) {
             if(left==0) {fx->Tone(fx->context,880,500);r->endToneUntil_=r->tick_+50;}
-            else fx->Tone(fx->context,1000,40);
+            else fx->Tone(fx->context,TickHz(long(left)),40);
         }
         if(((r->options_.timers&1) && left && left%10==0) || first) {
             char16_t text[120];speechtext::Out o{text,120};text[0]=0;
@@ -3750,13 +3986,17 @@ private:
                 char16_t n[24];size_t k=0;Number(n,k,tab.index+1);n[k]=0;put(n);put(pl?u" z ":u" of ");k=0;Number(n,k,tab.count);n[k]=0;put(n);put(u". ");}}
             if(frameRow_<rows_) {char16_t title[maxColumns+1]={};FrameTitle(frameRow_,frameColumn_,title,maxColumns+1);
                 put(pl?u"Okno":u"Window");if(title[0]) {put(u": ");put(title);}put(u". ");}
+            // r410: what the screen model knows: position, default, countdown, edit field and caret; twice (Orca's
+            // convention for a detailed "where am I"): also the help lines and the verbosity profile.
+            text[at]=0;NavOut model{text,1200,at};const bool entrySaid=ModelWhere(model,pressCount_>=2);at=model.at;
             const size_t lit=highlight_<rows_?highlight_:lastHighlightRow_;
             char16_t selected[maxColumns*4]={};
-            if(lit<rows_ && (RowText(lit,selected,sizeof(selected)/2,true) || RowText(lit,selected,sizeof(selected)/2)) && selected[0]) {
+            if(!entrySaid && lit<rows_ && (RowText(lit,selected,sizeof(selected)/2,true) || RowText(lit,selected,sizeof(selected)/2)) && selected[0]) {
                 put(pl?u"Zaznaczone: ":u"Highlighted: ");put(selected);put(u".");}
             text[at]=0;SayOwn(text);return true;
         }
         if(c==u'y') {
+            if(ModelHelp())return true;   // r410: the help lines the screen model is sure of, wherever they are
             // The key-hint bar: the last one or two text rows at the bottom.
             size_t last=SIZE_MAX;for(size_t r=rows_;r-->0;)if(RowHasText(r)) {last=r;break;}
             if(last==SIZE_MAX) {SayOwn(options_.polish?u"Brak tekstu na ekranie, który Charon może odczytać.":u"No text on the screen Charon can read.");return true;}
@@ -3771,11 +4011,7 @@ private:
             text[at]=0;
             Speak(text);return true;
         }
-        if(c==u'v') {
-            options_.verbosity=options_.verbosity>=2?1:2;
-            SayOwn(options_.verbosity>=2?(options_.polish?u"Czytnik mówi szczegółowo.":u"Reader verbosity detailed."):(options_.polish?u"Czytnik mówi krótko.":u"Reader verbosity short."));
-            return true;
-        }
+        if(c==u'v') {CycleProfile();return true;}   // r410: verbosity profiles (the short / detailed boot messages stay a setting)
         if(c==u'q') {
             quiet_=!quiet_;
             SayOwn(quiet_?(options_.polish?u"Automatyczne czytanie wyłączone. Klawisze przeglądu nadal działają.":u"Automatic reading off. Review keys still work.")
@@ -3920,6 +4156,7 @@ private:
         SecretKey();   // r407
         if(!keyPending_)EchoFromCaret();
         if(!keyPending_ || tick_-keyTick_>20)SnapshotBeforeKey();   // r393 "what changed"
+        enterDrawing_=false;   // r410: the screen as it appeared is kept from the first key on
         keyPending_=true;keyTick_=tick_;keyScan_=scan;keyChar_=secret_.Entry() && ch>=32?u'*':ch;   // r407: a secret key is not remembered
         everKey_=true;if(quietMenu_) {quietMenu_=0;rereadAfterKey_=true;}   // r400: the held menu is read now
     }
@@ -3950,11 +4187,20 @@ private:
                 bool word=false;for(size_t c=0;c<columns_ && !word;++c) {const char16_t ch=text_[cr][c];word=(ch>=u'0' && ch<=u'9') || (ch>=u'A' && ch<=u'Z') || (ch>=u'a' && ch<=u'z') || (ch>=0xc0 && ch<0x2000);}
                 if(!word)return;
             }
+            if(SayEditorLine(cr))return;   // r410: with its line number where the profile asks for it
             SayRow(cr);return;}
         // The line's end, without an edit box's right border (GRUB's editor).
         size_t end=columns_;while(end && (text_[cr][end-1]==u' ' || !text_[cr][end-1] || (text_[cr][end-1]>=0x2500 && text_[cr][end-1]<=0x257f)))--end;
         // A typed space moves the caret but changes no visible text.
-        if(keyChar_==u' ' && cc==oldCol+1 && !vertical) {SayChar(u' ');return;}
+        if(keyChar_==u' ' && cc==oldCol+1 && !vertical) {
+            // r410 (session 4, answer 6): word echo - the space at the line's end changes no text, so the word it
+            // ended is taken from in front of the caret (seen in GRUB's command line: only "space" was said).
+            if((options_.readerFlags&readerFlagWords) && oldCol && oldCol<=columns_ && speechtext::IsWord(text_[cr][oldCol-1])) {
+                size_t s0=oldCol;while(s0 && speechtext::IsWord(text_[cr][s0-1]))--s0;
+                char16_t word[maxColumns+1];size_t n=0;for(size_t i=s0;i<oldCol && n<maxColumns;++i)word[n++]=text_[cr][i];word[n]=0;
+                Speak(word);return;   // the word alone; "space" after every word would only be noise
+            }
+            SayChar(u' ');return;}
         if(cc>=end) {SayOwn(options_.polish?u"pusty":u"blank");return;}
         if(text_[cr][cc]>=0x2500 && text_[cr][cc]<=0x257f)return;   // r397: a box's frame under a caret still being placed (a password box opening)
         SayChar(text_[cr][cc]);   // arrows, Home, End: the character at the caret (NVDA)
@@ -3986,7 +4232,7 @@ private:
         controlDown_=control;
     }
     void Silence() {
-        pending_[0]=0;pendingInfo_[0]=0;
+        pending_[0]=0;pendingInfo_[0]=0;pendingGone_=false;
         auto* fx=options_.effects;
         if(fx && fx->Silence)fx->Silence(fx->context);
     }
@@ -4004,12 +4250,12 @@ private:
             {u'q',u"Automatyczne czytanie zmian włącza lub wyłącza",u"Turns automatic reading of changes on or off"},{u'n',u"Formatowanie w miejscu kursora przeglądu: kolory, jasność, podświetlenie, czcionka",u"Formatting at the review cursor: colours, brightness, highlight, font"},
             {u'c',u"Godzina zegara firmware",u"Time of the firmware clock"},{u'=',u"Mowa szybciej",u"Speech faster"},{u'-',u"Mowa wolniej",u"Speech slower"},
             {u'w',u"Gdzie jestem: program, ekran, zaznaczenie",u"Where am I: program, screen, highlight"},{u'y',u"Pasek klawiszy na dole ekranu",u"The key-hint bar at the bottom"},
-            {u'v',u"Szczegółowość czytnika",u"Reader verbosity"},{u'd',u"Poziom interpunkcji",u"Symbol level"},{u'z',u"Język tekstu ekranu",u"Screen text language"},
+            {u'v',u"Profil mówienia: zwykły, dla zaawansowanych, dla początkujących",u"Verbosity profile: normal, expert, beginner"},{u'd',u"Poziom interpunkcji",u"Symbol level"},{u'z',u"Język tekstu ekranu",u"Screen text language"},
             {u'x',u"Pomoc klawiszy",u"Input help"},{u'\\',u"Przegląd ekranu ze wstrzymanym rozruchem",u"Screen review with the boot paused"},
             {u'^',u"Zwiększa wybrane ustawienie głosu",u"Raises the chosen voice setting"},{u'_',u"Zmniejsza wybrane ustawienie głosu",u"Lowers the chosen voice setting"},
             {u'<',u"Poprzednie ustawienie głosu",u"Previous voice setting"},{u'>',u"Następne ustawienie głosu",u"Next voice setting"},
             {u'G',u"Formatowanie tekstu w mowie: wyłączone, głosem, dźwiękiem, głosem i dźwiękiem",u"Text formatting in speech: off, voice, sounds, voice and sounds"},
-            {u'H',u"Historia mowy",u"Speech history"},{u'D',u"Co się zmieniło od ostatniego klawisza",u"What changed since the last key"},
+            {u'H',u"Historia mowy",u"Speech history"},{u'D',u"Co się zmieniło od ostatniego klawisza; dwa razy: odkąd pojawił się ten ekran",u"What changed since the last key; twice: since this screen appeared"},
             {u'{',u"Poprzedni region ekranu",u"Previous screen region"},{u'}',u"Następny region ekranu",u"Next screen region"},
             {u'M',u"Klawisze działającego menedżera rozruchu",u"Keys of the running boot manager"},
             {u'W',u"Okno ekranu jak w Speakup: lewy górny róg, potem prawy dolny; na ustawionym oknie usuwa je",u"Screen window, as in Speakup: top left, then bottom right; on a set window clears it"},
@@ -4017,7 +4263,13 @@ private:
             {u'C',u"Początek zaznaczenia w miejscu kursora przeglądu",u"Start mark at the review cursor"},
             {u'K',u"Kopiuje od początku zaznaczenia do kursora przeglądu",u"Copies from the start mark to the review cursor"},
             {u'V',u"Wkleja skopiowany tekst do programu jako klawisze",u"Pastes the copied text into the program as keys"},
-            {u'I',u"Wiersz z wcięciem",u"The line with its indentation"}};
+            {u'I',u"Wiersz z wcięciem",u"The line with its indentation"},
+            {u'L',u"Lista elementów ekranu: pozycje, okna, pola, pomoc; pisanie filtruje",u"Elements list of the screen: entries, windows, fields, help; typing filters"},
+            {u'[',u"Poprzedni element ekranu",u"Previous element of the screen"},{u']',u"Następny element ekranu",u"Next element of the screen"},
+            {u'F',u"Szukaj tekstu na ekranie",u"Find text on the screen"},{u'N',u"Następne wystąpienie szukanego tekstu",u"Next place of the text searched for"},
+            {u'P',u"Poprzednie wystąpienie szukanego tekstu",u"Previous place of the text searched for"},
+            {u'B',u"Ustawia albo usuwa zakładkę w miejscu kursora przeglądu",u"Sets or removes a bookmark at the review cursor"},
+            {u'J',u"Następna zakładka tego ekranu",u"Next bookmark of this screen"},{u'U',u"Poprzednia zakładka tego ekranu",u"Previous bookmark of this screen"}};
         for(const auto& h:help)if(h.c==c)return pl?h.pl:h.en;
         return pl?u"Nieznane polecenie":u"Unknown command";
     }
@@ -4045,8 +4297,18 @@ private:
         Extras extras;
         if(EventsOn() && event_!=Event::none) {extras.event=event_;event_=Event::none;}
         if(!own)extras.stereo=options_.stereo<3?options_.stereo:0;
-        const uint8_t flags=own?uint8_t(options_.formatFlags&flagEvents):options_.formatFlags;
-        if((!(flags&(flagVoice|flagIcons)) && extras.event==Event::none && extras.stereo==stereoOff) || stopped_ || !in || !in[0])return false;
+        uint8_t flags=own?uint8_t(options_.formatFlags&flagEvents):options_.formatFlags;
+        if(!EventsOn())flags=uint8_t(flags&~flagEvents);
+        // r410: the element this utterance belongs to (screen model): its voice, and its sound in place of the
+        // plain "selection moved" click. An error's sound wins over every other event.
+        if(!own && element_.kind!=Kind::none) {
+            extras.element=element_;extras.groups=Groups();extras.sounds=ModelSounds();
+            if(ModelSounds()) {const Event me=alarmPlayed_?Event::none:ElementEvent(element_,extras.groups);   // the alarm already sounded before the text
+                if(me!=Event::none && (extras.event==Event::none || extras.event==Event::selectObject || extras.event==Event::wrap || extras.event==Event::largeMovement || me==Event::errorAlert)) {extras.event=me;flags|=flagEvents;}}
+            element_=Element{};
+        }
+        alarmPlayed_=false;extras.absolute=options_.absoluteColours;
+        if((!(flags&(flagVoice|flagIcons)) && extras.event==Event::none && extras.stereo==stereoOff && !(extras.sounds && extras.element.count>=2)) || stopped_ || !in || !in[0])return false;
         Grid& g=grid_;g.rows=rows_<Grid::maxRows?rows_:Grid::maxRows;g.columns=columns_;
         size_t fgCount[16]={};
         uint16_t fonts[8]={};size_t fontCount[8]={};size_t fontKinds=0;
@@ -4076,7 +4338,7 @@ private:
         return Annotate<speechtext::ownOpen,speechtext::ownClose>(in,g,base,flags,hint,out,capacity,extras);
     }
     // ---- r393 speech history (Insert+H), like NVDA's Speech History ------
-    void AddHistory(const char16_t* text) {
+    void AddHistory(const char16_t* text,uint8_t mark=0) {
         if(!text)return;
         // Built apart and copied in only when kept: with the ring full the next
         // slot is the oldest entry, which a repeated or empty utterance erased.
@@ -4098,7 +4360,28 @@ private:
             if(last[k]==slot[k])return;   // the same words again (a repeated key)
         }
         for(size_t k=0;k<=at;++k)history_[historyNext_][k]=slot[k];
+        historyMark_[historyNext_]=mark;
         historyNext_=(historyNext_+1)%historySize;if(historyCount_<historySize)++historyCount_;
+    }
+    static constexpr uint8_t historyError=1,historyWarning=2,historyMessage=3,historyEntry=4;
+    uint8_t historyMark_[64]={};uint8_t historyFilter_=0;
+    uint8_t HistoryMark(size_t i) const {return historyMark_[(historyNext_+historySize-historyCount_+i)%historySize];}
+    bool HistoryShown(size_t i) const {return !historyFilter_ || HistoryMark(i)==historyFilter_;}
+    // r410 (answer 11): the last message (error, warning or boot message) again, on a shortcut.
+    char16_t lastMessage_[800]={},lastAlarm_[800]={};uint8_t lastMessageKind_=0,lastAlarmKind_=0;bool alarmArmed_=false,alarmPlayed_=false,messageError_=false;uint64_t alarmTick_=0,messageStart_=0;
+    void SayLastMessage() {
+        const bool pl=options_.polish;
+        if(!lastMessage_[0]) {SayOwn(pl?u"Nie by\x0142o jeszcze \x017c" u"adnego komunikatu.":u"There has been no message yet.");return;}
+        static char16_t text[900];size_t at=0;auto put=[&](const char16_t* s) {while(*s && at+2<900)text[at++]=*s++;};
+        // session 4: pressed twice - the last ERROR or WARNING, also when ordinary messages came after it
+        const bool alarm=pressCount_>=2;
+        if(alarm && !lastAlarm_[0]) {SayOwn(pl?u"Nie było jeszcze błędu ani ostrzeżenia.":u"There has been no error or warning yet.");return;}
+        const auto kind=formatting::Kind(alarm?lastAlarmKind_:lastMessageKind_);
+        text[at++]=speechtext::ownOpen;
+        put(kind==formatting::Kind::error?(pl?u"Ostatni b\x0142\x0105" u"d: ":u"Last error: "):kind==formatting::Kind::warning?(pl?u"Ostatnie ostrze\x017c" u"enie: ":u"Last warning: "):(pl?u"Ostatni komunikat: ":u"Last message: "));
+        text[at++]=speechtext::ownClose;put(alarm?lastAlarm_:lastMessage_);text[at]=0;
+        element_=formatting::Element{};element_.kind=kind;
+        historyOpen_=true;Speak(text);historyOpen_=false;   // said again, not a new history entry
     }
     const char16_t* HistoryEntry(size_t i) const {return history_[(historyNext_+historySize-historyCount_+i)%historySize];}
     void SayHistoryEntry(const char16_t* head) {
@@ -4106,6 +4389,9 @@ private:
         char16_t text[historyLength+200];size_t at=0;
         auto put=[&](const char16_t* s) {while(*s && at+2<sizeof(text)/2)text[at++]=*s++;};
         if(head) {text[at++]=speechtext::ownOpen;put(head);text[at++]=speechtext::ownClose;}
+        {static const char16_t* const markPl[]={u"",u"b\x0142\x0105" u"d: ",u"ostrze\x017c" u"enie: ",u"komunikat: ",u"pozycja: "};
+         static const char16_t* const markEn[]={u"",u"error: ",u"warning: ",u"message: ",u"entry: "};
+         const uint8_t m=HistoryMark(historyIndex_);if(m && m<5) {text[at++]=speechtext::ownOpen;put((pl?markPl:markEn)[m]);text[at++]=speechtext::ownClose;}}
         put(HistoryEntry(historyIndex_));
         if(options_.positions) {
             text[at++]=speechtext::ownOpen;put(pl?u"; wypowiedź ":u"; utterance ");
@@ -4118,16 +4404,33 @@ private:
         const bool pl=options_.polish;insertArmed_=false;
         if(open && !historyCount_) {SayOwn(pl?u"Historia mowy jest pusta.":u"The speech history is empty.");return;}
         if(!open) {historyOpen_=false;SayOwn(pl?u"Historia mowy zamknięta.":u"Speech history closed.");return;}
-        historyOpen_=true;historyIndex_=historyCount_-1;
+        historyOpen_=true;historyIndex_=historyCount_-1;historyFilter_=0;
         SayHistoryEntry(pl?u"Historia mowy, rozruch wstrzymany. Strzałka w górę: starsze, w dół: nowsze, Escape zamyka. ":u"Speech history, boot paused. Up: older, Down: newer, Escape closes. ");
     }
     bool HistoryCommand(char16_t c) {
         const bool pl=options_.polish;
         switch(c) {
+            // r410 (answer 15): Left / Right choose what is shown: everything, errors, warnings, messages, entries
+            case listFilterNext:case listFilterPrevious: {
+                static const char16_t* const namePl[]={u"Wszystko",u"Tylko b\x0142\x0119" u"dy",u"Tylko ostrze\x017c" u"enia",u"Tylko komunikaty",u"Tylko pozycje menu"};
+                static const char16_t* const nameEn[]={u"Everything",u"Errors only",u"Warnings only",u"Messages only",u"Menu entries only"};
+                historyFilter_=uint8_t((historyFilter_+(c==listFilterNext?1:4))%5);
+                size_t n=0,newest=SIZE_MAX;for(size_t i=0;i<historyCount_;++i)if(HistoryShown(i)) {++n;newest=i;}
+                char16_t head[120];size_t at=0;const char16_t* w=(pl?namePl:nameEn)[historyFilter_];while(*w)head[at++]=*w++;head[at++]=u',';head[at++]=u' ';Number(head,at,n);head[at++]=u'.';head[at++]=u' ';head[at]=0;
+                if(newest==SIZE_MAX) {SayOwn(head);return true;}
+                historyIndex_=newest;SayHistoryEntry(head);return true;}
+            case listPrevious: {size_t i=historyIndex_;while(i && !HistoryShown(i-1))--i;if(i) {historyIndex_=i-1;break;}}
+                {SayOwn(pl?u"Najstarsza wypowied\x017a":u"Oldest utterance");return true;}
+            case listNext: {size_t i=historyIndex_+1;while(i<historyCount_ && !HistoryShown(i))++i;if(i<historyCount_) {historyIndex_=i;break;}}
+                {SayOwn(pl?u"Najnowsza wypowied\x017a":u"Newest utterance");return true;}
+            case listFirst: {size_t i=0;while(i<historyCount_ && !HistoryShown(i))++i;if(i<historyCount_)historyIndex_=i;break;}
+            case listLast: {size_t i=historyCount_;while(i && !HistoryShown(i-1))--i;if(i)historyIndex_=i-1;break;}
+#if 0
             case listPrevious:if(historyIndex_)--historyIndex_;else {SayOwn(pl?u"Najstarsza wypowiedź":u"Oldest utterance");return true;}break;
             case listNext:if(historyIndex_+1<historyCount_)++historyIndex_;else {SayOwn(pl?u"Najnowsza wypowiedź":u"Newest utterance");return true;}break;
             case listFirst:historyIndex_=0;break;
             case listLast:historyIndex_=historyCount_-1;break;
+#endif
             case listClose:case u'H':OpenHistory(false);return true;
             case 0x13:break;
             default:return true;
@@ -4345,6 +4648,7 @@ private:
         }
     }
     bool Injected(uint16_t& scan,char16_t& ch) {
+        if(NavInjected(scan,ch))return true;   // r410: arrows that move the program's selection to a chosen list element
         // r397: a paste in progress: one character per read; the next one is armed at once.
         if(pasteLength_ && pasteAt_<pasteLength_ && !stopped_ && !suspended_) {
             scan=0;ch=paste_[pasteAt_++];revealArmed_=false;
@@ -4364,6 +4668,10 @@ private:
     // 2 s after the message for any key, "always" shows the menu at once.
     // Runs at the caller's TPL (TPL_APPLICATION): speech and the key are
     // set up under Guard, so the timer never pumps a voice being replaced.
+    // r410 (user, answer 3): the countdown is heard, not spoken: one tick a second whose pitch rises as the
+    // time runs out (600 Hz with 30 s or more left, 30 Hz higher for every second less: 1470 Hz at 1 s), then
+    // the long 880 Hz end tone. Until r410 every tick was 1000 Hz.
+    static uint32_t TickHz(long left) {return left>=30?600u:left<1?1500u:uint32_t(600+(30-left)*30);}
     void HiddenMenuPrompt() {
         hiddenPending_=false;
         const managers::Profile* p=hiddenProfile_;hiddenProfile_=nullptr;
@@ -4375,8 +4683,16 @@ private:
         else o.Puts(pl?p->hiddenHint->pl:p->hiddenHint->en);
         if(!canReveal) {{Guard guard(boot_);SayOwn(text);}return;}
         if(mode==2) {o.Puts(pl?u" Charon je pokazuje.":u" Charon shows it.");{Guard guard(boot_);SayOwn(text);}{Guard guard(boot_);Arm(p->revealScan,p->revealChar);}return;}
-        o.Puts(pl?u" Naciśnij dowolny klawisz w ciągu 2 sekund, aby je pokazać.":u" Press any key within 2 seconds to show it.");
-        {Guard guard(boot_);SayOwn(text);}
+        // r410 (user, answer 5): the time to ask for the menu depends on the verbosity profile: beginner 5 s with
+        // the full hint, normal 2 s, expert a short sound and 1 s (no words).
+        const unsigned waitMs=Item(formatting::itemWaitLong)?5000:Item(formatting::itemWaitShort)?1000:2000;
+        if(Item(formatting::itemWaitLong))o.Puts(pl?u" Naciśnij dowolny klawisz w ciągu 5 sekund, aby je pokazać. Bez klawisza uruchomi się pozycja domyślna.":u" Press any key within 5 seconds to show it. Without a key the default entry starts.");
+        else o.Puts(pl?u" Naciśnij dowolny klawisz w ciągu 2 sekund, aby je pokazać.":u" Press any key within 2 seconds to show it.");
+        if(Terse()) {if(options_.effects && options_.effects->Tone)options_.effects->Tone(options_.effects->context,1320,120);}
+        else {Guard guard(boot_);SayOwn(text);}
+#ifdef HAK_CHARON_TRACE
+        charontrace::Value("CHARON hidden menu wait ms",waitMs);
+#endif
         const efi_tpl current=boot_->RaiseTPL(TPL_HIGH_LEVEL);boot_->RestoreTPL(current);
 #ifdef HAK_CHARON_READER_TRACE
         charontrace::Value("reader hidden prompt tpl",uint64_t(current)|(uint64_t(originalRead_!=nullptr)<<32));
@@ -4388,7 +4704,7 @@ private:
             const efi_status got=(originalRead_ && inputHooked_)?originalRead_(inputHooked_,&k):table_->ConIn->ReadKeyStroke(table_->ConIn,&k);
             if(got==EFI_SUCCESS && (k.ScanCode || k.UnicodeChar)) {pressed=true;break;}
             const bool idle=!fx || !fx->SpeechIdle || fx->SpeechIdle(fx->context);
-            if(idle) {quiet+=10;if(quiet>=2000)break;}
+            if(idle) {quiet+=10;if(quiet>=waitMs)break;}
             if(originalStall_)originalStall_(10000);else boot_->Stall(10000);
         }
 #ifdef HAK_CHARON_READER_TRACE
@@ -4398,8 +4714,58 @@ private:
     }
     // A countdown of a known boot manager: one key no manager gives a
     // meaning to (F11) stops it, so the menu can be listened to.
+    // r410 (session 4): a reader command is a key press of the user. A known boot manager that is counting down
+    // gets the same harmless key (F11) once the reader's list or prompt is closed, so its own timeout does not
+    // start an entry while the user listens. The reader says nothing: the ticks stop.
+    void NoteReaderUse() {
+        if(countdownStopped_ || options_.reviewOnly || !RunningProfile())return;
+        // a countdown is on the screen - or the manager has not had a key yet: some count down without showing
+        // it (OpenCore's picker started its default entry while the reader was asked about the screen)
+        const bool shown=countdownSeen_ && tick_-countdownSeen_<250;
+        if(!shown && everKey_)return;
+        countdownKeyDue_=true;countdownShown_=shown;
+        // H1: the words need a countdown the reader knows of: a number seen changing, or the model's countdown row
+        if(!shown && Item(formatting::itemHints)) {BuildModel();countdownShown_=model_.countdown.found && model_.countdown.sure;}
+    }
+    void CountdownKeyWork() {
+        StopSoundWork();
+        if(!countdownKeyDue_ || Paused())return;
+        countdownKeyDue_=false;
+        if(countdownStopped_)return;
+        countdownStopped_=true;ArmStopKey();StopSound(countdownShown_);
+#ifdef HAK_CHARON_TRACE
+        charontrace::Value("CHARON countdown key after reader command",0x15);
+#endif
+    }
+    // r410 (user, fourth set H1): the stop key has its own short sound, "countdown stopped": two sine notes
+    // falling a fifth, 660 Hz for 60 ms and, 90 ms after its start, 440 Hz for 120 ms. No other reader sound is
+    // a falling pair (ticks: one 40 ms note of 600..1500 Hz; end tone 880 Hz for 500 ms; warning 523 Hz 140 ms;
+    // error 196 Hz square; risk 330 Hz square; hidden menu 1320 Hz 120 ms). The words only where the profile
+    // gives hints (beginner), only when a countdown was on the screen, and after the command's own answer.
+    static constexpr unsigned stopHertzFirst=660,stopHertzSecond=440,stopMsFirst=60,stopMsSecond=120;
+    void StopSound(bool shown) {
+        auto* fx=options_.effects;
+        if(fx && fx->Tone) {fx->Tone(fx->context,stopHertzFirst,stopMsFirst);stopNoteAt_=tick_+9;}
+        stopWords_=shown && Item(formatting::itemHints);stopWordsTick_=tick_;
+#ifdef HAK_CHARON_TRACE
+        charontrace::Value("CHARON countdown stopped sound, words",stopWords_);
+#endif
+    }
+    void StopSoundWork() {
+        auto* fx=options_.effects;
+        if(stopNoteAt_ && tick_>=stopNoteAt_) {stopNoteAt_=0;if(fx && fx->Tone)fx->Tone(fx->context,stopHertzSecond,stopMsSecond);}
+        if(!stopWords_ || stopNoteAt_ || tick_-stopWordsTick_<50)return;
+        const bool idle=!pending_[0] && (!fx || !fx->SpeechIdle || fx->SpeechIdle(fx->context));
+        if(!idle && tick_-stopWordsTick_<1500)return;   // at most 15 s behind the command's answer
+        stopWords_=false;
+        SayOwn(options_.polish?u"Odliczanie zatrzymane.":u"Countdown stopped.");
+    }
+    bool countdownShown_=false,stopWords_=false;uint64_t stopNoteAt_=0,stopWordsTick_=0;
+    // The key that stops a manager's countdown and means nothing else to it: F11; Limine counts only keys it
+    // knows (seen in r410: F11 did not stop it), so it gets a character its menu ignores.
+    void ArmStopKey() {if(bootManager_ && managers::SameName(bootManager_,u"Limine"))Arm(0,u'`');else Arm(0x15,0);}
     void StopCountdown() {
-        countdownStopped_=true;Arm(0x15,0);
+        countdownStopped_=true;ArmStopKey();
         SayOwn(options_.polish?u"Charon zatrzymuje odliczanie.":u"Charon stops the countdown.");
     }
     // r393 commands: formatting mode, history, changes, regions.
@@ -4407,6 +4773,11 @@ private:
         if(inputHelp_)return false;
         const bool pl=options_.polish;
         switch(c) {
+            case u'M':SayLastMessage();return true;   // r410
+            case u'O':case u'E':case u'A':return MoreCommand(c);   // r410: pointer, entry information, click
+            case u'T': {options_.readerBar=!options_.readerBar;if(!options_.readerBar)BarRestore();
+                SayOwn(options_.readerBar?(pl?u"Pasek czytnika w\x0142\x0105" u"czony: dolny wiersz ekranu pokazuje, co m\x00f3wi\x0119.":u"Reader bar on: the bottom screen line shows what I say.")
+                    :(pl?u"Pasek czytnika wy\x0142\x0105" u"czony.":u"Reader bar off."));return true;}
             case u'G': {
                 const uint8_t mode=uint8_t(((options_.formatFlags&3)+1)&3);
                 options_.formatFlags=uint8_t((options_.formatFlags&~3)|mode);
@@ -4415,7 +4786,7 @@ private:
                 SayOwn((pl?namesPl:namesEn)[mode]);return true;
             }
             case u'H':OpenHistory(!historyOpen_);return true;
-            case u'D':SayChanges();return true;
+            case u'D':if(pressCount_>=2)SayChangesSinceEntry();else SayChanges();return true;   // r410: twice = since this screen appeared
             case u'{':SayRegion(false);return true;
             case u'}':SayRegion(true);return true;
             case u'W':case u'S':case u'R':case u'C':case u'K':case u'V':case u'I':SpeakupCommand(c);return true;   // r397
@@ -4423,7 +4794,7 @@ private:
         }
     }
     // ---- r390 key list (Insert+F1 / Alt+F1, like Fenrir and Speakup) ----
-    static constexpr char16_t listPrevious=0x0e,listNext=0x0f,listFirst=0x10,listLast=0x11,listClose=0x12;
+    static constexpr char16_t listPrevious=0x0e,listNext=0x0f,listFirst=0x10,listLast=0x11,listClose=0x12,listFilterNext=0x1c,listFilterPrevious=0x1d;
     // r393: the running boot manager's own keys come first in the list.
     const managers::Profile* RunningProfile() const {return bootManager_?managers::Find(bootManager_):nullptr;}
     size_t KeyCount() const {const auto* p=RunningProfile();return ProgramKeyCount()+screenKeyCount_+keyhelp::count+(p?p->keyCount:0);}
@@ -4508,6 +4879,7 @@ private:
         switch(key.ScanCode) {
             case 1:return listPrevious;case 2:return listNext;case 5:case 9:return listFirst;case 6:case 0xa:return listLast;
             case 0x17:case 0x0b:return listClose;
+            case 3:return listFilterNext;case 4:return listFilterPrevious;   // r410: Right / Left (the history's filter)
             default:break;
         }
         if(!key.ScanCode && key.UnicodeChar==13)return 0x13;   // Enter: the entry again
@@ -4535,7 +4907,7 @@ private:
         switch(key.UnicodeChar) {case 13:return u'i';case u' ':return u'k';case 9:return u'e';case u'\\':return u'\\';default:break;}
         return InsertCommand(key);
     }
-    bool Paused() const {return reviewPause_ || helpOpen_ || historyOpen_;}
+    bool Paused() const {return reviewPause_ || helpOpen_ || historyOpen_ || navMode_;}
     // ---- r390 braille: the display follows the review cursor ------------
     void BrailleFound() {
         char16_t text[96];speechtext::Out o{text,96};
@@ -4552,10 +4924,10 @@ private:
             switch(e.key) {
                 case braille::Key::panLeft:
                     if(brailleOffset_>=cells)brailleOffset_-=cells;
-                    else if(reviewRow_<rows_ && NextTextRow(reviewRow_,false)) {const size_t end=RowEnd(reviewRow_);brailleOffset_=end?((end-1)/cells)*cells:0;reviewCol_=brailleOffset_;}
+                    else if(reviewRow_<rows_ && NextTextRow(reviewRow_,false)) {const size_t end=RowEnd(reviewRow_);brailleOffset_=end?((end-1)/cells)*cells:0;reviewCol_=brailleOffset_>=braillePrefix_?brailleOffset_-braillePrefix_:0;}
                     brailleManual_=true;break;
                 case braille::Key::panRight:
-                    if(reviewRow_<rows_ && brailleOffset_+cells<RowEnd(reviewRow_))brailleOffset_+=cells;
+                    if(reviewRow_<rows_ && brailleOffset_+cells<RowEnd(reviewRow_)+braillePrefix_)brailleOffset_+=cells;
                     else if(reviewRow_<rows_ && NextTextRow(reviewRow_,true)) {brailleOffset_=0;reviewCol_=TextStart(reviewRow_);}
                     brailleManual_=true;break;
                 case braille::Key::lineUp:command_=u'u';break;
@@ -4563,7 +4935,7 @@ private:
                 case braille::Key::highlight:command_=u'e';break;
                 case braille::Key::sayLine:command_=u'i';break;
                 case braille::Key::route:
-                    if(reviewRow_<rows_) {reviewCol_=brailleOffset_+e.cell;if(reviewCol_>=columns_)reviewCol_=columns_-1;command_=u',';}
+                    if(reviewRow_<rows_) {reviewCol_=brailleOffset_+e.cell;reviewCol_=reviewCol_>=braillePrefix_?reviewCol_-braillePrefix_:0;if(reviewCol_>=columns_)reviewCol_=columns_-1;command_=u',';}
                     brailleManual_=true;break;
                 default:break;
             }
@@ -4575,17 +4947,30 @@ private:
         size_t row=reviewRow_;
         if(row>=rows_ || !RowHasText(row)) {row=highlight_<rows_?highlight_:lastHighlightRow_;if(row>=rows_)for(size_t r=0;r<rows_;++r)if(RowHasText(r)) {row=r;break;}}
         if(row>=rows_) {braille_.Show(u"",0,0,SIZE_MAX);return;}
+        // r410: a status cell in front of the row (d default entry, s submenu, e edit field, h help, - plain entry)
+        // and, as the user chose, the position at the END of the line (" 2/6"); both from the screen model.
+        static char16_t shown[maxColumns+32];static bool marks[maxColumns+32];   // static: timer only, off the program's stack
+        if(row!=brailleRow_)BuildModel();
+        size_t prefix=BraillePrefix(row,shown,12);
         const size_t cells=braille_.Cells()?braille_.Cells():40,length=RowEnd(row);
-        const size_t cursor=row==reviewRow_?reviewCol_:SIZE_MAX;
-        // The cursor moved by review or speech: its part of the line is shown.
-        if(row!=brailleRow_ || (cursor!=brailleCursor_ && !brailleManual_)) {
-            brailleOffset_=cursor!=SIZE_MAX?(cursor/cells)*cells:0;
-            if(cursor==SIZE_MAX || cursor<cells) {const size_t start=TextStart(row);brailleOffset_=start<cells && cursor<cells?0:brailleOffset_;}
+        // r410 (session 4): a line too long for the display would push the position off its end: then the
+        // position goes into the status cells in front ("- 2/6 Name ...") and stays visible on the first part.
+        char16_t tail[12];size_t tailLength=BrailleSuffix(row,tail,12);
+        if(tailLength && prefix+length+tailLength>cells) {
+            if(prefix && shown[prefix-1]==u' ')--prefix;
+            for(size_t k=0;k<tailLength && prefix<22;++k)shown[prefix++]=tail[k];
+            shown[prefix++]=u' ';tailLength=0;
         }
+        braillePrefix_=prefix;
+        const size_t cursor=row==reviewRow_?reviewCol_+prefix:SIZE_MAX;
+        // The cursor moved by review or speech: its part of the line is shown.
+        if(row!=brailleRow_ || (cursor!=brailleCursor_ && !brailleManual_))brailleOffset_=cursor!=SIZE_MAX?(cursor/cells)*cells:0;
         brailleManual_=false;brailleRow_=row;brailleCursor_=cursor;
-        bool marks[maxColumns]={};
-        if(options_.brailleAttributes)for(size_t c=0;c<length && c<maxColumns;++c)marks[c]=(attr_[row][c]&0x80) && Highlighted(attr_[row][c]);
-        braille_.Show(text_[row],length,brailleOffset_,cursor,options_.brailleAttributes?marks:nullptr);
+        for(size_t c=0;c<prefix;++c)marks[c]=false;
+        for(size_t c=0;c<length && c<maxColumns;++c) {shown[prefix+c]=text_[row][c];marks[prefix+c]=options_.brailleAttributes && (attr_[row][c]&0x80) && Highlighted(attr_[row][c]);}
+        size_t total=prefix+(length<maxColumns?length:maxColumns);
+        for(size_t k=0;k<tailLength;++k) {shown[total]=tail[k];marks[total]=false;++total;}
+        braille_.Show(shown,total,brailleOffset_,cursor,options_.brailleAttributes?marks:nullptr);
     }
     void BlockWhilePaused() {
         if(!Paused() || stopped_ || suspended_ || !boot_)return;
@@ -4617,6 +5002,8 @@ private:
         if(stopped_ || suspended_) {insertArmed_=false;return false;}
         // r390: the numpad key a USB keypad press already reviewed.
         if(keypad_.Consume(key))return true;
+        if(ClickAnswerIn(key))return true;   // r410 H2: Enter confirms a click, any other key cancels; never the program's
+        if(navMode_) {NavKeyIn(key);return true;}   // r410 elements list, find prompt
         if(helpOpen_) {const char16_t c=KeyListKey(key);if(c)command_=c;return true;}
         if(historyOpen_) {const char16_t c=KeyListKey(key);if(c)command_=c;return true;}   // r393 speech history
         if(reviewPause_) {const char16_t c=PauseCommand(key);if(c)command_=c;return true;}
@@ -4657,6 +5044,12 @@ private:
             r->swallowScan_=0;key->ScanCode=0;key->UnicodeChar=0;return EFI_NOT_READY;}   // r388 voice ring arrow
         if(r->pauseSwallowChar_ && key->UnicodeChar==r->pauseSwallowChar_ && !key->ScanCode) {
             r->pauseSwallowChar_=0;key->UnicodeChar=0;return EFI_NOT_READY;}   // r390 Alt+backslash
+        if(r->commandSwallowChar_ && key->UnicodeChar==r->commandSwallowChar_ && !key->ScanCode && r->tick_-r->commandSwallowTick_<50) {
+            r->commandSwallowChar_=0;key->UnicodeChar=0;return EFI_NOT_READY;}   // r410 Control+Alt+character command
+        // (on Charon's own screens the tick count jumps when the work is caught up: the character is the next key read)
+        if(r->commandSwallowChar_ && r->options_.reviewOnly && key->UnicodeChar==r->commandSwallowChar_ && !key->ScanCode) {
+            r->commandSwallowChar_=0;key->UnicodeChar=0;return EFI_NOT_READY;}
+        if(r->commandSwallowChar_ && (r->options_.reviewOnly || r->tick_-r->commandSwallowTick_>=50))r->commandSwallowChar_=0;
         const bool eaten=r->FilterKey(*key);
         if(!eaten)r->NoteKey(key->ScanCode,key->UnicodeChar);
 #ifdef HAK_CHARON_READER_TRACE
@@ -4664,7 +5057,7 @@ private:
 #endif
         // Some programs (GRUB) look at the buffer, not only the status: an
         // eaten key leaves an empty key behind.
-        if(eaten) {key->ScanCode=0;key->UnicodeChar=0;}
+        if(eaten) {key->ScanCode=0;key->UnicodeChar=0;r->ServiceCommand();}
         return eaten?EFI_NOT_READY:EFI_SUCCESS;
     }
     static efi_status EFIAPI HookReadEx(TextInputEx* self,KeyData* data) {
@@ -4696,6 +5089,8 @@ private:
             r->swallowScan_=0;data->key.ScanCode=0;data->state.shift=0;data->state.toggle=0;return EFI_NOT_READY;}}
         if(alt && !control && !data->key.UnicodeChar && data->key.ScanCode==0x0b) {
             data->key.ScanCode=0;data->state.shift=0;data->state.toggle=0;return EFI_NOT_READY;}   // Alt+F1: the key list (notify)
+        if(control && alt && data->key.UnicodeChar && data->key.UnicodeChar!=u'\\' && ReaderKeys::Command(data)) {   // r410: the notify ran it
+            r->commandSwallowChar_=0;data->key.ScanCode=0;data->key.UnicodeChar=0;data->state.shift=0;data->state.toggle=0;return EFI_NOT_READY;}
         if((held&(leftControl|rightControl|leftAlt|rightAlt)) && !r->inputHelp_ && !r->Paused())return status;
         if((held&(leftControl|rightControl|leftAlt|rightAlt)) && (r->inputHelp_ || r->Paused())) {
             data->key.ScanCode=0;data->key.UnicodeChar=0;data->state.shift=0;data->state.toggle=0;return EFI_NOT_READY;}   // the notify named or ran it
@@ -4704,7 +5099,7 @@ private:
 #ifdef HAK_CHARON_READER_TRACE
         charontrace::Value("reader key readex",(uint64_t(eaten)<<40)|(uint64_t(data->key.ScanCode)<<16)|(r->secret_.Entry() && data->key.UnicodeChar>=32?u'*':data->key.UnicodeChar));   // r407
 #endif
-        if(eaten) {data->key.ScanCode=0;data->key.UnicodeChar=0;data->state.shift=0;data->state.toggle=0;}
+        if(eaten) {data->key.ScanCode=0;data->key.UnicodeChar=0;data->state.shift=0;data->state.toggle=0;r->ServiceCommand();}
         return eaten?EFI_NOT_READY:EFI_SUCCESS;
     }
     // ---- events --------------------------------------------------------
@@ -4742,7 +5137,11 @@ private:
             if(!(self.tick_%100) && !self.braille_.Present() && self.braille_.Find(self.boot_))self.BrailleFound();
         }
         if(!(self.tick_%2))self.PollModifiers();   // r389: Ctrl silences
-        if(self.pendingInfo_[0] && !self.anyDirty_ && self.tick_-self.lastOutput_>=6)self.SendMessages();
+        self.WalkWork();   // r410: the pointer walk of the control reader
+        self.ClickAskWork();
+        self.CountdownKeyWork();
+        if(self.barShown_ && self.tick_-self.barTick_>=500)self.BarRestore();   // r410: the reader bar leaves after 5 s
+        if(self.pendingInfo_[0] && ((self.pendingGone_ && messagequeue::SendWhenCleared(self.ReadsEverything(),self.PendingAlarm())) || (!self.anyDirty_ && self.tick_-self.lastOutput_>=6)))self.SendMessages();   // session 4: text whose screen was cleared does not wait
         if(self.command_) {const char16_t c=self.command_;self.command_=0;self.Command(c);}
         if(self.braille_.Present() && !(self.tick_%3))self.BrailleWork();   // r390
         // Speak after output pauses for 120 ms, or every 500 ms while an
@@ -4754,7 +5153,7 @@ private:
             if(!self.quiet_) {
                 if(self.heldMenu_[0])self.Speak(self.heldMenu_);
                 auto* fx=self.options_.effects;
-                if(self.heldInfo_[0] && fx && fx->SpeakMessage && self.options_.messageVoice) {self.Add(self.pendingInfo_,1600,self.heldInfo_);self.infoTick_=self.tick_;}
+                if(self.heldInfo_[0] && fx && fx->SpeakMessage && self.options_.messageVoice) self.QueueMessage(self.heldInfo_);
             }
             self.heldMenu_[0]=0;self.heldInfo_[0]=0;
         } else if(self.quietMenu_==2 && self.tick_-self.countdownSeen_>=160)self.quietMenu_=0;
@@ -4797,7 +5196,11 @@ private:
         // text, no key) and then the blank frame holds for a further 3 s.
         if(!self.options_.reviewOnly && !self.pixelDirty_ && self.tick_-self.lastOutput_>=250 && self.tick_-self.lastBlt_>=250
             && self.tick_-self.lastText_>=250 && self.tick_-self.keyTick_>=250 && !(self.tick_%20)) {
-            const int kind=self.SecretConsole()?0:self.ClassifyBlankScreen();   // r407: a password prompt on a black console is no stuck screen
+            int kind=self.SecretConsole()?0:self.ClassifyBlankScreen();   // r407: a password prompt on a black console is no stuck screen
+            // r410 (session 4): a screen on which the reader sees a menu or an icon picker (a list on black, icons on
+            // a blue wallpaper) is not stuck or blank. Heard on systemd-boot, rEFInd and a themed rEFInd while reader
+            // commands were used. A blue error screen with text alone (Windows Recovery) is still announced.
+            if(kind) {self.BuildModel();const screenmodel::View v=self.ModelView();if((self.model_.list.found && self.model_.list.sure) || v.iconCount)kind=0;}
             if(kind) {
                 if(kind!=self.blankKind_) {self.blankKind_=kind;self.blankSince_=self.tick_;self.blankAnnounced_=false;}
                 // ~7 s of a stuck blank frame. The cooldown only suppresses the
@@ -4852,6 +5255,7 @@ private:
     uint64_t GraphicsOrBusy() const {return busyAnnounced_ && busyAt_>=graphicsActivity_?busyAt_+1:graphicsActivity_;}
     void Quiesce(bool announce,bool leaving=false) {
         if(stopped_)return;
+        BarRestore();   // r410: the next program gets its own bottom row back
         // r366: a program swapped in by a chain loader that ends firmware
         // services at once (Memtest86+) is named with the handoff.
         char16_t named[96]={};
@@ -4869,6 +5273,12 @@ private:
             static const char16_t* plTake[]={u"No i chuj, system przejmuje stery, ja spadam.",u"System przejmuje sterowanie, dalej radź sobie sam, kurwa.",u"Pa, frajerze, system przejmuje stery."};
             static const char16_t* enTake[]={u"Fuck it, the system takes over, I’m out.",u"The system takes over, you’re on your own now, damn it.",u"Bye, sucker, the system takes the wheel."};
             text=OwnPhrase(text,plTake,enTake,3);
+            // r410: a test tool that ends firmware services draws and reads keys itself from here on
+            // (Memtest86+: boot/efisetup.c calls ExitBootServices, then its own frame buffer text and
+            // keyboard drivers): its screen cannot be read. Said instead of leaving the user in silence.
+            if(bootManager_ && BootTool(bootManager_) && (bootManager_[0]==u'M' && bootManager_[1]==u'e' && bootManager_[2]==u'm'))
+                text=options_.polish?u"Ten program testuje pamięć bez usług firmware: sam rysuje ekran i czyta klawiaturę, więc Charon nie może go czytać i milknie. Test trwa; Escape kończy go i uruchamia komputer ponownie. Wyniki można czytać przez port szeregowy."
+                    :u"This program tests memory without firmware services: it draws the screen and reads the keyboard itself, so Charon cannot read it and goes silent. The test is running; Escape ends it and restarts the computer. Its results can be read on a serial console.";
             static char16_t both[600];both[0]=0;
             // r400: with only pictures on the screen (a loading logo), say what is shown.
             static char16_t shown[300];shown[0]=0;
@@ -5058,8 +5468,9 @@ private:
         else Speak(text);
         // Windows Boot Manager draws with its own TrueType fonts; they are
         // read from the disk it starts from (never shipped with Charon).
-        countdownStopped_=false;revealArmed_=false;
+        countdownStopped_=false;countdownKeyDue_=false;revealArmed_=false;stopWords_=false;stopNoteAt_=0;clickAsk_=false;
         if(!tool)NoteHiddenMenu(name,loaded);   // r393
+        LoadEntryInfo(name,loaded);             // r410: what its entries start
         if(name[0]==u'W') {LoadBootFonts(loaded->DeviceHandle);HookBlockReads();}
         else LoadCellFont(static_cast<const uint8_t*>(loaded->ImageBase),size);
         if(GrubFamily(name))LoadGrubFonts(loaded->DeviceHandle);
@@ -5344,6 +5755,8 @@ private:
         // at a line end (the previous program's output) put the first letter
         // on the line above ("i. PXE initialising", "L. oading bootloader").
         if(r.Paused() && self==r.real_)r.BlockWhilePaused();   // r390 paused boot
+        // r410: the program writes on the bottom row (or scrolls from it): its row comes back first
+        if(r.barShown_ && self==r.real_ && self->Mode && (size_t(self->Mode->CursorRow)+1>=r.barRows_ || size_t(self->Mode->CursorRow)+1>=r.rows_)) {Guard guard(r.boot_);r.BarRestore();}
         int32_t startColumn=-1,startRow=-1;
         if(self==r.real_ && self->Mode) {startColumn=self->Mode->CursorColumn;startRow=self->Mode->CursorRow;}
         r.inConOut_=true;const auto status=r.saved_.OutputString(self,text);r.inConOut_=false;
@@ -5364,12 +5777,12 @@ private:
         return status;
     }
     static efi_status EFIAPI ProxyReset(efi_simple_text_output_protocol* self,bool extended) {
-        auto& r=Self(self);r.inConOut_=true;const auto status=r.saved_.Reset(self,extended);r.inConOut_=false;
+        auto& r=Self(self);r.barShown_=false;r.inConOut_=true;const auto status=r.saved_.Reset(self,extended);r.inConOut_=false;
         if(!r.installed_)return status;
         Guard guard(r.boot_);r.QueryDimensions();r.ClearShadow();return status;
     }
     static efi_status EFIAPI ProxySetMode(efi_simple_text_output_protocol* self,size_t mode) {
-        auto& r=Self(self);r.inConOut_=true;const auto status=r.saved_.SetMode(self,mode);r.inConOut_=false;
+        auto& r=Self(self);r.barShown_=false;r.inConOut_=true;const auto status=r.saved_.SetMode(self,mode);r.inConOut_=false;
         if(!r.installed_)return status;
         Guard guard(r.boot_);r.QueryDimensions();r.ClearShadow();return status;
     }
@@ -5379,7 +5792,7 @@ private:
         return status;
     }
     static efi_status EFIAPI ProxyClear(efi_simple_text_output_protocol* self) {
-        auto& r=Self(self);r.inConOut_=true;const auto status=r.saved_.ClearScreen(self);r.inConOut_=false;
+        auto& r=Self(self);r.barShown_=false;r.inConOut_=true;const auto status=r.saved_.ClearScreen(self);r.inConOut_=false;
         if(!r.installed_)return status;
         Guard guard(r.boot_);r.QueryDimensions();r.SnapshotPreClear();r.ClearShadow();r.baseAttribute_=r.attribute_;r.clearedScreen_=true;return status;
     }
@@ -5404,6 +5817,8 @@ private:
     void ClearShadow() {
         for(size_t r=0;r<maxRows;++r) {for(size_t c=0;c<maxColumns;++c) {text_[r][c]=u' ';attr_[r][c]=0;prevRaw_[r][c]=0;}dirty_[r]=false;}
         secret_.Reset();   // r407
+        enterDrawing_=true;   // r410: a new screen is being drawn
+        if(pendingInfo_[0])pendingGone_=true;   // session 4: its text is gone; it is sent at once (CharonMessageQueue.h)
         column_=row_=0;highlight_=SIZE_MAX;anyDirty_=false;menuAnnounced_=false;
         // r397: a program that redraws its whole screen on every update
         // (Windows Memory Diagnostic's options) gets the same selection back
@@ -5483,10 +5898,12 @@ private:
     bool quiet_=false;unsigned rate_=10;      // r379 automatic reading, speech rate (tenths)
     unsigned pitch_=10,volume_=10,voiceSetting_=0;   // r388 voice settings ring
     size_t caretLineX_[maxRows]={};
+    uint16_t lineBaseline_[maxRows]={};   // r410: the baseline (screen row of pixels) of the line last placed in each grid row
     char16_t lastButton_[96]={};uint64_t lastButtonTick_=0;   // r396d
     bool suspectRead_=false;unsigned suspectRetries_=0;   // r397: a half-drawn line, read again
     size_t lastGroupRow_=SIZE_MAX;   // r397: heading row of the selection's group
     const void* outputImage_=nullptr;   // r397: the program whose text the shadow cursor follows
+    char16_t iconName_[160]={};const void* iconNameImage_=nullptr;   // r410: the selected icon's name as the program shows it
     char16_t lastIconInfo_[256]={};   // r397: hint text an icon picker redraws with its item name
     uint16_t pendingSynth_=0xffff;   // r396: ring synthesizer choice waiting for TPL_APPLICATION
     volatile uint16_t swallowScan_=0;
@@ -5522,7 +5939,8 @@ private:
     char16_t beforeKey_[maxRows][maxColumns]={};size_t beforeRows_=0,beforeColumns_=0;bool haveBefore_=false;
     size_t regionIndex_=SIZE_MAX;uint64_t regionScreen_=0;
     // r393 boot-manager handling: hidden menu prompt, a key sent to the manager.
-    bool hiddenPending_=false,revealArmed_=false,countdownStopped_=false;uint16_t revealScan_=0;char16_t revealChar_=0;uint64_t revealUntil_=0;
+    char16_t commandSwallowChar_=0;uint64_t commandSwallowTick_=0;   // r410: a Control+Alt+character command's character
+    bool hiddenPending_=false,revealArmed_=false,countdownStopped_=false,countdownKeyDue_=false;uint16_t revealScan_=0;char16_t revealChar_=0;uint64_t revealUntil_=0;
     const managers::Profile* hiddenProfile_=nullptr;bool hiddenMaybe_=false;
     bool installed_=false,stopped_=false,handedOff_=false,failed_=false,anyDirty_=false;
     bool hooksRemoved_=false,foreignConOut_=false,suspended_=false,farewell_=false;

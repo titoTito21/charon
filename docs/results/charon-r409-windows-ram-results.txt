@@ -1,0 +1,391 @@
+Charon r409: Windows without a USB stick, running from memory, and the gaps left by the dialogue batch
+======================================================================================================
+Date: 2026-11-23. Tree: work/charon-src-r395 (other agents edited it at the same time; line numbers are of about
+14:30 and will move). Evidence: work/r409win-evidence. Builds: work/charon-win-r409w4 (CHARON.EFI) and
+work/charon-win-r409w4-drv (CHARONVOICE.EFI); r409w1..w3 and r409w-probe..probe4 are earlier builds of the day.
+Words: RAN AND PASSED = executed here, result seen. COMPILED ONLY = in a build that succeeded, never executed.
+NOT VERIFIED = neither. Nothing was packaged or released.
+
+Summary
+  Windows from a RAM disk: GATED OFF, by measurement (section 2). Windows 11 Setup does not see a firmware RAM disk
+    once WinPE runs, whatever the ACPI NFIT says about it. The code that makes such a disk stays in the tree but no
+    release path calls it; the old manual "download to a RAM disk" choice for Windows is removed.
+  What the user gets instead (section 3): Windows with no stick and nothing to prepare, fully unattended, through a
+    temporary partition on the target disk. It works from Charon in memory and onto Charon's own disk.
+  Section 4: Install-Charon.ps1 "error 1314". Section 5: Part 2 items. Section 6: the coordinator's four findings.
+  Section 7: tests and builds. Section 8: changed files. Section 9: what remains.
+
+
+1. What the documentation says (read on 2026-11-23; quotes are literal)
+-----------------------------------------------------------------------
+uefi.org refuses automated fetches; the UEFI and ACPI texts were read from the Wayback Machine's copies of the
+official pages. Microsoft Learn and the EDK2 sources were read directly.
+
+1.1 UEFI 2.10, 13.17 RAM Disk Protocol  https://uefi.org/specs/UEFI/2.10/13_Protocols_Media_Access.html
+    "The consumer of this protocol is responsible for allocating/freeing memory used by RAM Disk if needed and
+    deciding the initial content". Register's RamDiskType: "The GUID can be any of the values defined in RAM Disk,
+    or a vendor defined GUID." Nothing in the section about the memory type, ExitBootServices or the NFIT.
+    Device path node (10.3.5.9, https://uefi.org/specs/UEFI/2.10_A/10_Protocols_Device_Path_Protocol.html): type 4,
+    sub-type 9, 38 bytes; "The Disk Type GUID values used in the RAM Disk device path must match the corresponding
+    values in the Address Range Type GUID of the ACPI NFIT table."
+    GUIDs: virtual disk 77AB535A-45FC-624B-5560-F7B281D1F96E, virtual CD 3D5ABD30-4175-87CE-6D64-D2ADE523C4BB,
+    persistent virtual disk 5CEA02C9-4D07-69D3-269F-4496FBE096F9, persistent virtual CD 08018188-42CD-BB48-100F-
+    5387D53DED3D.
+1.2 ACPI 6.5, 5.2.26.2 NFIT SPA Range Structure  https://uefi.org/specs/ACPI/6.5/05_ACPI_Software_Programming_Model.html
+    "System physical address ranges described as Virtual CD or Virtual Disk shall be described as AddressRangeReserved
+    in E820, and EFI Reserved Memory Type in the UEFI GetMemoryMap." The specification defines the regions and
+    prescribes nothing about what an operating system does with them.
+1.3 EDK2 RamDiskDxe  https://github.com/tianocore/edk2/blob/master/MdeModulePkg/Universal/Disk/RamDiskDxe/
+    RamDiskProtocol.c: a disk is put into the NFIT only when its memory is EfiReservedMemoryType, and only when
+    EFI_ACPI_TABLE_PROTOCOL and EFI_ACPI_SDT_PROTOCOL were found; Register ignores the result. When no NFIT existed it
+    also installs an SSDT with the NVDIMM root device. RamDiskDriver.c: both protocols are looked up in a "ready to
+    boot" callback ("If both protocols are produced, publish all the reserved memory type RAM disks to the NVDIMM
+    Firmware Interface Table"); before that event nothing is published. OvmfPkgX64.dsc includes RamDiskDxe.inf
+    unconditionally and sets PcdInstallAcpiSdtProtocol TRUE.
+1.4 Windows and NFIT virtual disks/CDs: NO OFFICIAL STATEMENT FOUND - neither that Windows 10/11, WinPE or Setup
+    mounts such a region, nor which driver would, nor anything from Microsoft about UEFI HTTP boot of a Windows ISO.
+    (Dell KB 000122099, a vendor page, names scmbus.sys, nvdimm.sys and pmem.sys for real NVDIMM-N modules only.)
+1.5 VMware Workstation firmware and EFI_RAM_DISK_PROTOCOL: no official statement found. Measured: section 2.
+1.6 Answer file search order  https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/windows-setup-automation-overview
+    Eight places, in order: the registry value HKLM\System\Setup\UnattendFile; %WINDIR%\Panther\Unattend (not
+    searched when Setup starts from Windows PE); %WINDIR%\Panther; "Removable read/write media in order of drive
+    letter, at the root of the drive" ("The name of the answer file must be Autounattend.xml"); removable read-only
+    media, the same; "windowsPE and offlineServicing configuration passes: \Sources directory in a Windows
+    distribution" (Autounattend.xml); %SYSTEMDRIVE%; the drive Setup runs from. So the root of a FIXED disk's
+    partition is not a documented place; \Sources of the distribution is. Charon writes the file to both on a
+    partition. Measured (section 3): Setup took the answer file from the temporary partition of the fixed disk.
+    Caching: "After the Windows installation is extracted to the hard disk, the answer file is cached to
+    %WINDIR%\panther." "Setup removes sensitive data in the cached answer file at the end of each configuration pass."
+1.7 Configuration sets and $OEM$
+    https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/wsim/distribution-shares-and-configuration-sets-overview
+    "If a configuration set is used during Windows Setup, all the contents at the root of the media where the answer
+    file exists are copied to the Windows installation." "You can use the $OEM$ folder and subfolders only when you
+    are creating configuration sets." $OEM$\$1 = the Windows drive, $OEM$\$$ = %WINDIR%. UseConfigurationSet
+    (https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/unattend/microsoft-windows-setup-useconfigurationset):
+    default false, windowsPE pass. Consequence for the design of 5.3 in the earlier results file: a configuration
+    set at the root of media that also holds the 8 GB of installer files would copy all of it; \sources\$OEM$
+    without a configuration set is not documented. Neither is used: the temporary partition is still there at the
+    first sign-in, so nothing has to be copied to the Windows drive during the WinPE phase.
+1.8 SetupComplete.cmd  https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/add-a-custom-script-to-windows-setup
+    "This setting is disabled when using OEM product keys, except on Enterprise editions and Windows Server" - not used.
+1.9 WinPE  https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/winpe-intro : "The base version
+    requires only 512MB of memory"; a RAM-disk boot needs "a contiguous portion of physical memory (RAM) which can
+    hold the entire Windows PE (WIM) image". Setup's phases
+    (https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/windows-setup-installation-process):
+    Windows PE phase "3. Configure the disk. 4. Copy the Windows image to the disk. 5. Prepare boot information."
+1.10 RunSynchronous  https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/unattend/microsoft-windows-deployment-runsynchronous
+    "run ... in the system context in the specialize configuration pass".
+1.11 Debian, keyboard-configuration's config script
+    https://salsa.debian.org/installer-team/console-setup/-/raw/master/debian/keyboard-configuration.config : outside
+    the installer the script asks keyboard-configuration/layout and /variant with "$layout_priority" (critical unless
+    lowered); it reads keyboard-configuration/xkb-keymap, layoutcode, variantcode, modelcode from debconf first.
+
+
+2. Windows from the RAM disk: measured, and why it is gated off
+---------------------------------------------------------------
+Machine: VMware Workstation, UEFI, 4.6 GB, Charon on the only (NVMe) disk, the Windows 11 Enterprise 26H2 evaluation
+ISO as a SATA CD so that a real Windows Setup can be asked what it sees. Test builds with
+CHARON_EXTRA=-DHAK_CHARON_RAMPROBE (never a release build): a 96 MB FAT32 disk in EfiReservedMemoryType memory,
+registered with EFI_RAM_DISK_PROTOCOL as a virtual disk, marker files written to it through the firmware's FAT driver.
+  a. VMware's firmware HAS the service. Static: EFI64.ROM (LZMA section unpacked) holds RamDiskDxe's file GUID
+     28A03FF4-..., the protocol GUID and the string NFIT. Run time (serial trace, RAN AND PASSED): Register succeeded,
+     the firmware mounted the volume, both marker files were written ("CHARON ramprobe files=3").
+  b. The firmware publishes NOTHING to ACPI for a disk a boot manager registers, also after Charon signalled the
+     "ready to boot" event group itself: "CHARON ramdisk NFIT existed=0", not published by firmware. In WinPE:
+     no ACPI0012 device, no disk (p-06.png, p-07.png).
+  c. Charon then published the range itself, as EDK2 does (an NFIT with one SPA range structure through
+     EFI_ACPI_TABLE_PROTOCOL, plus an SSDT with Device(NVDR) _HID "ACPI0012"): both installs returned success,
+     "CHARON ramdisk published=1". In WinPE (Windows 11 Setup, cmd version 10.0.26100.9457): the device
+     ACPI\ACPI0012 now exists with Service=scmbus (p-08.png, p-09.png) - so Windows read Charon's tables - but
+     diskpart still lists only the NVMe disk and the DVD. No disk for the RAM range.
+  d. Same again with four ranges in the NFIT, each a copy of the same FAT disk: volatile virtual disk, persistent
+     virtual disk, volatile virtual CD, and a plain persistent-memory region (66F0D379-...): diskpart lists none of
+     them, and the registry has no SCMLD or SCMBUS children (p-10.png).
+  e. WinPE does contain scmbus.sys, pmem.sys, nvdimm.sys and ramdisk.sys (p-07.png): the drivers are there, they do
+     not make a disk out of these regions.
+Conclusion: after WinPE has left the firmware, a firmware RAM disk does not exist for Windows Setup. boot.wim would
+still start (the boot manager reads it through the firmware), and Setup would then stop without its sources. This
+is not a matter of the answer file or of memory size; no amount of work inside Charon changes it short of shipping
+a Windows storage driver inside boot.wim. NOT measured: QEMU/OVMF (its RamDiskDxe would publish the NFIT itself;
+measurement c shows that publication is not what is missing), other Windows versions, real hardware.
+State of the code: ramdisk::MakeVolume, Publish and the ACPI helpers (CharonWsRamDisk.h:147-330) are compiled and
+called only by the probe build. The Windows dialogue no longer offers a RAM disk (CharonWsInstall2.h:926-950);
+ramdisk::WindowsFromMicrosoft is no longer called. The ISO-in-memory start for Linux images is unchanged.
+A by-product worth knowing: on firmware like VMware's, an ISO started from memory is invisible to ANY operating
+system, because the firmware never publishes it; Publish() would fix that for Linux images. Not wired in (untested).
+
+
+3. Windows without a stick: the temporary partition (implemented)
+-----------------------------------------------------------------
+New: src/efi/CharonWsWinPart.h. Flow (express and detailed modes; "I will install it myself" keeps the stick):
+  - no media found -> "without a USB stick" is the first choice (CharonWsInstall2.h:926-950); only the image's address
+    is settled then (winusb::ResolveAddress, CharonWsWinUsb.h:276), nothing is written;
+  - questions, disk mode, target, the plan, the typed YES;
+  - RunWindows (CharonWsInstall2.h:738) calls winpart::Prepare (CharonWsWinPart.h:247): winusb::Make learns the
+    image's size and calls winpart::Provide (:102), which says the exact sizes and makes the partition:
+      whole disk: new GPT written by Charon - EFI system partition (300 MB or more), Microsoft reserved (16 MB),
+        Windows, and "Charon Windows media" (FAT32, image + Charon + 700 MB) at the end; Charon is copied to the new
+        EFI partition AT ONCE, with its firmware entries, and with answers\ and plan\ when the disk was its own
+        (images::CharonOnto(esp,true)); the answer file then installs into partition 3 and does not wipe the disk;
+      free space / replace a partition: only the media partition is added, at the end of the largest gap;
+      too little room: said with the three numbers (image, partition, available), nothing changed;
+  - the image is streamed onto the partition exactly as onto a stick (split WIM), then RunWindows writes what it
+    writes to a stick: Autounattend.xml (also \sources\Autounattend.xml, 1.6), NVDA for Setup, \charon, voice.conf,
+    and \charon\Charon-MediaCleanup.ps1 (embedded in Charon, CharonWsWinPart.h:208);
+  - first sign-in: the usual commands run from the partition (it has a drive letter), then
+    "Charon-MediaCleanup.ps1 -Guid <partition GUID>" from ProgramData removes the partition and extends C:; when
+    Setup put a recovery partition behind C:, it is moved to the end (reagentc /disable, remove, extend, new
+    recovery partition, reagentc /enable - the sequence Microsoft documents for resizing the recovery partition);
+  - a failure after the partition was added removes its entry again (winpart::Undo, :43) and says so; the closing
+    sentence no longer claims "nothing changed on the target disk" when the table was rewritten
+    (CharonWsInstall2.h:1039);
+  - a media partition left by an earlier attempt (found by its GPT name on a fixed disk) is used again without a
+    download and is never treated as a stick (winpart::IsLeftover, Prepare; CharonWsInstall2.h:916). Without this,
+    a second attempt in "whole disk" mode would have written an answer file that makes Setup wipe the disk it is
+    running from - found during the trials below.
+  - the same helper gives the Ubuntu installer a place for its answers when the computer has no FAT volume
+    (install::SeedPartition, CharonWsWinPart.h:301; section 5).
+The answer file is the stick's, with three conditional additions that leave every existing golden file unchanged:
+the cleanup command (key "wmediaguid"), the carry command (key "wcarry", section 5), and nothing else.
+
+VM trials are in section 3.1, appended below as they finished.
+
+3.1 VM trials of the temporary partition (VMware Workstation, UEFI, 6 GB, 4 processors, ONE 64 GB NVMe disk whose
+    only content was Charon on its EFI partition, with the markers \EFI\HAK\answers\test.ini and \EFI\HAK\plan\plan.txt;
+    no stick, no CD; sound on the host's speakers, measured from outside with vm-audio-meter.py; a screenshot per
+    minute in r409win-evidence/a-tl; serial trace a3-serial-final.txt). Image: Windows 11 Enterprise evaluation,
+    downloaded by Charon from Microsoft's server (7.7 GB). All of this RAN; nothing was typed after the word YES.
+  Trial 1, r409w1, express: stopped at 22 % - "Writing to the media failed". Cause outside Charon: the HOST disk was
+    full (the test disks were not sparse; fixed in the test tooling). It did show that Undo could not remove the
+    partition on a failing disk and said so. Evidence a1-serial-host-disk-full.txt.
+  Trial 2, r409w3, express, whole disk = Charon's own disk: partition table written, Charon back on the new EFI
+    partition with entries ("CHARON winpart entries=0"), 7.7 GB downloaded and written in 9 minutes, NVDA and
+    Charon put on the media, Setup started by itself and ran UNATTENDED from the partition of the fixed disk (so the
+    answer file was found there) up to "This PC doesn't currently meet Windows 11 system requirements: TPM 2.0" -
+    the test machine has no TPM and express mode does not ask about the hardware checks. Disk afterwards
+    (a-esp-after-prepare.txt): EFI 300 MB, MSR 16 MB, Windows 56610 MB, "Charon Windows media" 8608 MB; 229 files
+    under \EFI\HAK; both markers PRESENT (carried). Screenshot a2-setup-tpm-refusal-unattended.png.
+    That refusal page is where a blind user of a computer without TPM would be left by express mode: see section 9.
+  Trial 3, r409w4, the full run:
+    14:35 express attempt as in trial 2 (again to the TPM page), machine reset at 14:47.
+    14:47 the firmware's first entry started Charon FROM THE NEW EFI PARTITION, before any Windows existed:
+          "Welcome to Charon. Starting: Disk ..." spoken; Space opened the menu (a-22.png).
+    14:48 Windows again, detailed mode, "skip the hardware requirement checks: yes", NVDA + Narrator, whole disk.
+          Charon: "The computer's disk holds the Windows installer's files of an earlier attempt; I will use them,
+          nothing needs downloading." After YES (14:51:39): "The installer's files of the earlier attempt stay on
+          their temporary partition. I am writing a new partition table ...", Charon back on the EFI partition, NVDA
+          downloaded, the announcement of the silent minutes, Setup started at 14:52:40 - one minute, no download.
+    14:53-14:56 Windows Setup, WinPE: "Installing Windows 11", 13 % to 77 %.
+    14:57 first restart; 15:00 "Just a moment"; 15:01 "Good things coming your way", "Getting things ready for you";
+    15:02 first sign-in by itself, the first-logon commands; 15:03 the desktop with NVDA's welcome dialogue
+          (a-desktop-nvda-1505.png, a-install-contact-sheet.png). 11 minutes from the start of Setup to the desktop.
+    Checked in the installed Windows from an elevated PowerShell (a-27, a-32 .. a-35 png):
+      bcdedit /enum firmware: Windows Boot Manager first, and "Charon" \EFI\HAK\HAKBOOT.EFI;
+      Install-Charon.ps1 -Status: "The Charon add-on is installed: Driver0000, position 1 in DriverOrder";
+      install-charon.log 06:01:17 (first logon): "Installed Charon: Boot0003 loads \EFI\HAK\HAKBOOT.EFI, second boot
+        entry." "Also installed the reader from power-on: Driver0000 loads \EFI\HAK\CHARONVOICE.EFI" - no error 1314;
+      the EFI partition: 233 files under \EFI\HAK; answers\test.ini (64 bytes) and plan\plan.txt (48) present;
+      Get-Partition: System 300 MB, Reserved 16 MB, C: 67 450 682 880 bytes, Recovery 935 329 792 at the end - the
+        media partition is gone and C: has its space; media-cleanup.log: "media partition removed", "Windows
+        partition extended; recovery partition moved to the end of the disk"; reagentc /info: Enabled, partition4;
+      readers.log: HKLM Accessibility Configuration 'narrator,nvda_nvda_v1' -> 'nvda_nvda_v1', NVDA running, done;
+        processes: nvda, no Narrator; both Configuration values read back as nvda_nvda_v1.
+    15:11 "bcdedit /set {fwbootmgr} bootsequence {Charon}" and restart: Charon started from the entry and spoke
+          ("Welcome to Charon. Press Space to open the options menu", sound measured), then continued into Windows
+          by itself; the sign-in screen came up with sound at 15:12.
+  Per stage, did a reader speak (trial 3; seconds with sound per minute from the host's meter):
+    stage                                      time         what was measured                      status
+    Charon dialogue and preparation            14:47-14:52  Charon's speech throughout             RAN
+    announcement of the silent minutes         14:52        spoken (serial transcript)             RAN
+    Windows Setup, WinPE                       14:53-14:56  16, 5, 4, 7 s of sound, short phrases  RAN: sound. WHICH program
+                                                                                                   (NVDA with eSpeak NG or
+                                                                                                   Narrator): not determined
+    after the first restart                    14:57-14:58  silent, two minutes, as announced      RAN
+    "Installing 33 %, 42 %", "Just a moment"   14:59-15:00  8 s and 2 s of sound                   RAN: sound; by the answer
+                                                                                                   file it is Narrator
+    OOBE pages, first sign-in, scripts         15:01-15:03  19, 31, 13 s of sound                  RAN: sound; program not
+                                                                                                   determined
+    desktop                                    15:03 on     NVDA (dialogue, process list)          RAN
+    sign-in screen after a restart             15:12        sound                                  RAN: sound; program not
+                                                                                                   determined
+    Charon from its entry after Windows        15:11        "Welcome to Charon"                    RAN
+  NOT VERIFIED in these trials: that the reader DRIVER (Driver0000) was actually loaded by the firmware at power-on
+  (it is registered; the driver build has no trace; the earlier helper's trial showed the firmware loading it);
+  free-space and replace-a-partition modes (COMPILED ONLY); Undo on a healthy disk (COMPILED ONLY; Escape during
+  the download was not tried); a disk with 4096-byte sectors (refused by design); Polish Windows; Microsoft's own
+  download page (the evaluation address was used); a computer WITH a TPM in express mode; real hardware.
+  "RAM too small" as a second run does not exist any more: there is no RAM path to fall back from.
+
+
+4. Install-Charon.ps1 -Mode Manager: "Reading variable BootOrder failed (error 1314)"
+--------------------------------------------------------------------------------------
+Reported by the Windows profiles agent on three installations (builds 26300, Server 2025, Tiny11 26200).
+Read in the script: the privilege SeSystemEnvironmentPrivilege was enabled once (Enable-FirmwarePrivilege), DriverOrder
+was read, then Confirm-SecureBootUEFI was called, then BootOrder was read and failed. The call order is the same
+in the r408 release copy (work/charon-release-r408-install/.../Install-Charon.ps1:355, :500), so this is not a
+regression of the plan agent's -PlanResult parameters. Explanation acted on: Confirm-SecureBootUEFI adjusts the
+same privilege and leaves it disabled when it returns. NOT PROVEN as the cause: this host session is not
+elevated (AdjustTokenPrivileges gave 1300 here), and the unfixed script was not run on my machine.
+Change: Get-Var and Set-Var enable the privilege before every firmware call (Install-Charon.ps1:236-244, :257;
+Install-CharonAddon.ps1:129, :142). Both scripts parse (PowerShell 5.1, 0 errors).
+RAN AND PASSED (trial 3, build 26100): at the first logon and again by hand from an elevated prompt the script
+installed Boot0003 "Charon" and Driver0000 with no error; -PlanResult done -PlanStep 1 -PlanText ok wrote
+\EFI\HAK\plan\step1.done ("ok") and returned 0. NOT VERIFIED: on the three builds where it had failed.
+Found on the way, for the plan agent: -PlanResult fails ("the EFI system partition could not be mounted", exit 1)
+when the EFI partition already has a drive letter - mountvol X: /S does not give it a second one.
+The coordinator's other three points:
+  (a) Narrator and NVDA both on the UAC prompt: NOT REPRODUCED, NOT FIXED. After the first logon both registry lists
+      held only nvda_nvda_v1 and Narrator was not running. A Narrator did appear during my checks, after my own
+      key presses over VNC (Windows-key combinations), so its origin is not determined. Nothing was changed.
+  (b) NVDA instead of Narrator on the OOBE pages: NOT DONE. In trial 3 those pages ("Just a moment", "Good things
+      coming your way", "Getting things ready for you") need no input and lasted about two minutes. Starting a
+      portable NVDA there needs it unpacked on the Windows drive in the specialize pass and registered under
+      Accessibility\ATs for the system desktop; that was not tried - each attempt costs one whole installation.
+  (c) the announcement of the silent minutes IS spoken before Setup starts (transcript, 14:52), and the silence was
+      two minutes in trial 3.
+
+
+5. Part 2 of the task
+---------------------
+5.1 Carry of answers\ and plan\ over a wipe of Charon's own disk - DONE for all three installer paths.
+    Debian: install::CarryHome() (CharonWsInstall.h:318) is set by RunDebian (:593) when the whole of the disk
+      Charon lives on is erased; SkipInArchive then lets the two folders into the archive (never network.conf).
+      RAN AND PASSED in VMware (machine r409win-d, section 6.1): after the installation the new EFI partition holds
+      answers\test.ini and plan\plan.txt (d-esp-after-install.txt); the earlier helper's trial B had them ABSENT.
+    Ubuntu: the early-command that removes them is replaced by one that removes only network.conf
+      (CharonWsInstall2.h:77), and the copy to a work volume uses CarryCharonTree. COMPILED ONLY (the Ubuntu
+      installer path has still never been run).
+    Windows: \charon\carry\answers and \plan on the media, apart from the tree that is given (CharonWsInstall2.h:
+      808-820); a first-logon command copies them to \EFI\HAK and deletes the folder (:583); in "whole disk"
+      mode of the temporary partition Charon also puts them on the new EFI partition at once. RAN AND PASSED (3.1).
+5.2 Ubuntu with no FAT volume - DONE as far as Charon's side goes: with "erase the whole disk" Charon writes a new
+    partition table with one small FAT partition for the answers (install::SeedPartition, CharonWsWinPart.h:301;
+    RunUbuntu, CharonWsInstall2.h:140-152); in the other disk modes a spoken refusal that says what works.
+    COMPILED ONLY.
+5.3 The copy into memory - DONE. Limits 4000 files and 512 folders (were 600 and 64; CharonSelfCopy.h:28); what
+    still does not fit is counted (:42, :84-90) and SAID, by images::EnsureInMemory (CharonWsImages.h:205) and at
+    the start of the install dialogue when Charon is already in memory (CharonWsInstall2.h:867). COMPILED ONLY
+    for the spoken note (no tree that large was built); the copy itself ran in every VM trial (226 files).
+5.4 Network hand-over - DONE.
+    network.conf for Debian (in the archive with network.sh, CharonWsInstall.h:432; late_command :519) and Ubuntu
+      (work folder, CharonWsInstall2.h:194-199; early-commands take it into memory and delete it from the
+      partition, late-commands apply it :86). COMPILED ONLY; no Wi-Fi exists in the test machines.
+    The computed key: src/efi/CharonWpaPsk.h (own SHA-1, HMAC, PBKDF2; no library needed, so the host can run it),
+      used by NetworkConfNow (CharonWsInstall.h:102-112): CHARON_WIFI_PSK is now 64 hexadecimal digits; a passphrase
+      that cannot be a WPA2 passphrase gives no file. network.sh and Charon-Network.ps1 both take such a key (read
+      in their sources). RAN AND PASSED on the host: tests/charon-wpa-psk-host.py, 10 of 10 - the three vectors of
+      IEEE 802.11i-2004 H.4.3 (written from memory of the standard and confirmed by the three extra comparisons
+      with Python's hashlib.pbkdf2_hmac: 8 and 63 bytes, non-ASCII), four refusals.
+      NOT VERIFIED: a real network joined with the key. Note: a WPA3-only network cannot use a PSK; Charon joins
+      WPA2-PSK and open networks only.
+    The remembered network is wiped (net::ForgetJoined) right before the installer is started: Debian
+      (CharonWsInstall.h:624), Ubuntu (CharonWsInstall2.h:212), Windows (:843), and after the write for a ready
+      image (CharonWsInstall3.h:456). COMPILED ONLY.
+5.5 voice.conf punctuation - VERIFIED IN THE CODE, no change of behaviour: speechtext::Level is levelNone=0,
+    levelSome=1, levelMost=2, levelAll=3 (CharonSpeechText.h:26), the menu names them none/some/most/all
+    (BootMenu.h), the stored value is checked to be 0..3 (CharSettings.h:84), and speech.sh takes exactly those four
+    words (src/linux/speech.sh:14, :781). The assumption was right; the comment now says where it comes from.
+5.6 The helper's trials A, B, C were finished by the helper (coordinator's message); its machines were gone.
+5.7 The self-installer's known defect - FIXED (CharonWsSelfInstall.h:182-190): a step that fails after the Charon
+    partition was added removes the entry again and says so. COMPILED ONLY.
+5.8 Wording: no more "start the computer from the Charon USB stick" when Charon lives on the internal disk
+    (CharonWsInstall3.h:141-149, :459; CharonWsImages.h:214); the Windows dialogue no longer says "you go through
+    Windows Setup yourself" for the stickless way. COMPILED ONLY except the Windows texts (heard in 3.1).
+
+
+6. The coordinator's four findings
+----------------------------------
+6.1 The Debian installer stopped at "Configuring keyboard-configuration - Keyboard layout:". The question is
+    keyboard-configuration/variant, asked by the package's config script inside the new system (1.11). The preseed
+    now also answers the package's own questions: xkb-keymap, layoutcode, variantcode, modelcode, layout, variant,
+    all following the keyboard chosen in Charon (CharonWsInstall.h:535-540).
+    RAN AND PASSED: VMware, 4 GB, Charon on the only disk (24 GB), express mode, English, GNOME, Orca. YES typed at
+    13:51:21; "Select and install software" ran through to 100 % with no question; the GDM sign-in screen of Debian
+    13 at 14:07 (d-gdm-login-1407.png), sound at 14:07:49; NO key was pressed in between. 16 minutes.
+6.2 The slow download into memory. Cause: plain http:// went through the FIRMWARE's HTTP service, which hands over
+    one small piece per call, and Charon waited 10 ms between polls; https:// went through Charon's own client.
+    Fix: plain http:// uses Charon's own client too (CharonWsFetch.h:83-87); the firmware path, still used by
+    builds without that client, polls every 0.2 ms (CharonWsNet.h:191).
+    Measured, same machine type, same files from deb.debian.org: before (helper's trial B) kernel 11 MB in about
+    3 minutes, initrd 79 MB in about 44 minutes, about 30 KB/s. After (r409w2): 45 seconds after YES the kernel
+    was complete and 47 of 79 MB of the initrd were in memory (d-03.png): at least 1.3 MB/s, announcements
+    included, while another machine was downloading 7.7 GB. The faster firmware-path wait is COMPILED ONLY.
+6.3 "59 / 62 MB" against 66 MB of files: two things, neither a lost file. The numbers are binary megabytes
+    (66 000 000 bytes are 62.9), and the bar stopped at its last 32nd round. It now ends on the whole
+    (CharonWsImages.h:199-201). COMPILED ONLY.
+6.4 "Starting: Network EFI Network" and then PXE on a computer whose only system is Charon: when nothing was chosen
+    to continue with, the firmware's next option is a network boot, and Charon runs from a partition of a fixed
+    disk, the menu is opened instead (BootMenu.h:1519-1550). RAN AND PASSED: "CHARON start: network is the only
+    target, menu opened=1", the menu stood there and the hints were spoken (machine r409win-d).
+    The upper-case 8.3 names of files copied back from memory: not touched.
+
+
+7. Tests and builds
+-------------------
+  python3.15 tests/charon-install-answers-host.py      310 passed, 0 failed, 0 skipped   (RAN, final tree)
+  python3.15 tests/charon-wpa-psk-host.py               10 passed, 0 failed               (RAN, new)
+  python3.15 tools/charon-os/tests/run-tests.py        108 passed, 0 failed               (RAN, final tree)
+  tools/build-charondos.py --host-only + tests/CharonDosTests.py   64 of 64 cases       (RAN at 13:55; src/dos is
+                                                        not touched by this work; the count grew through another agent)
+  tools/build-charon-windows.py work/charon-win-r409w4 --trace          PASS  CHARON.EFI      sha256 4d82ca41...
+  tools/build-charon-windows.py work/charon-win-r409w4-drv --driver     PASS  CHARONVOICE.EFI sha256 a24e5860...
+  (the driver build had been broken by CharonWsWinPart.h for a while: its Ubuntu helper used installer-only
+  code; it is guarded now.)
+Golden files re-recorded with --update; every changed line:
+  debian-defaults, debian-no-reader, debian-pl-detailed-free, debian-back-one-question: six added lines
+    "keyboard-configuration keyboard-configuration/{xkb-keymap select K, layoutcode string K, variantcode string,
+    modelcode string pc105, layout select, variant select}" (K = us, pl or gb), and in the late_command line the
+    inserted "; if [ -f /charon/network.conf ]; then cp ... network.sh apply || true; fi";
+  debian-guided: the late_command line only;
+  ubuntu-defaults, ubuntu-pl-fenrir-free-smallest: the first early-command also copies network.conf and deletes it
+    from the partition; one added late-command applying it.
+  Windows, ready-image, CharonDOS, voice.conf and network.conf golden files: unchanged.
+  The runner's list of allowed changes against the "before r409" recording and its preseed line shape were
+  extended accordingly (tests/charon-install-answers-host.py), and "inline bool& CarryHome()" was added to the
+  declarations it cuts out.
+
+
+8. Changed files
+----------------
+  NEW  src/efi/CharonWsWinPart.h            Windows media partition, cleanup script, Ubuntu seed partition
+  NEW  src/efi/CharonWpaPsk.h               WPA2 key
+  NEW  tests/charon-wpa-psk-host.py
+  src/efi/CharonWsRamDisk.h:147-330        RAM volume and ACPI publication (probe builds only)
+  src/efi/CharonWsWinUsb.h:271-302         ResolveAddress, Make(target, locale, provide)
+  src/efi/CharonWsInstall.h:19, :47, :102-112, :260, :318-324, :432-436, :519, :535-540, :593, :624
+  src/efi/CharonWsInstall2.h:71-79, :86, :118-152, :194-199, :212, :583-595, :726-742, :781-787, :808-820, :836-843,
+                             :867-872, :879-889 (probe hook, test builds only), :916-950, :969-975, :1039-1042, :1048
+  src/efi/CharonWsInstall3.h:141-149, :456, :459
+  src/efi/CharonWsImages.h:199-214
+  src/efi/CharonSelfCopy.h:28, :42, :69, :84-90
+  src/efi/CharonWsSelfInstall.h:182-195
+  src/efi/CharonWsFetch.h:83-87            src/efi/CharonWsNet.h:191-194
+  src/efi/BootMenu.h:1519-1550
+  tools/charon-addon/Install-Charon.ps1:236-244, :257     tools/charon-addon/Install-CharonAddon.ps1:129, :142
+  tests/charon-install-answers-host.py, tests/golden/charon-install-answers/ (7 files)
+RunImage's order of operations was NOT changed (one call, net::ForgetJoined, was added after the network.conf write).
+Line numbers were taken at about 14:30, before the last edits of CharonWsWinPart.h and CharonWsInstall2.h (reuse of
+a leftover partition); in those two files they are off by a few lines.
+Test tooling, outside the tree: work/r409win-evidence (make-winram.py, up.sh, down.sh, drive-win.sh, said.sh,
+esp-list.py). All machines and loggers of this work were stopped and deleted; intermediate builds removed.
+
+
+9. What remains
+---------------
+  1. Express mode on a computer without TPM 2.0 ends on Setup's refusal page, which nobody reads aloud for certain.
+     Charon could look for a TPM itself before the questions and ask the hardware-check question in express mode
+     when there is none. Not done.
+  2. The temporary partition's free-space and replace-a-partition modes, Undo, and the Ubuntu seed partition were
+     never executed.
+  3. Which reader speaks in WinPE, on the OOBE pages and on the sign-in screen was measured as sound, not as a
+     program; NVDA on the OOBE pages is not done (4b); the UAC double speech is neither reproduced nor fixed (4a).
+  4. error 1314: the fix ran on build 26100 only, and the cause is an explanation, not a measurement.
+  5. Linux images started from memory are invisible to the started system on firmware that does not publish the
+     RAM disk (VMware's): Publish() exists and is not wired into that path.
+  6. During two trials Charon's sound stalled on the host ("pump device ... audio recovered", up to 8 times) and
+     once the dialogue stopped answering after such a recovery (a-serial-hang-after-audio-recovery.txt); several
+     machines were playing sound at the time. Not investigated.
+  7. A Windows password still stands in Autounattend.xml on the partition until the first sign-in removes the
+     partition (not overwritten).
+  8. The probe hook (HAK_CHARON_RAMPROBE, two #ifdef blocks) is still in the sources for repeating section 2 on
+     other firmware; it is not part of any normal build.

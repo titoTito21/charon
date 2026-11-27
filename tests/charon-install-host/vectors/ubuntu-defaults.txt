@@ -1,0 +1,9 @@
+# Ubuntu, express mode, Enter at every question.
+lang=en
+flow=ubuntu
+mode=quick
+keys=ENTER ENTER "test" ENTER "test" ENTER
+keys=ENTER ENTER
+keys=ENTER
+put diskmode=whole
+arg largest=1

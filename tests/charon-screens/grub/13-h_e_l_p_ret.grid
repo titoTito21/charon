@@ -1,0 +1,32 @@
+CHARON grid 31 100 30 6 1 GRUB
+G00 57*87|57*0000|lsefisystab                                       lsfonts
+G01 55*87|55*0000|lsmod                                             lssal
+G02 97*87|97*0000|menuentry BLOCK                                   net_add_addr SHORTNAME CARD ADDRESS [HWADDRESS]
+G03 98*87|98*0000|net_add_dns DNSSERVER                             net_add_route SHORTNAME NET [INTERFACE| gw GATEW
+G04 67*87|67*0000|net_bootp [CARD]                                  net_bootp6 [CARD]
+G05 71*87|71*0000|net_del_addr SHORTNAME                            net_del_dns DNSSERVER
+G06 65*87|65*0000|net_del_route SHORTNAME                           net_dhcp [CARD]
+G07 86*87|86*0000|net_get_dhcp_option VAR INTERFACE NUMBER DESCRIP  net_ipv6_autoconf [CARD [HWADDRESS]]
+G08 62*87|62*0000|net_ls_addr                                       net_ls_cards
+G09 63*87|63*0000|net_ls_dns                                        net_ls_routes
+G0a 79*87|79*0000|net_nslookup ADDRESS DNSSERVER                    net_set_vlan SHORTNAME VLANID
+G0b 61*87|61*0000|normal                                            normal_exit
+G0c 98*87|98*0000|password_pbkdf2 USER PBKDF2_PASSWORD              play FILE | TEMPO [PITCH1 DURATION1] [PITCH2 DUR
+G0d 56*87|56*0000|probe DEVICE                                      reboot
+G0e 62*87|62*0000|regexp REGEXP STRING                              return [NUM]
+G0f 88*87|88*0000|rmmod MODULE                                      save_env [-f FILE] variable_name [...]
+G10 85*87|85*0000|search [-f|-l|-u|-s|-n] [--hint HINT [--hint HIN  search.file NAME [VARIABLE] [HINTS]
+G11 88*87|88*0000|search.fs_label NAME [VARIABLE] [HINTS]           search.fs_uuid NAME [VARIABLE] [HINTS]
+G12 68*87|68*0000|serial [OPTIONS...]                               set [ENVVAR=VALUE]
+G13 61*87|61*0000|setparams [VALUE]...                              shift [NUM]
+G14 98*87|98*0000|sleep NUMBER_OF_SECONDS                           smbios [-t type] [-h handle] [-m match] (-b|-w|-
+G15 63*87|63*0000|source FILE                                       submenu BLOCK
+G16 97*87|97*0000|terminal_input [--append|--remove] [TERMINAL1] [  terminal_output [--append|--remove] [TERMINAL1]
+G17 65*87|65*0000|terminfo [[-a|-u|-v] [-g WxH] [TERM] [TYPE]]      test EXPRESSION
+G18 83*87|83*0000|true                                              trust [-s|--skip-sig] PUBKEY_FILE
+G19 98*87|98*0000|unset ENVVAR                                      verify_detached [-s|--skip-sig] FILE SIGNATURE_F
+G1a 64*87|64*0000|zfs-bootfs FILESYSTEM [VARIABLE]                  zfsinfo DEVICE
+G1b 24*87|24*0000|zfskey [-h|-p|-r] [FILE]
+G1d 45*87|45*0000|To enable less(1)-like paging, "set pager=1".
+G1e 5*87|5*0000|grub>
+CHARON grid end

@@ -1,0 +1,11 @@
+# Debian, Charon speaks Polish, detailed mode: a second desktop, the Polish mirror, a root account, console sign-in, free space only.
+lang=pl
+flow=debian
+mode=detailed
+keys=ENTER ENTER ENTER ENTER "Jan Kowalski" ENTER BS BS BS BS "jan" ENTER
+keys="test" ENTER "test" ENTER
+keys="m" SPACE ENTER ENTER DOWN ENTER UP ENTER ENTER ENTER
+keys=DOWN ENTER
+put diskmode=free
+# r410: the group list of the detailed mode: F10 ends it, Enter goes on from the summary.
+keys=F10 ENTER ENTER

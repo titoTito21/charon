@@ -1,0 +1,18 @@
+# CharonDOS Windows profile, written by Charon's installer (r403); format: src/pc/PLAN.txt
+profile=WIN98
+lang=en
+memory=128
+com1=none
+sound=sb16
+net=ne2000
+reader=jfw331
+reader_setup=READER\JFW33135.EXE
+disk=DISK.IMG
+disk_format=raw
+disk_create_mb=2048
+cdrom=SETUP.ISO
+boot=cdrom
+state=install
+setup_auto=yes
+setup_name=User
+setup_computer=CHARON

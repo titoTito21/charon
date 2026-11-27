@@ -1,0 +1,6 @@
+# Written by Charon: the voice and the reader settings Charon itself uses (read by speech.sh).
+CHARON_SYNTH=rhvoice
+CHARON_VOICE=natan
+CHARON_RATE=14
+CHARON_PITCH=8
+CHARON_PUNCTUATION=all

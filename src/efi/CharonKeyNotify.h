@@ -56,7 +56,7 @@ inline constexpr uint32_t shiftValid=0x80000000u,rightShift=1,leftShift=2,rightC
 // 1..26 before matching), with every left/right Ctrl and Alt combination.
 class ReaderKeys {
 public:
-    static constexpr size_t maxHandles=400;   // r390: 24 letters x 12 forms + marks + arrows (200 dropped handles before)
+    static constexpr size_t maxHandles=520;   // r390: 24 letters x 12 forms + marks + arrows (200 dropped handles before)
     // True once registered on a console input; retried until one exists
     // (driver mode starts before firmware connects the consoles).
     bool Register(efi_system_table* table,KeyNotifyFn notify) {
@@ -65,8 +65,8 @@ public:
         TextInputEx* input=nullptr;
         if(!table || !table->ConsoleInHandle || table->BootServices->HandleProtocol(table->ConsoleInHandle,&guid,(void**)&input)!=EFI_SUCCESS
             || !input || !input->RegisterKeyNotify || !input->UnregisterKeyNotify)return false;
-        static const char16_t letters[]={u'r',u's',u'h',u'u',u'i',u'o',u'j',u'k',u'l',u'm',u't',u'b',u'e',u'p',u'a',u'q',u'n',u'c',u'w',u'y',u'v',u'd',u'z',u'x'};
-        static const char16_t marks[]={u',',u'.',u'=',u'-'};
+        static const char16_t letters[]={u'r',u's',u'h',u'u',u'i',u'o',u'j',u'k',u'l',u'm',u't',u'b',u'e',u'p',u'a',u'q',u'n',u'c',u'w',u'y',u'v',u'd',u'z',u'x',u'f',u'g' /* r410: find, formatting */};
+        static const char16_t marks[]={u',',u'.',u'=',u'-',u';',u'\'',u'/',u'[',u']',u'0',u'9',u'8',u'7',u'6',u'5',u'4',u'3',u'2',u'1' /* r410 */};
         static const uint32_t controls[]={leftControl,rightControl},alts[]={leftAlt,rightAlt};
         count_=0;
         for(char16_t letter:letters)for(int form=0;form<3;++form)for(uint32_t c:controls)for(uint32_t a:alts) {
@@ -147,6 +147,17 @@ public:
             case u'm':case u't':case u'b':case u'e':case u'p':case u',':case u'.':
             case u'a':case u'q':case u'n':case u'c':case u'=':case u'-':
             case u'w':case u'y':case u'v':case u'd':case u'z':case u'x':return c;
+            // r410: Ctrl+Alt+F find, / next match, ' previous match, ; elements list, [ and ] previous and next
+            // element (NVDA laptop: NVDA+Shift+[ and ]), G formatting mode, 0 bookmark, 9 and 8 next / previous bookmark.
+            case u'f':return u'F';case u'/':return u'N';case u'\'':return u'P';case u';':return u'L';case u'[':case u']':return c;
+            case u'g':return u'G';case u'0':return u'B';case u'9':return u'J';case u'8':return u'U';
+            case u'7':return u'Y';   // r410: the keys of the program on the screen
+            case u'6':return u'X';   // r410: describe the known words of the line
+            case u'5':return u'M';   // r410: the last message (error, warning, boot message) again
+            case u'4':return u'O';   // r410: where the pointer is; the control under it
+            case u'3':return u'E';   // r410: what the selected entry starts (from the program's configuration)
+            case u'2':return u'A';   // r410: click the control the reader stands on (mouse-only screens)
+            case u'1':return u'T';   // r410: reader bar on / off
             default:return 0;
         }
     }
@@ -183,6 +194,10 @@ inline char16_t InsertCommand(const efi_input_key& key) {
         case 0x13:return u'C';   // F9: start mark at the review cursor
         case 0x14:return u'K';   // F10: copy from the start mark to the review cursor
         case 0x15:return u'V';   // F11: paste the copied text into the program as keys
+        // r410 navigation: F7 elements list (NVDA+F7), F3 find next (NVDA+F3; asks for the text when there is
+        // none), F2 find previous, F4 a new search, F5 / F6 previous / next element, F8 bookmark on or off.
+        case 0x11:return u'L';case 0x0d:return u'N';case 0x0c:return u'P';case 0x0e:return u'F';
+        case 0x0f:return u'[';case 0x10:return u']';case 0x12:return u'B';
         default:break;
     }
     if(key.ScanCode)return 0;
@@ -193,6 +208,14 @@ inline char16_t InsertCommand(const efi_input_key& key) {
         case u'1':return u'm';case u'2':return u',';case u'3':return u'.';
         case u'+':return u'a';case u'*':return u'r';case 9:return u'e';
         case u'0':return u'x';case u'\\':return u'\\';case u'.':return u'p';
+        case u']':return u'J';case u'[':return u'U';   // r410: next / previous bookmark of this screen
+        case u'\'':return u'Y';                       // r410: the keys of the program on the screen
+        case u';':return u'X';                        // r410: describe the known words of the line
+        case u'/':return u'M';                        // r410: the last message again
+        case u'-':return u'T';                        // r410: reader bar on / off
+        case u'=':return u'E';                        // r410: what the selected entry starts
+        case u',':return u'O';                        // r410: where the pointer is
+        case 13:return u'A';                          // r410: Enter: click the control the reader stands on
         default:break;
     }
     if(c>=u'A' && c<=u'Z')c=char16_t(c+0x20);

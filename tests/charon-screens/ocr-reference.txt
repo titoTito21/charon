@@ -1,0 +1,193 @@
+# r410: what a sighted person reads on recorded graphical screens (written by hand from the pictures
+# r410-corpus/<set>/<screen>.ppm, NOT from the reader's output). Used by tests/charon-ocr-measure.py to
+# measure the reader's character and word error rate on tests/charon-screens/<set>/<screen>.grid.
+# Text that is part of a logo picture (rEFInd's and Clover's banners, icon captions inside icons) is left out.
+# Format: "== set/screen", then one line of the screen per line.
+== grubgfx/00-start
+GNU GRUB  version 2.12-9+deb13u4
+*Charon test entry one
+Charon test entry two
+UEFI firmware settings
+Probe loader
+Graphical probe
+Graphical GRUB menu
+Use the ↑ and ↓ keys to select which entry is highlighted.
+Press enter to boot the selected OS, `e' to edit the commands before booting or `c'
+for a command-line.
+The highlighted entry will be executed automatically in 4s.
+== grubgfx/04-e
+GNU GRUB  version 2.12-9+deb13u4
+setparams 'Charon test entry two'
+echo "Entry two selected"
+sleep 3
+Minimum Emacs-like screen editing is supported. TAB lists completions. Press Ctrl-x
+or F10 to boot, Ctrl-c or F2 for a command-line or ESC to discard edits and return
+to the GRUB menu.
+== grubgfx/06-c
+GNU GRUB  version 2.12-9+deb13u4
+Minimal BASH-like line editing is supported. For the first word, TAB lists possible
+command completions. Anywhere else TAB lists possible device or file completions. To
+enable less(1)-like paging, "set pager=1". ESC at any time exits.
+grub>
+== grubtheme/00-start
+Charon test entry one
+Charon test entry two
+UEFI firmware settings
+Probe loader
+Graphical probe
+Graphical GRUB menu
+The highlighted entry will be executed automatically in 4s.
+Press enter to boot the selected OS, `e' to edit the commands before booting or `c' for a command-line.
+== grubtheme/04-e
+GNU GRUB  version 2.12-9+deb13u4
+setparams 'Charon test entry two'
+echo "Entry two selected"
+sleep 3
+Minimum Emacs-like screen editing is supported. TAB
+lists completions. Press Ctrl-x or F10 to boot,
+Ctrl-c or F2 for a command-line or ESC to discard
+edits and return to the GRUB menu.
+== refind/00-start
+Boot EFI\probe\GPROBE.EFI from GRUBTEST
+Automatic boot in 19 seconds
+Use arrow keys to move cursor; Enter to boot;
+Insert, Tab, or F2 for more options; Esc or Backspace to refresh
+== refind/03-f2
+Boot Options for EFI\probe\GPROBE.EFI on GRUBTE
+Boot using default options
+Return to Main Menu
+Use arrow keys to move cursor; Enter to boot;
+Insert or F2 to edit options; Esc to return to main menu
+== refind/07-a
+About
+rEFInd Version 0.14.2
+Copyright (c) 2006-2010 Christoph Pfisterer
+Copyright (c) 2012-2024 Roderick W. Smith
+Portions Copyright (c) Intel Corporation and others
+Distributed under the terms of the GNU GPLv3 license
+Running on:
+Firmware: EDK II 1.00
+EFI Revision 2.70
+Platform: x86_64 (64 bit); Secure Boot inactive (direct)
+Screen Output: Graphics Output (UEFI), 1280x800
+Built with TianoCore EDK2
+For more information, see the rEFInd Web site:
+http://www.rodsbooks.com/refind/
+Return to Main Menu
+Press Enter to return to main menu
+== clover/00-start
+Boot Microsoft EFI Boot from GRUBTEST
+F1:Help
+5176 GRUBTEST\EFI\CLOVER
+== clover/03-f1
+Help
+ESC - Escape from submenu, Refresh main menu
+F1  - This help
+F2  - Save preboot.log into /EFI/CLOVER/misc/ (FAT32)
+F3  - Show hidden entries
+F4  - Save oem DSDT into /EFI/CLOVER/ACPI/origin/ (FAT32)
+F5  - Save patched DSDT into /EFI/CLOVER/ACPI/origin/ (FA..
+F6  - Save VideoBios into /EFI/CLOVER/misc/ (FAT32)
+F7  - Check sound on selected output
+F8  - Make audio outputs dump into /EFI/CLOVER/misc/
+F9  - Switch screen resolution to next possible mode
+F10 - Save screenshot into /EFI/CLOVER/misc/ (FAT32)
+F11 - Reset NVRAM
+F12 - Eject selected volume (DVD)
+Space - Details about selected menu entry
+Digits 1-9 - Shortcut to menu entry
+A - Menu About
+O - Menu Options
+R - Soft Reset
+U - Exit from Clover
+S - Shell
+Return
+== clover/05-o
+Options
+Boot Args:
+Configs->
+GUI tuning->
+ACPI patching->
+SMBIOS->
+Binaries patching->
+Quirks mask [0xa041]->
+Graphics Injector->
+PCI devices->
+CPU tuning->
+Audio tuning->
+Startup sound output->
+System Parameters->
+Return
+== clover/09-spc
+Options for Boot Microsoft EFI Boot from GRUBTEST on GRUBTEST
+Volume size: 63Mb
+UUID: 6F1C3A52-5D47-4C11-9A8E-0C4A5B1E7D01
+Options:
+Run bootmgfw.efi
+Boot Windows from Hard Disk
+Boot Windows from CD-ROM
+Run bootmgfw.efi in text mode
+== canopy/00-start
+CHARON
+GRUBTEST
+Windows
+REL-108-2026-09-27
+== opencore/00-start
+OpenCore Boot Menu (REL-108-2026-09-27)
+* 1. CHARON
+2. GRUBTEST
+3. Windows
+|Shutdown|  |Restart|
+Choose the Operating System:
+== limine/00-start
+Limine 11.4.1 (x86-64, UEFI)
+ARROWS Select
+ENTER Boot
+E Edit
+S Firmware Setup
+B Blank Entry
+Charon probe loader
+Windows Boot Manager
+Booting automatically in 23, press any key to stop the countdown...
+== winmenu/00-start
+Windows Boot Manager
+Choose an operating system to start, or press TAB to select a tool:
+(Use the arrow keys to highlight your choice, then press ENTER.)
+Windows Setup
+Windows Memory Diagnostic
+To specify an advanced option for this choice, press F8.
+Seconds until the highlighted choice will be started automatically: 11
+Tools:
+Windows Memory Diagnostic
+ENTER=Choose
+TAB=Menu
+ESC=Cancel
+== winmenu/05-f1
+Windows Memory Diagnostics Tool - Options
+Test Mix:
+Basic
+Standard
+Extended
+Description: The Standard tests include all the Basic tests, plus LRAND,
+Stride6 (cache enabled), CHCKR3, WMATS+, and WINVC.
+Cache:
+Default
+On
+Off
+Description: Use the default cache setting of each test.
+Pass Count (0 - 15):   2
+Description: Set the total number of times the entire test mix will
+repeat (Max = 15).
+TAB=Next
+F10=Apply
+ESC=Cancel
+== winerr/00-start
+Recovery
+Your PC/Device needs to be repaired
+A required device isn't connected or can't be accessed.
+Error code: 0xc000000f
+You'll need to use recovery tools. If you don't have any installation media (like a disc or USB
+device), contact your PC administrator or PC/Device manufacturer.
+Press Enter to try again
+Press F8 for Startup Settings
+Press Esc for UEFI Firmware Settings

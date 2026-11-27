@@ -1,0 +1,5 @@
+# Written by Charon: the voice and the reader settings Charon itself uses (read by speech.sh).
+CHARON_SYNTH=tvox
+CHARON_RATE=10
+CHARON_PITCH=10
+CHARON_PUNCTUATION=some

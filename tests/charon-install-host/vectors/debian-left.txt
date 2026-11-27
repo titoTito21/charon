@@ -1,0 +1,5 @@
+# Debian: Escape at the first question leaves the dialogue; nothing is written.
+lang=en
+flow=debian
+mode=quick
+keys=ESC

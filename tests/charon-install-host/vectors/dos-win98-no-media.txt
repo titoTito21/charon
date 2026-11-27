@@ -1,0 +1,6 @@
+# CharonDOS, Windows 98 profile that waits for media.
+lang=en
+flow=dos
+arg profile=WIN98
+arg reader=none
+arg medium=

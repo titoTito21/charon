@@ -1,0 +1,8 @@
+CHARON grid 31 100 0 0 1 OpenCore
+G01 39*87|39*041c|OpenCore Boot Menu (REL-108-2026-09-27)
+G05 4*00,9*87|4*0000,9*0416|    1. CHARON
+G07 13*87|13*0416|> 2. GRUBTEST
+G09 4*00,10*87|4*0000,10*0416|    3. Windows
+G0d 2*00,21*87|2*0000,21*041a|  |Shutdown|  |Restart|
+G11 28*87|28*041c|Choose the Operating System:
+CHARON grid end

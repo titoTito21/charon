@@ -9,6 +9,8 @@
 //   3. Relocate()      moves the backup GPT to the real end of the disk.
 //   4. AddPartition()  adds one partition (the seed) to both GPT copies.
 //   5. WriteImage()    writes a memory image (the FAT volume) to a partition.
+//   6. r409: ReservePlaceholder(), RetypePartition(), RemovePartition(),
+//      FreeGaps() - the reserved ranges of a multi-system plan (Part 3).
 //
 // Pure logic: no allocation, no floating point, block I/O through callbacks,
 // the caller supplies every buffer. Nothing here keeps state between calls and
@@ -81,6 +83,8 @@ enum class Error : uint32_t {
 	NotRelocated,  // the backup GPT is not at the end of the disk: Relocate()
 	TableFull,     // no free partition entry
 	NoRoom,        // no free space of that size behind the last partition
+	NotFound,      // r409: no partition with that unique GUID
+	Mismatch,      // r409: the partition is not what the caller expected (type, place)
 };
 
 namespace detail {
@@ -1236,6 +1240,279 @@ inline Error WriteImage(const Disk& disk, uint64_t firstLba, uint64_t lbaCount,
 		if (!disk.write(disk.context, firstLba + whole, work, 1))
 			return Error::Write;
 	}
+	return Error::None;
+}
+
+// ---------------------------------------------------------------------------
+// Part 3 (r409): placeholder partitions of a multi-system plan
+// ---------------------------------------------------------------------------
+// A plan reserves the range of every system before anything is installed
+// (ReservePlaceholder), then, just before a system's step, either turns the
+// placeholder into the partition its installer expects (RetypePartition) or
+// deletes it so that the range is the one free gap on the disk
+// (RemovePartition; FreeGaps counts the gaps). Every function validates
+// everything first: nothing is written when an error other than Error::Write
+// is returned, outputs are written only on success, and the write order is
+// AddPartition()'s (backup array, backup header, primary array, primary
+// header), so the primary table is valid before the third write and the
+// complete backup is valid after the second.
+
+// 8DA63339-0007-60C0-C436-083AC8230908, Linux reserved: the placeholder type.
+constexpr Guid kTypeLinuxReserved = {{0x39, 0x33, 0xA6, 0x8D, 0x07, 0x00, 0xC0, 0x60,
+	0xC4, 0x36, 0x08, 0x3A, 0xC8, 0x23, 0x09, 0x08}};
+// C12A7328-F81F-11D2-BA4B-00A0C93EC93B, EFI system partition.
+constexpr Guid kTypeEfiSystem = {{0x28, 0x73, 0x2A, 0xC1, 0x1F, 0xF8, 0xD2, 0x11,
+	0xBA, 0x4B, 0x00, 0xA0, 0xC9, 0x3E, 0xC9, 0x3B}};
+// E3C9E316-0B5C-4DB8-817D-F92DF00215AE, Microsoft reserved.
+constexpr Guid kTypeMicrosoftReserved = {{0x16, 0xE3, 0xC9, 0xE3, 0x5C, 0x0B, 0xB8, 0x4D,
+	0x81, 0x7D, 0xF9, 0x2D, 0xF0, 0x02, 0x15, 0xAE}};
+// DE94BBA4-06D1-4D40-A16A-BFD50179D6AC, Windows recovery environment.
+constexpr Guid kTypeWindowsRecovery = {{0xA4, 0xBB, 0x94, 0xDE, 0xD1, 0x06, 0x40, 0x4D,
+	0xA1, 0x6A, 0xBF, 0xD5, 0x01, 0x79, 0xD6, 0xAC}};
+
+namespace detail {
+
+// Loads the table for a change: valid primary GPT, backup at the end.
+inline Error LoadForChange(const Disk& disk, uint8_t* work, size_t workBytes,
+	Header& h, Scan& scan)
+{
+	Error error = Load(disk, work, workBytes, h, nullptr);
+	if (error != Error::None)
+		return error;
+	error = ScanEntries(work + disk.blockSize, h, scan);
+	if (error != Error::None)
+		return error;
+	const uint64_t backupHeader = disk.blocks - 1;
+	if (h.alternateLba != backupHeader || h.entryBlocks + 2 > backupHeader
+		|| h.lastUsable >= backupHeader - h.entryBlocks)
+		return Error::NotRelocated;
+	return Error::None;
+}
+
+// Writes the changed entry array (work + blockSize) and header (work).
+inline Error Commit(const Disk& disk, uint8_t* work, const Header& h)
+{
+	uint8_t* entries = work + disk.blockSize;
+	const uint64_t backupHeader = disk.blocks - 1;
+	const uint64_t backupEntries = backupHeader - h.entryBlocks;
+	Put32(work + 88, Crc32(entries, size_t(h.entryCount) * h.entrySize));
+	SetHeaderPlace(work, backupHeader, 1, backupEntries);
+	if (!disk.write(disk.context, backupEntries, entries, size_t(h.entryBlocks)))
+		return Error::Write;
+	if (!disk.write(disk.context, backupHeader, work, 1))
+		return Error::Write;
+	SetHeaderPlace(work, 1, backupHeader, h.entriesLba);
+	if (!disk.write(disk.context, h.entriesLba, entries, size_t(h.entryBlocks)))
+		return Error::Write;
+	if (!disk.write(disk.context, 1, work, 1))
+		return Error::Write;
+	return Error::None;
+}
+
+// The used entry with that unique GUID; null when there is none.
+inline uint8_t* FindUnique(uint8_t* entries, const Header& h, const Guid& unique,
+	uint32_t* index)
+{
+	for (uint32_t i = 0; i < h.entryCount; i++) {
+		uint8_t* e = entries + size_t(i) * h.entrySize;
+		if (!AllZero(e, 16) && Same(e + 16, unique.bytes, 16)) {
+			if (index != nullptr)
+				*index = i;
+			return e;
+		}
+	}
+	return nullptr;
+}
+
+inline size_t NameLength(const char16_t* name)
+{
+	size_t n = 0;
+	if (name != nullptr)
+		while (name[n] != 0 && n <= 36)
+			n++;
+	return n;
+}
+
+} // namespace detail
+
+// Reserves exactly [firstLba, firstLba + lbaCount) as a named placeholder of
+// type kTypeLinuxReserved. The name is required (it is what an abort shows the
+// user: "Charon plan 2: Debian"); the range must be free and inside the usable
+// area. Errors as AddPartition().
+inline Error ReservePlaceholder(const Disk& disk, uint8_t* work, size_t workBytes,
+	uint64_t firstLba, uint64_t lbaCount, const Guid& unique,
+	const char16_t* name, AddResult& result)
+{
+	if (!detail::ValidDisk(disk) || name == nullptr || name[0] == 0 || lbaCount == 0
+		|| lbaCount > (uint64_t(1) << 62) / disk.blockSize)
+		return Error::Argument;
+	AddRequest request;
+	request.type = kTypeLinuxReserved;
+	request.unique = unique;
+	request.name = name;
+	request.sizeBytes = lbaCount * disk.blockSize;
+	request.alignmentBytes = disk.blockSize;
+	request.placement = Placement::At;
+	request.attributes = 0;
+	request.firstLba = firstLba;
+	return AddPartition(disk, work, workBytes, request, result);
+}
+
+// Changes the type GUID (and, with a name, the name) of the partition with
+// that unique GUID. The partition must currently have `expectedType`
+// (Error::Mismatch otherwise): a plan may only retype its own placeholder,
+// never somebody else's partition. Place, size, unique GUID and attributes
+// stay. `result` (may be null) describes the partition after the change.
+inline Error RetypePartition(const Disk& disk, uint8_t* work, size_t workBytes,
+	const Guid& unique, const Guid& expectedType, const Guid& newType,
+	const char16_t* newName = nullptr, Partition* result = nullptr)
+{
+	using namespace detail;
+	Header h;
+	Scan scan;
+	Error error = LoadForChange(disk, work, workBytes, h, scan);
+	if (error != Error::None)
+		return error;
+	const size_t nameLength = NameLength(newName);
+	if (AllZero(unique.bytes, 16) || AllZero(newType.bytes, 16)
+		|| AllZero(expectedType.bytes, 16) || nameLength > 36)
+		return Error::Argument;
+	uint32_t index = 0;
+	uint8_t* e = FindUnique(work + disk.blockSize, h, unique, &index);
+	if (e == nullptr)
+		return Error::NotFound;
+	if (!Same(e, expectedType.bytes, 16))
+		return Error::Mismatch;
+	memcpy(e, newType.bytes, 16);
+	if (newName != nullptr) {
+		memset(e + 56, 0, 72);
+		for (size_t i = 0; i < nameLength; i++)
+			Put16(e + 56 + 2 * i, newName[i]);
+	}
+	Partition after;
+	memcpy(after.type.bytes, e, 16);
+	memcpy(after.unique.bytes, e + 16, 16);
+	after.firstLba = U64(e + 32);
+	after.lastLba = U64(e + 40);
+	after.attributes = U64(e + 48);
+	for (int k = 0; k < 36; k++)
+		after.name[k] = char16_t(U16(e + 56 + 2 * k));
+	after.name[36] = 0;
+	after.index = index;
+	error = Commit(disk, work, h);
+	if (error != Error::None)
+		return error;
+	if (result != nullptr)
+		*result = after;
+	return Error::None;
+}
+
+// Removes the partition with that unique GUID from both tables; its blocks are
+// not touched. It must have `expectedType`, and with expectedFirstLba != 0 it
+// must start there (Error::Mismatch otherwise). `freed` (may be null) receives
+// the range that became free.
+inline Error RemovePartition(const Disk& disk, uint8_t* work, size_t workBytes,
+	const Guid& unique, const Guid& expectedType, uint64_t expectedFirstLba = 0,
+	AddResult* freed = nullptr)
+{
+	using namespace detail;
+	Header h;
+	Scan scan;
+	Error error = LoadForChange(disk, work, workBytes, h, scan);
+	if (error != Error::None)
+		return error;
+	if (AllZero(unique.bytes, 16) || AllZero(expectedType.bytes, 16))
+		return Error::Argument;
+	uint32_t index = 0;
+	uint8_t* e = FindUnique(work + disk.blockSize, h, unique, &index);
+	if (e == nullptr)
+		return Error::NotFound;
+	const uint64_t first = U64(e + 32), last = U64(e + 40);
+	if (!Same(e, expectedType.bytes, 16)
+		|| (expectedFirstLba != 0 && first != expectedFirstLba))
+		return Error::Mismatch;
+	memset(e, 0, h.entrySize);
+	error = Commit(disk, work, h);
+	if (error != Error::None)
+		return error;
+	if (freed != nullptr) {
+		freed->firstLba = first;
+		freed->lbaCount = last - first + 1;
+		freed->entryIndex = index;
+	}
+	return Error::None;
+}
+
+struct Gap {
+	uint64_t firstLba, lbaCount;
+};
+
+// Lists the free ranges of the usable area in disk order: each start rounded
+// up to `alignmentBytes` (0 = 1 MiB), each length cut down to whole alignment
+// units, ranges shorter than `minimumBytes` left out. `count` is the real
+// number even when it exceeds `capacity` (then only `capacity` are stored).
+// "Exactly one gap" for an installer that takes the biggest free space is
+// count == 1 with minimumBytes set to what that installer would consider.
+// The disk is only read. Outputs only on success.
+inline Error FreeGaps(const Disk& disk, uint8_t* work, size_t workBytes,
+	uint64_t alignmentBytes, uint64_t minimumBytes, Gap* gaps, size_t capacity,
+	size_t& count)
+{
+	using namespace detail;
+	if (gaps == nullptr && capacity != 0)
+		return Error::Argument;
+	Header h;
+	Error error = Load(disk, work, workBytes, h, nullptr);
+	if (error != Error::None)
+		return error;
+	const uint32_t bs = disk.blockSize;
+	const uint8_t* entries = work + bs;
+	Scan scan;
+	error = ScanEntries(entries, h, scan);
+	if (error != Error::None)
+		return error;
+	const uint64_t align = alignmentBytes == 0 ? 1024 * 1024 : alignmentBytes;
+	if (align % bs != 0)
+		return Error::Argument;
+	const uint64_t alignLbas = align / bs;
+	const uint64_t minLbas = minimumBytes / bs + (minimumBytes % bs != 0 ? 1 : 0);
+	size_t found = 0;
+	uint64_t position = h.firstUsable;
+	while (position <= h.lastUsable) {
+		// The partition that covers `position`, else the nearest one behind it.
+		uint64_t next = h.lastUsable + 1;
+		bool covered = false;
+		for (uint32_t i = 0; i < h.entryCount; i++) {
+			const uint8_t* e = entries + size_t(i) * h.entrySize;
+			if (AllZero(e, 16))
+				continue;
+			const uint64_t first = U64(e + 32), last = U64(e + 40);
+			if (first <= position && position <= last) {
+				position = last + 1;
+				covered = true;
+				break;
+			}
+			if (first > position && first < next)
+				next = first;
+		}
+		if (covered)
+			continue;
+		uint64_t first = position + (alignLbas - 1);
+		first -= first % alignLbas;
+		if (first < next) {
+			uint64_t length = next - first;
+			length -= length % alignLbas;
+			if (length != 0 && length >= minLbas) {
+				if (found < capacity) {
+					gaps[found].firstLba = first;
+					gaps[found].lbaCount = length;
+				}
+				found++;
+			}
+		}
+		position = next;
+	}
+	count = found;
 	return Error::None;
 }
 

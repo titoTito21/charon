@@ -1,0 +1,9 @@
+CHARON grid 56 160 0 0 0 Clover
+G15 66*00,61*f0|66*0000,61*040e|                                                                  Options for Boot Microsoft EFI Boot from GRUBTEST on GRUBTEST
+G18 61*00,17*f0|61*0000,17*040c|                                                             Volume size: 63Mb
+G19 61*00,99*f0|61*0000,99*040d|                                                             PciRoot(0x0)\Pci(0x1F,0x2)\Sata(0x3,0xFFFF,0x0)\HD(1,GPT,6F1C3A52-5D47-4C11-9A8E-0C4A5B1E7D01,0x800
+G1e 61*00,16*90|61*0000,16*040e|                                                             Run bootmgfw.efi
+G20 61*00,27*f0|61*0000,27*040c|                                                             Boot Windows from Hard Disk
+G21 61*00,24*f0|61*0000,24*040c|                                                             Boot Windows from CD-ROM
+G23 61*00,29*f0|61*0000,29*040e|                                                             Run bootmgfw.efi in text mode
+CHARON grid end

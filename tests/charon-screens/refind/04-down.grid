@@ -1,0 +1,5 @@
+CHARON grid 48 103 0 0 0 rEFInd
+G16 76*00,26*f0|76*0000,26*030e|                                                                            Boot using default options
+G17 76*00,19*f0|76*0000,19*030e|                                                                            Return to Main Menu
+G2f 57*00,45*f0|57*0000,45*030e|                                                         Use arrow keys to move cursor; Enter to boot;
+CHARON grid end

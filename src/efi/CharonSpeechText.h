@@ -22,7 +22,7 @@
 namespace hakefi::speechtext {
 constexpr char16_t ownOpen=0xE001,ownClose=0xE002,languageSwitch=0x001B;
 constexpr char16_t formatMarkChar=0xE003;   // r393 CharonFormatting.h formatMark + formatPayloadChars payload characters
-constexpr size_t formatPayloadChars=12;      // r397 (was 6): ACSS range/stress/richness, family, event, stereo
+constexpr size_t formatPayloadChars=14;      // r397 (was 6): ACSS range/stress/richness, family, event, stereo
 enum Level : uint8_t {levelNone=0,levelSome=1,levelMost=2,levelAll=3,levelChar=4};
 enum class Lang : uint8_t {unknown,pl,en};
 // Screen text language setting (settings V9 byte 38).

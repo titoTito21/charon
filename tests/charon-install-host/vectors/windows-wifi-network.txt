@@ -1,0 +1,9 @@
+# r409: Windows, express mode (disk mode left to the generator default: the harness keeps one "put"), Charon is connected over Wi-Fi and wrote \charon\network.conf to the media (wnetwork=yes): the first-logon commands run Charon-Network.ps1 right after the copy; the command carries no network name and no password.
+lang=en
+flow=windows
+mode=quick
+keys=ENTER ENTER "test" ENTER "test" ENTER
+keys=ENTER ENTER
+put wnetwork=yes
+arg partition=3
+arg esp=0

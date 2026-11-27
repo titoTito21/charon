@@ -1,0 +1,9 @@
+CHARON grid 31 100 30 56 0 rEFInd
+G00 100*9f|100*0000|                                                                                                    
+G01 100*9f|100*0000|   rEFInd - Boot Options for EFI\probe\GPROBE.EFI on GRUBTEST                                       
+G02 100*9f|100*0000|                                                                                                    
+G04 1*8a,1*00,27*af|29*0000|   Boot using default options
+G05 2*00,20*87|22*0000|   Return to Main Menu
+G1d 45*8a|45*0000|Use arrow keys to move cursor; Enter to boot;
+G1e 56*8a|56*0000|Insert or F2 to edit options; Esc to return to main menu
+CHARON grid end

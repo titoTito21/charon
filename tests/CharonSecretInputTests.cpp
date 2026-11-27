@@ -5,6 +5,8 @@
 // and checks everything the reader says, remembers or would braille.
 //   clang++ -std=c++17 -fuse-ld=lld -I src/efi -I <dir holding src/efi/haiku as "efi">
 //       -I tools/charon-compat-include tests/CharonSecretInputTests.cpp -o t.exe
+// CharonSystemTools.h (r409 clock.txt) uses efi_file_protocol before CharonResident.h includes its header.
+#include <efi/protocol/file.h>
 #define private public
 #include "../src/efi/CharonResident.h"
 #undef private

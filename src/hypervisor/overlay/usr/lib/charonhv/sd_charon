@@ -1,0 +1,193 @@
+#!/usr/bin/python3 -I
+# SPDX-License-Identifier: GPL-2.0-or-later
+"""Charon Hypervisor: a speech-dispatcher output module that speaks with CHARON'S voices (6s/6u, r410).
+
+The screen reader of the modern browser mode (Orca, or Linda when it runs) talks to speech-dispatcher; this module
+is its default ("charon"). It speaks through the hypervisor's own voice (hvvoice: TVox, every RHVoice voice of
+Charon's packs, eSpeak NG - the same list as Sound > Voice, hvvoice.catalogue) on Charon's mixer, so the reader
+is heard with the voice and settings the user knows, and the guest sound is lowered while it speaks.
+
+Measured 6s: speech-dispatcher's own generic module (sd_generic) crashed on Alpine at the first message ("Broken
+pipe to module", "terminated abnormally") and speech-dispatcher fell back to its eSpeak NG - so this small module
+implements speech-dispatcher's output-module protocol itself (text lines on stdin/stdout: INIT, AUDIO, LOGLEVEL,
+SET, LIST VOICES, SPEAK/CHAR/KEY/SOUND_ICON, STOP, PAUSE, QUIT; events 701 BEGIN, 700 INDEX MARK, 702 END, 703 STOP).
+"""
+import html, os, re, subprocess, sys, threading, time
+sys.path.insert(0, '/usr/lib/charonhv')
+import hvvoice
+
+out_lock = threading.Lock()
+_voices = []
+
+
+def voices():
+    if not _voices:
+        _voices.extend(hvvoice.catalogue())
+    return _voices
+
+
+def send(text):
+    with out_lock:
+        sys.stdout.write(text if text.endswith('\n') else text + '\n')
+        sys.stdout.flush()
+
+
+def read_block():
+    """Lines up to the lone '.' (speech-dispatcher escapes a leading dot as '..')."""
+    lines = []
+    for line in sys.stdin:
+        line = line.rstrip('\n')
+        if line == '.':
+            break
+        lines.append(line[1:] if line.startswith('..') else line)
+    return lines
+
+
+class Speaker:
+    def __init__(self):
+        self.lang = None            # speech-dispatcher's language of the next message
+        self.rate = 0               # -100..100
+        self.pitch = 0
+        self.voice_name = ''        # a voice of LIST VOICES chosen by the reader
+        self.voice = None
+        self.job = 0
+        self.lock = threading.Lock()
+
+    def ensure(self):
+        if self.voice is None:
+            # the hypervisor's settings (6ze: /hv/settings.json over Charon's), then the reader's own voice, rate and
+            # pitch from Hypervisor settings > Screen reader (the same as the hypervisor's until changed)
+            s = hvvoice.Settings(self.lang or 'en')
+            g = {}
+            try:
+                import hvsettings
+                g = hvsettings.Store(s).data.get('general', {})
+            except Exception as e:
+                hvvoice.log('sd_charon: settings %r' % e)
+            if g.get('reader_rate'):
+                s.rate = g['reader_rate']
+            if g.get('reader_pitch'):
+                s.pitch = g['reader_pitch']
+            self.voice = hvvoice.Voice(s)
+            own = next((e for e in voices() if e['id'] == g.get('reader_voice') and e['available']), None)
+            if own:
+                self.voice.set_voice(own, keep=False)
+        return self.voice
+
+    def speak(self, text, kind):
+        marks = re.findall(r'<mark\s+name="([^"]*)"\s*/>', text)
+        plain = html.unescape(re.sub(r'<[^>]+>', ' ', text))
+        plain = ' '.join(plain.split())
+        if kind == 'KEY':
+            plain = plain.replace('_', ' ')
+        with self.lock:
+            self.job += 1
+            job = self.job
+        threading.Thread(target=self._run, args=(job, plain, marks), daemon=True).start()
+
+    def _run(self, job, text, marks):
+        v = self.ensure()
+        send('701 BEGIN')
+        try:                        # what the reader said, for the user's review and the tests (RAM only, this session)
+            with open('/run/charonhv/reader-said.txt', 'a', encoding='utf-8') as f:
+                f.write('%s %s %s\n' % (time.strftime('%H:%M:%S'), (self.lang or '-')[:2], text))
+        except OSError:
+            pass
+        if text:
+            lang = (self.lang or '')[:2].lower() or None
+            rate = 2 ** (max(-100, min(100, self.rate)) / 100.0)             # -100..100 -> half .. double speed
+            pitch = 2 ** (max(-100, min(100, self.pitch)) / 200.0)
+            entry = next((e for e in voices() if e['name'] == self.voice_name and e['available']), None)
+            if entry and entry['id'] != v.voice_id:
+                v.set_voice(entry, keep=False)       # the reader's choice never changes the hypervisor's voice
+            script, argv = v.command(text, pitch, lang, rate)
+            with self.lock:
+                if job != self.job:
+                    return
+                if not v.ducked:
+                    v.set_guest_volume(min(v.duck, v.guest_volume))
+                    v.ducked = True
+                v.proc = subprocess.Popen(['sh', '-c', script] + argv, stdout=subprocess.DEVNULL,
+                                          stderr=subprocess.DEVNULL, start_new_session=True)
+            v.proc.wait()
+            v.set_guest_volume(v.guest_volume)
+            v.ducked = False
+        with self.lock:
+            if job != self.job:
+                return              # stopped: 703 was sent by stop()
+        for m in marks:
+            send('700-%s\n700 INDEX MARK' % m)
+        send('702 END')
+
+    def stop(self):
+        with self.lock:
+            self.job += 1
+            v = self.voice
+            busy = v is not None and v.proc is not None and v.proc.poll() is None
+            if busy:
+                v._kill()
+        if busy:
+            send('703 STOP')
+
+
+def main():
+    sp = Speaker()
+    for line in sys.stdin:
+        cmd = line.strip()
+        if cmd == 'INIT':
+            send('299-Charon voices ready.\n299 OK LOADED SUCCESSFULLY')
+        elif cmd == 'AUDIO':
+            send('207 OK RECEIVING AUDIO SETTINGS')
+            opts = dict(l.split('=', 1) for l in read_block() if '=' in l)
+            if opts.get('audio_output_method') == 'server':
+                # this module plays through Charon's mixer itself; speech-dispatcher then asks again with its own method
+                send('300-Charon voices play by themselves; server audio is not used.\n300 UNKNOWN ERROR')
+            else:
+                send('203 OK AUDIO INITIALIZED')
+        elif cmd == 'LOGLEVEL':
+            send('207 OK RECEIVING LOGLEVEL SETTINGS')
+            read_block()
+            send('203 OK LOGLEVEL SET')
+        elif cmd == 'DEBUG':
+            send('200 OK DEBUGGING ON')
+        elif cmd == 'SET':
+            send('203 OK RECEIVING SETTINGS')
+            for l in read_block():
+                k, _, val = l.partition('=')
+                if k == 'language' and val != 'NULL':
+                    sp.lang = val
+                elif k == 'rate' and val.lstrip('-').isdigit():
+                    sp.rate = int(val)
+                elif k == 'pitch' and val.lstrip('-').isdigit():
+                    sp.pitch = int(val)
+                elif k == 'synthesis_voice':
+                    sp.voice_name = '' if val == 'NULL' else val
+            send('203 OK SETTINGS RECEIVED')
+        elif cmd == 'LIST VOICES':
+            rows = ['200-%s\t%s\t%s' % (e['name'], e['lang'] or 'none', 'none') for e in voices() if e['available']]
+            send('\n'.join(rows + ['200 OK VOICE LIST SENT']))
+        elif cmd in ('SPEAK', 'CHAR', 'KEY', 'SOUND_ICON'):
+            send('202 OK RECEIVING MESSAGE')
+            text = '\n'.join(read_block())
+            send('200 OK SPEAKING')
+            if cmd == 'SOUND_ICON':
+                send('701 BEGIN')
+                send('702 END')
+            else:
+                sp.stop()
+                sp.speak(text, cmd)
+        elif cmd == 'STOP':
+            sp.stop()
+        elif cmd == 'PAUSE':
+            sp.stop()
+        elif cmd == 'QUIT':
+            sp.stop()
+            send('210 OK QUIT')
+            return
+        elif cmd:
+            send('300 ERR UNKNOWN COMMAND')
+
+
+if __name__ == '__main__':
+    os.environ.setdefault('HOME', '/root')
+    main()

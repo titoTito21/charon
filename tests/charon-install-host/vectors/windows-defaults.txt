@@ -1,0 +1,9 @@
+# Windows, express mode, Enter at every question; NVDA was saved to the media.
+lang=en
+flow=windows
+mode=quick
+keys=ENTER ENTER "test" ENTER "test" ENTER
+keys=ENTER ENTER
+put diskmode=whole
+arg partition=3
+arg esp=0

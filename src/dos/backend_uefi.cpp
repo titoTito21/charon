@@ -76,7 +76,9 @@ struct PcmSinkV1 {
 };
 PcmSinkV1* g_pcm;                        // open sink, or null
 void pcm_close() { if (g_pcm) { g_pcm->Close(g_pcm); g_pcm = nullptr; } }
-int g_launch_kind;                       // 0, PL_WINNT, PL_WIN
+int g_launch_kind;                       // 0, PL_WINNT, PL_WIN, PL_LINUX (r409)
+char g_launch_name[64];                  // r409: display name of what WINNT / LINUX starts (UTF-8)
+efi_status g_launch_stop;                // r409: what the voice's Stop returned before a LINUX hand-over
 efi_handle g_launch_device;              // volume that holds the program
 char16_t g_launch_file[300];             // its path on that volume
 char16_t g_launch_options[400];          // load options for CHARONPC.EFI
@@ -259,43 +261,56 @@ efi_device_path_protocol* file_path_of(efi_handle device, const char16_t* file)
     return (efi_device_path_protocol*)out;
 }
 
-bool find_windows()
-{
-    size_t count = 0;
-    efi_handle* handles = nullptr;
-    if (BS->LocateHandleBuffer(ByProtocol, &g_sfs, nullptr, &count, &handles) != EFI_SUCCESS || !handles) return false;
-    bool found = false;
-    for (size_t i = 0; i < count && !found; i++) {
-        efi_simple_file_system_protocol* fs = nullptr;
-        efi_file_protocol* root = nullptr;
-        if (BS->HandleProtocol(handles[i], &g_sfs, (void**)&fs) != EFI_SUCCESS || !fs) continue;
-        if (fs->OpenVolume(fs, &root) != EFI_SUCCESS || !root) continue;
-        if (file_exists(root, u"EFI\\Microsoft\\Boot\\bootmgfw.efi")) {
-            g_launch_device = handles[i];
-            wcopy(g_launch_file, u"\\EFI\\Microsoft\\Boot\\bootmgfw.efi", 300);
-            found = true;
-        }
-        root->Close(root);
-    }
-    BS->FreePool(handles);
-    return found;
-}
-
-// Starts what the shell asked for. WINNT does not return when Windows starts.
+// Starts what the shell asked for. WINNT and LINUX do not return when the
+// system starts.
+//
+// r409, the audio hand-over (read in src/efi/CharonVoiceProvider.h Stop() and
+// EnsureRunning()): MenuVoice::Stop cancels queued speech, lets the frames the
+// device already took play out and stops the device stream. It does not end
+// the resident reader: the reader's next SpeakUtf8 opens the stream again
+// (EnsureRunning). Charon's own menu calls the same Stop before every
+// transfer, Linux loaders included (BootMenu.h, BeforeTransfer), and the
+// reader then reads GRUB's menu. So both commands hand over exactly as the
+// menu does. Because Stop cancels what is still queued, the line "Starting
+// ..." is given time first: a bounded wait in which only the reader's own
+// timer feeds the voice - nothing is pumped from here (two pumps at once were
+// the crash of r407).
 efi_status run_launch()
 {
     efi_device_path_protocol* path = file_path_of(g_launch_device, g_launch_file);
     if (!path) return EFI_NOT_FOUND;
-    if (g_launch_kind == PL_WINNT) {
+    g_launch_stop = EFI_SUCCESS;
+    if (g_launch_kind == PL_WINNT || g_launch_kind == PL_LINUX) {
+        // The loader must still be there (validated again right before use).
+        efi_simple_file_system_protocol* fs = nullptr;
+        efi_file_protocol* root = nullptr;
+        bool there = false;
+        if (BS->HandleProtocol(g_launch_device, &g_sfs, (void**)&fs) == EFI_SUCCESS && fs && fs->OpenVolume(fs, &root) == EFI_SUCCESS && root) {
+            there = file_exists(root, g_launch_file + (g_launch_file[0] == u'\\' ? 1 : 0));
+            root->Close(root);
+        }
+        if (!there) { BS->FreePool(path); return EFI_NOT_FOUND; }
         MenuVoiceV1* voice = nullptr;
         if (BS->LocateProtocol(&g_menu_voice, nullptr, (void**)&voice) == EFI_SUCCESS && voice && voice->Stop) {
+            // About 70 ms per character of the announcement, 2 to 6 seconds.
+            size_t chars = 40;
+            for (const char* c = g_launch_name; *c; c++) chars++;
+            size_t ms = chars * 70;
+            if (ms < 2000) ms = 2000;
+            if (ms > 6000) ms = 6000;
+            for (size_t waited = 0; waited < ms; waited += 50) BS->Stall(50000);
             const efi_status st = voice->Stop(voice);
-            if (st != EFI_SUCCESS) { BS->FreePool(path); return st; }
+            g_launch_stop = st;
+            // Windows: a failed Stop forbids the transfer (the rule since r403).
+            // Linux: as in Charon's menu since r400, a sound device that does
+            // not stop is recorded and the start goes on; the reader stays.
+            if (st != EFI_SUCCESS && g_launch_kind == PL_WINNT) { BS->FreePool(path); return st; }
         }
     }
     efi_handle child = nullptr;
     efi_status st = BS->LoadImage(false, g_image, path, nullptr, 0, &child);
     BS->FreePool(path);
+    if (st != EFI_SUCCESS && child) { BS->UnloadImage(child); child = nullptr; }   // r409: a refused image (Secure Boot) is not left loaded
     if (st != EFI_SUCCESS || !child) return st == EFI_SUCCESS ? EFI_LOAD_ERROR : st;
     if (g_launch_kind == PL_WIN) {
         efi_loaded_image_protocol* li = nullptr;
@@ -314,11 +329,6 @@ int plat_request_launch(int kind, const char* name, char* chosen, size_t chosen_
 {
     g_launch_kind = 0;
     if (chosen && chosen_size) chosen[0] = 0;
-    if (kind == PL_WINNT) {
-        if (!find_windows()) return 2;
-        g_launch_kind = PL_WINNT;
-        return 0;
-    }
     if (kind != PL_WIN || !g_self_device || !g_root[2]) return 2;
     // The emulator lives next to CHARONDOS.EFI; profiles on drive C: \PC\<name>.
     char16_t emu[300];
@@ -456,6 +466,7 @@ void plat_time(PlatTime* out)
     if (hs > 99) hs = 99;
     out->year = t.Year; out->month = t.Month; out->day = t.Day;
     out->hour = t.Hour; out->minute = t.Minute; out->second = t.Second; out->hsec = (uint8_t)hs;
+    charon_clock_local(out);   // r409: local time when the clock keeps universal time (\EFI\HAK\clock.txt)
 }
 void* plat_alloc(size_t bytes)
 {
@@ -936,8 +947,44 @@ extern "C" efi_status EFIAPI efi_main(efi_handle image, efi_system_table* table)
         const int kind = g_launch_kind;
         const efi_status st = run_launch();
         g_launch_kind = 0;
-        if (kind == PL_WINNT || st != EFI_SUCCESS) {
-            // Windows Boot Manager came back, or the program could not start.
+        if (kind == PL_WINNT || kind == PL_LINUX) {
+            // r409: the loader came back, or it could not start. Said with the
+            // system's name and the reason; Secure Boot is named as such.
+            static char16_t line[400];
+            char16_t name[80];
+            size_t n = 0;
+            for (const uint8_t* c = (const uint8_t*)g_launch_name; *c && n + 1 < 80;) {   // UTF-8 -> UTF-16 (BMP)
+                uint32_t u = *c++;
+                int more = u >= 0xE0 ? 2 : u >= 0xC0 ? 1 : 0;
+                if (u >= 0xF0) { u = '?'; more = 0; while ((*c & 0xC0) == 0x80) c++; }
+                else if (more) u &= more == 2 ? 0x0F : 0x1F;
+                for (; more && (*c & 0xC0) == 0x80; more--) u = (u << 6) | (*c++ & 0x3F);
+                name[n++] = (char16_t)u;
+            }
+            name[n] = 0;
+            const bool refused = st == EFI_SECURITY_VIOLATION || st == EFI_ACCESS_DENIED;
+            wcopy(line, u"CharonDOS: ", 400);
+            wcat(line, name, 400);
+            if (options.polish) {
+                wcat(line, u" nie wystartował (", 400);
+                wcat(line, refused ? u"Firmware odrzucił ten program rozruchowy: Secure Boot."
+                    : st == EFI_NOT_FOUND ? u"nie znaleziono programu rozruchowego"
+                    : st == EFI_SUCCESS ? u"program rozruchowy zakończył pracę i wrócił"
+                    : u"program rozruchowy zgłosił błąd albo nie mógł wystartować", 400);
+            } else {
+                wcat(line, u" did not start (", 400);
+                wcat(line, refused ? u"The firmware refused this loader: Secure Boot."
+                    : st == EFI_NOT_FOUND ? u"the boot loader was not found"
+                    : st == EFI_SUCCESS ? u"the boot loader ended and came back"
+                    : u"the boot loader reported an error or could not start", 400);
+            }
+            wcat(line, u").\r\n", 400);
+            Out->OutputString(Out, line);
+            if (kind == PL_WINNT && g_launch_stop != EFI_SUCCESS)
+                Out->OutputString(Out, (char16_t*)(options.polish ? u"CharonDOS: nie udało się zatrzymać dźwięku, więc Windows nie został uruchomiony.\r\n"
+                                                                  : u"CharonDOS: the sound could not be stopped, so Windows was not started.\r\n"));
+        } else if (st != EFI_SUCCESS) {
+            // The emulator could not start.
             Out->OutputString(Out, (char16_t*)(options.polish ? u"CharonDOS: program zakończył się błędem albo nie mógł wystartować.\r\n"
                                                               : u"CharonDOS: the program ended with an error or could not start.\r\n"));
         }
@@ -960,4 +1007,329 @@ extern "C" efi_status EFIAPI efi_main(efi_handle image, efi_system_table* table)
     else if (result == EFI_SUCCESS) Out->OutputString(Out, (char16_t*)u"\r\n");
     Out->EnableCursor(Out, old_cursor);
     return result;
+}
+
+// ---- WINNT / LINUX (r409): the installed systems ---------------------------------
+// Collects candidates in the fixed order of launch_select.h: Charon's registry
+// \EFI\HAK\systems.txt on any volume, the firmware entries BootOrder ->
+// Boot####, a scan of \EFI on every volume. Only reads: no variable and no
+// file is written here except BOOT.CFG by LINUX /D and WINNT /D.
+namespace {
+efi_guid g_block_io = {0x964e5b21, 0x6459, 0x11d2, {0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b}};
+struct BlockIoMedia {            // EFI_BLOCK_IO_MEDIA, the fields up to LastBlock
+    uint32_t MediaId;
+    bool RemovableMedia, MediaPresent, LogicalPartition, ReadOnly, WriteCaching;
+    uint32_t BlockSize, IoAlign;
+    uint64_t LastBlock;
+};
+struct BlockIoHead { uint64_t Revision; BlockIoMedia* Media; };
+
+struct Vol { efi_handle handle; char part[40]; uint16_t disk; };
+Vol g_vols[32];
+int g_nvols;
+
+// Length of a device path without its end node; 0 when it is malformed.
+size_t path_bytes(const uint8_t* path)
+{
+    size_t total = 0;
+    for (int guard = 0; path && guard < 64; guard++) {
+        const uint32_t len = (uint32_t)(path[total + 2] | (path[total + 3] << 8));
+        if (path[total] == DEVICE_PATH_END) return total;
+        if (len < 4 || total + len > 4096) return 0;
+        total += len;
+    }
+    return 0;
+}
+// The hard-drive node with a GPT partition GUID inside a device path.
+const uint8_t* hd_node(const uint8_t* path, size_t bytes)
+{
+    for (size_t at = 0; at + 4 <= bytes;) {
+        const uint32_t len = (uint32_t)(path[at + 2] | (path[at + 3] << 8));
+        if (len < 4 || at + len > bytes) break;
+        if (path[at] == DEVICE_PATH_MEDIA && path[at + 1] == 1 && len >= 42 && path[at + 41] == 2) return path + at;
+        at += len;
+    }
+    return nullptr;
+}
+void guid_text(const uint8_t* g, char* out)
+{
+    static const int order[16] = {3, 2, 1, 0, 5, 4, 7, 6, 8, 9, 10, 11, 12, 13, 14, 15};
+    static const char hex[] = "0123456789abcdef";
+    size_t n = 0;
+    for (int i = 0; i < 16; i++) {
+        if (i == 4 || i == 6 || i == 8 || i == 10) out[n++] = '-';
+        out[n++] = hex[g[order[i]] >> 4]; out[n++] = hex[g[order[i]] & 15];
+    }
+    out[n] = 0;
+}
+// Number of the disk a volume is on, counted as Charon's own disk list counts
+// (src/efi/CharonWsDisks.h Load: whole disks with media in handle order,
+// without optical drives and memory disks). 0 = unknown.
+uint16_t disk_number(const uint8_t* volume_path, size_t volume_bytes)
+{
+    size_t count = 0;
+    efi_handle* handles = nullptr;
+    if (BS->LocateHandleBuffer(ByProtocol, &g_block_io, nullptr, &count, &handles) != EFI_SUCCESS || !handles) return 0;
+    uint16_t number = 0, found = 0;
+    for (size_t i = 0; i < count && !found; i++) {
+        BlockIoHead* io = nullptr;
+        uint8_t* path = nullptr;
+        if (BS->HandleProtocol(handles[i], &g_block_io, (void**)&io) != EFI_SUCCESS || !io || !io->Media
+            || io->Media->LogicalPartition || !io->Media->MediaPresent || io->Media->BlockSize == 2048) continue;
+        if (BS->HandleProtocol(handles[i], &g_device_path, (void**)&path) != EFI_SUCCESS || !path) continue;
+        const size_t bytes = path_bytes(path);
+        if (!bytes) continue;
+        bool memory = false;
+        for (size_t at = 0; at + 4 <= bytes;) {
+            const uint32_t len = (uint32_t)(path[at + 2] | (path[at + 3] << 8));
+            if (len < 4) break;
+            if ((path[at] == 1 && path[at + 1] == 3) || (path[at] == 4 && path[at + 1] == 2)) memory = true;
+            at += len;
+        }
+        if (memory) continue;
+        number++;
+        if (bytes > volume_bytes) continue;
+        bool same = true;
+        for (size_t k = 0; same && k < bytes; k++) if (path[k] != volume_path[k]) same = false;
+        if (same) found = number;
+    }
+    BS->FreePool(handles);
+    return found;
+}
+void find_volumes()
+{
+    g_nvols = 0;
+    size_t count = 0;
+    efi_handle* handles = nullptr;
+    if (BS->LocateHandleBuffer(ByProtocol, &g_sfs, nullptr, &count, &handles) != EFI_SUCCESS || !handles) return;
+    for (size_t i = 0; i < count && g_nvols < 32; i++) {
+        Vol* v = &g_vols[g_nvols];
+        v->handle = handles[i]; v->disk = 0; v->part[0] = 0;
+        uint8_t* path = nullptr;
+        if (BS->HandleProtocol(handles[i], &g_device_path, (void**)&path) == EFI_SUCCESS && path) {
+            const size_t bytes = path_bytes(path);
+            const uint8_t* hd = bytes ? hd_node(path, bytes) : nullptr;
+            if (hd) { guid_text(hd + 24, v->part); v->disk = disk_number(path, bytes); }
+        }
+        if (!v->part[0]) {
+            // No GPT partition behind it (a disc, a memory disk): scanned, under a name of its own.
+            launch_copy(v->part, sizeof v->part, "volume-");
+            char digits[4] = {(char)('0' + g_nvols / 10), (char)('0' + g_nvols % 10), 0, 0};
+            launch_cat(v->part, sizeof v->part, digits);
+        }
+        g_nvols++;
+    }
+    BS->FreePool(handles);
+}
+efi_file_protocol* open_volume(efi_handle handle)
+{
+    efi_simple_file_system_protocol* fs = nullptr;
+    efi_file_protocol* root = nullptr;
+    if (BS->HandleProtocol(handle, &g_sfs, (void**)&fs) != EFI_SUCCESS || !fs) return nullptr;
+    if (fs->OpenVolume(fs, &root) != EFI_SUCCESS) return nullptr;
+    return root;
+}
+// "\EFI\x" (UTF-8, ASCII in practice) -> "EFI\x" in UTF-16.
+void wide_rel(const char* path, char16_t* out, size_t cap)
+{
+    size_t n = 0;
+    if (path[0] == '\\') path++;
+    for (; *path && n + 1 < cap; path++) out[n++] = (char16_t)(uint8_t)*path;
+    out[n] = 0;
+}
+bool vol_file(void* context, const char* path, uint32_t* size)
+{
+    efi_file_protocol* root = (efi_file_protocol*)context;
+    char16_t wide[200];
+    wide_rel(path, wide, 200);
+    efi_file_protocol* f = nullptr;
+    if (root->Open(root, &f, wide, EFI_FILE_MODE_READ, 0) != EFI_SUCCESS || !f) return false;
+    const efi_file_info* info = info_of(f);
+    const bool ok = info && !(info->Attribute & EFI_FILE_DIRECTORY);
+    if (ok && size) *size = info->FileSize > 0xFFFFFFFFull ? 0xFFFFFFFFu : (uint32_t)info->FileSize;
+    f->Close(f);
+    return ok;
+}
+int vol_names(void* context, const char* folder, bool folders, char (*out)[64], int cap)
+{
+    efi_file_protocol* root = (efi_file_protocol*)context;
+    char16_t wide[200];
+    wide_rel(folder, wide, 200);
+    efi_file_protocol* dir = nullptr;
+    if (root->Open(root, &dir, wide, EFI_FILE_MODE_READ, 0) != EFI_SUCCESS || !dir) return 0;
+    int n = 0;
+    for (int guard = 0; guard < 512 && n < cap; guard++) {
+        alignas(8) static uint8_t listing[1100];
+        size_t size = sizeof listing;
+        if (dir->Read(dir, &size, listing) != EFI_SUCCESS || !size) break;
+        const efi_file_info* info = (const efi_file_info*)listing;
+        const bool is_folder = (info->Attribute & EFI_FILE_DIRECTORY) != 0;
+        if (is_folder != folders || info->FileName[0] == u'.') continue;
+        size_t k = 0;
+        bool plain = true;
+        for (; info->FileName[k] && k < 63; k++) {
+            if (info->FileName[k] >= 128) plain = false;
+            out[n][k] = (char)info->FileName[k];
+        }
+        out[n][k] = 0;
+        if (plain && !info->FileName[k]) n++;      // names that are not plain ASCII or too long are not loaders
+    }
+    dir->Close(dir);
+    return n;
+}
+long read_file(efi_file_protocol* root, const char16_t* path, char* buffer, unsigned long capacity)
+{
+    efi_file_protocol* f = nullptr;
+    if (!root || root->Open(root, &f, (char16_t*)path, EFI_FILE_MODE_READ, 0) != EFI_SUCCESS || !f) return -1;
+    size_t n = capacity;
+    const efi_status st = f->Read(f, &n, buffer);
+    f->Close(f);
+    return st == EFI_SUCCESS ? (long)n : -1;
+}
+const Vol* vol_of(const char* part)
+{
+    for (int i = 0; i < g_nvols; i++) if (launch_ieq(g_vols[i].part, part)) return &g_vols[i];
+    return nullptr;
+}
+// One Boot#### option: description, and partition GUID + file path of its
+// first device path (short form HD()/File() or a full path).
+bool option_target(const uint8_t* opt, size_t size, char* desc, size_t desc_cap, char* part, char* path, size_t path_cap)
+{
+    if (size < 8) return false;
+    const size_t list = (size_t)(opt[4] | (opt[5] << 8));
+    option_desc(opt, size, desc, desc_cap);
+    size_t at = 6;
+    while (at + 1 < size && (opt[at] || opt[at + 1])) at += 2;
+    at += 2;
+    if (at >= size || list < 4 || at + list > size) return false;
+    const uint8_t* dp = opt + at;
+    const uint8_t* hd = nullptr;
+    size_t n = 0;
+    path[0] = 0;
+    for (size_t p = 0; p + 4 <= list;) {
+        const uint32_t len = (uint32_t)(dp[p + 2] | (dp[p + 3] << 8));
+        if (len < 4 || p + len > list || dp[p] == DEVICE_PATH_END) break;
+        if (dp[p] == DEVICE_PATH_MEDIA && dp[p + 1] == 1 && len >= 42 && dp[p + 41] == 2) hd = dp + p;
+        if (dp[p] == DEVICE_PATH_MEDIA && dp[p + 1] == MEDIA_FILEPATH_DP && hd) {
+            if (n && path[n - 1] != '\\' && n + 1 < path_cap) path[n++] = '\\';
+            for (uint32_t i = 4; i + 1 < len; i += 2) {
+                const uint16_t c = (uint16_t)(dp[p + i] | (dp[p + i + 1] << 8));
+                if (!c) break;
+                if (c >= 128 || n + 1 >= path_cap) return false;
+                if (c == '\\' && n && path[n - 1] == '\\') continue;
+                path[n++] = (char)c;
+            }
+            path[n] = 0;
+        }
+        p += len;
+    }
+    if (!hd || !path[0]) return false;
+    if (path[0] != '\\') {
+        if (n + 2 > path_cap) return false;
+        for (size_t i = n + 1; i > 0; i--) path[i] = path[i - 1];
+        path[0] = '\\';
+    }
+    guid_text(hd + 24, part);
+    return true;
+}
+}  // namespace
+
+int plat_launch_discover(LaunchList* out)
+{
+    static char text[8192];
+    find_volumes();
+    // 1. Charon's registry, on any volume.
+    for (int i = 0; i < g_nvols; i++) {
+        efi_file_protocol* root = open_volume(g_vols[i].handle);
+        if (!root) continue;
+        const long n = read_file(root, u"EFI\\HAK\\systems.txt", text, sizeof text);
+        root->Close(root);
+        if (n > 0) launch_parse_registry(text, (size_t)n, out);
+    }
+    for (int i = 0; i < out->count;) {
+        // The registry is a source of names: a line whose loader is gone is not an installed system.
+        const Vol* v = vol_of(out->e[i].part);
+        efi_file_protocol* root = v ? open_volume(v->handle) : nullptr;
+        const bool there = root && vol_file(root, out->e[i].path, nullptr);
+        if (root) root->Close(root);
+        if (there) { if (!out->e[i].disk) out->e[i].disk = v->disk; i++; }
+        else launch_remove(out, i);
+    }
+    // 2. Firmware entries, in BootOrder.
+    const size_t orders = read_boot_order();
+    for (size_t i = 0; i < orders; i++) {
+        static uint8_t opt[4096];
+        char16_t name[9]; boot_var_name(g_boot_order[i], name);
+        size_t size = sizeof opt;
+        if (ST->RuntimeServices->GetVariable(name, &g_global_var, nullptr, &size, opt) != EFI_SUCCESS) continue;
+        char desc[64], part[40], path[128];
+        if (!option_target(opt, size, desc, sizeof desc, part, path, sizeof path)) continue;
+        const Vol* v = vol_of(part);
+        if (!v) continue;                       // its partition is not there: not startable from here
+        launch_add_firmware(out, desc, part, path, v->disk);
+    }
+    // 3. Scan of every volume.
+    for (int i = 0; i < g_nvols; i++) {
+        efi_file_protocol* root = open_volume(g_vols[i].handle);
+        if (!root) continue;
+        LaunchVolume v;
+        v.context = root; v.part = g_vols[i].part; v.disk = g_vols[i].disk;
+        v.file = vol_file; v.names = vol_names;
+        launch_scan_volume(&v, out);
+        root->Close(root);
+    }
+    return out->count;
+}
+
+static bool cfg_path(char16_t* out, size_t cap)
+{
+    if (!g_self_device) return false;
+    wcopy(out, g_self_dir, cap); wcat(out, u"\\BOOT.CFG", cap);
+    return true;
+}
+long plat_launch_cfg_read(char* buffer, unsigned long capacity)
+{
+    char16_t path[320];
+    if (!cfg_path(path, 320)) return -1;
+    efi_file_protocol* root = open_volume(g_self_device);
+    if (!root) return -1;
+    const long n = read_file(root, path + (path[0] == u'\\' ? 1 : 0), buffer, capacity);
+    root->Close(root);
+    return n;
+}
+int plat_launch_cfg_write(const char* data, unsigned long length)
+{
+    char16_t full[320];
+    if (!cfg_path(full, 320)) return 0;
+    char16_t* path = full + (full[0] == u'\\' ? 1 : 0);
+    efi_file_protocol* root = open_volume(g_self_device);
+    if (!root) return 0;
+    efi_file_protocol* f = nullptr;
+    if (root->Open(root, &f, path, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE, 0) == EFI_SUCCESS && f) { f->Delete(f); f = nullptr; }
+    if (root->Open(root, &f, path, EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0) != EFI_SUCCESS || !f) { root->Close(root); return 0; }
+    size_t n = length;
+    const bool ok = (!length || (f->Write(f, &n, (void*)data) == EFI_SUCCESS && n == length)) && f->Flush(f) == EFI_SUCCESS;
+    f->Close(f); root->Close(root);
+    return ok ? 1 : 0;
+}
+
+int plat_request_launch_entry(const LaunchEntry* entry)
+{
+    g_launch_kind = 0;
+    if (entry->kind != PL_WINNT && entry->kind != PL_LINUX) return 2;
+    find_volumes();                             // the handles are looked up again: nothing is cached
+    const Vol* v = vol_of(entry->part);
+    if (!v) return 2;
+    efi_file_protocol* root = open_volume(v->handle);
+    if (!root) return 2;
+    const bool there = vol_file(root, entry->path, nullptr);
+    root->Close(root);
+    if (!there) return 2;
+    g_launch_device = v->handle;
+    size_t n = 0;
+    for (; entry->path[n] && n + 1 < 300; n++) g_launch_file[n] = (char16_t)(uint8_t)entry->path[n];
+    g_launch_file[n] = 0;
+    launch_copy(g_launch_name, sizeof g_launch_name, entry->name);
+    g_launch_kind = entry->kind;
+    return 0;
 }

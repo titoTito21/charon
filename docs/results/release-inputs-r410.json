@@ -1,0 +1,37 @@
+{
+ "note": "r410 release inputs. The images were built on the build computer and scanned with work/scan-private-r409.py: 0 private strings in all four EFIs and the two synth modules (no scrub needed, as_built==released). The reused audio driver (charon-audio-driver-r409) and driver pack (charon-drivers-r409) were already scrubbed for r409 (release-inputs-r409.json).",
+ "images": {
+  "charon-src-r395/charon-win-r410-rel/CHARON.EFI": {
+   "as_built": "71959d612ac36c6728ff13527b431f60bcaa4e93d11c81cae5bbe6b664e10506",
+   "released": "71959d612ac36c6728ff13527b431f60bcaa4e93d11c81cae5bbe6b664e10506",
+   "replacements": 0
+  },
+  "charon-src-r395/charon-win-r410-rel-drv/CHARONVOICE.EFI": {
+   "as_built": "11aaeeb7fb611eaea19269a73ec7fe22c64b7dae2a9501a84c602bfb7bd66e8a",
+   "released": "11aaeeb7fb611eaea19269a73ec7fe22c64b7dae2a9501a84c602bfb7bd66e8a",
+   "replacements": 0
+  },
+  "charon-src-r395/charondos-r410rel/CHARONDOS.EFI": {
+   "as_built": "9ddbfc5a34fad76c81bb68b06b876999cb6bb9b3fcdf309f0c8de110db5774ac",
+   "released": "9ddbfc5a34fad76c81bb68b06b876999cb6bb9b3fcdf309f0c8de110db5774ac",
+   "replacements": 0
+  },
+  "charon-src-r395/charonpc-r410rel/CHARONPC.EFI": {
+   "as_built": "6a5b3d9ce1c6ef5d7446369efa7b040eb8b54350c08ccc3f27cf9533f7c477e7",
+   "released": "6a5b3d9ce1c6ef5d7446369efa7b040eb8b54350c08ccc3f27cf9533f7c477e7",
+   "replacements": 0
+  }
+ },
+ "synths": {
+  "espeak.tts": {
+   "as_built": "e68ad50f0745f9e1083cb692ba2ed2d8e9b0332fa1d876fd83e4236bed0b9c44",
+   "released": "e68ad50f0745f9e1083cb692ba2ed2d8e9b0332fa1d876fd83e4236bed0b9c44",
+   "replacements": 0
+  },
+  "rhvoice.tts": {
+   "as_built": "074bca19c2085091b24ead88a1eed5e043def217d90aa0ee4e4f6698624d2fe3",
+   "released": "074bca19c2085091b24ead88a1eed5e043def217d90aa0ee4e4f6698624d2fe3",
+   "replacements": 0
+  }
+ }
+}

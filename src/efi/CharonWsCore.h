@@ -16,6 +16,7 @@
 #include "CharonMessageMode.h"
 #include "CharonProgress.h"
 #include "CharonMenuVoiceMark.h"
+#include "CharonPrivate.h"
 namespace hakefi {
 namespace ws {
 // What the boot menu lends to the workspace.
@@ -40,6 +41,15 @@ struct Host {
     // Screen review inside Charon's own dialogues: the screen reader of the boot
     // manager is switched on silent, serving only its review keys. False: not available.
     bool (*review)(void*,bool on);
+    // r409, a multi-system plan. planResume: the menu opened the workspace because a plan is
+    // waiting (planrun::AtStart takes the turn first). planContinue: sets Charon's "Continue"
+    // target to boot entry `id` and the wait before it starts (wait = true: the menu waits for a
+    // key); false: it could not be stored.
+    bool planResume;
+    bool (*planContinue)(void*,uint16_t id,uint8_t seconds,bool wait);
+    // r410 (agent 1, known issue 1): the same wait stored in the settings of the Charon on another volume (the
+    // plan's EFI partition) while this Charon runs from memory or from its medium; nothing else of that volume changes.
+    bool (*planWaitOn)(void*,efi_handle volume,uint8_t seconds,bool wait);
 };
 // Where the boot menu should go when the workspace closes.
 enum class Leave : uint8_t {menu,devices,order,settings,firmware,shell,tools,continueBoot,restart,shutdown};
@@ -125,7 +135,29 @@ inline void Pump() {
     auto& u=U();VoiceGuard guard;
     if(!u.audioFailed && u.host->voice && u.host->voice->Pump(u.host->voice,480)!=EFI_SUCCESS)u.audioFailed=true;
 }
-inline void Say(const char16_t* text) {if(text && text[0]) {Shown(text);VoiceGuard guard;U().host->say(U().host->context,text);}}
+// r410: a TRACE build writes every sentence of the workspace to the serial port ("ws say: ..."), so that a test machine
+// without a sound card - no voice, hence no "menu announce" lines - can still be followed. Other builds: nothing.
+#ifdef HAK_CHARON_TRACE
+inline void TraceSay(const char16_t* text) {
+    auto put=[](unsigned value) {
+        for(unsigned n=0;n<1024;++n) {
+            unsigned char ready;__asm__ volatile("inb %1,%0":"=a"(ready):"Nd"((unsigned short)0x3fd));
+            if(ready&0x20) {__asm__ volatile("outb %0,%1"::"a"((unsigned char)value),"Nd"((unsigned short)0x3f8));return;}
+        }
+    };
+    for(const char* c="ws say: ";*c;++c)put((unsigned char)*c);
+    for(size_t i=0;text[i] && i<1500;++i) {
+        const unsigned c=text[i];
+        if(c<0x80)put(c);
+        else if(c<0x800) {put(0xc0|(c>>6));put(0x80|(c&0x3f));}
+        else {put(0xe0|(c>>12));put(0x80|((c>>6)&0x3f));put(0x80|(c&0x3f));}
+    }
+    put('\r');put('\n');
+}
+#else
+inline void TraceSay(const char16_t*) {}
+#endif
+inline void Say(const char16_t* text) {if(text && text[0]) {Shown(text);TraceSay(text);VoiceGuard guard;U().host->say(U().host->context,text);}}
 inline void Tone(unsigned hertz,unsigned ms) {
     auto* e=U().host->effects;
     if(U().host->sounds && e && e->Tone) {VoiceGuard guard;e->Tone(e->context,hertz,ms);}
@@ -173,7 +205,12 @@ inline void Row(size_t row,const char16_t* text,size_t attribute=7) {
     line[n]=0;
     for(size_t i=0;i<n;++i)hash=(hash^line[i])*16777619u;
     if(row<64) {if(u.shadow[row]==hash)return;u.shadow[row]=hash;}
-    u.out->SetAttribute(u.out,attribute);u.out->SetCursorPosition(u.out,0,row);u.out->OutputString(u.out,line);
+    u.out->SetAttribute(u.out,attribute);
+    // r410 (kd): a console font without a glyph (VMware's firmware has none for ą ę ż ...) draws nothing for it and
+    // the text moves left, so the row's last columns kept old text ("Wpisz , inny rozmiar."). Blank the row first.
+    {bool wide=false;for(size_t i=0;i<n;++i)if(line[i]>=0x100) {wide=true;break;}
+     if(wide) {static char16_t blank[260];for(size_t i=0;i<n;++i)blank[i]=u' ';blank[n]=0;u.out->SetCursorPosition(u.out,0,row);u.out->OutputString(u.out,blank);}}
+    u.out->SetCursorPosition(u.out,0,row);u.out->OutputString(u.out,line);
 }
 inline void Forget() {for(auto& h:U().shadow)h=0;}
 inline void Reshape() {
@@ -187,7 +224,15 @@ inline void Reshape() {
 }
 // Title, body rows 1..rows-3, the mode line and the echo line (Emacs layout).
 inline size_t BodyRows() {return U().rows-3;}
-inline void Title(const char16_t* text) {Row(0,text,0x0f);}
+// r410 (agent 1, agent 2's run 23 limit c): the title is centred, so that Charon's reader does not take it for the
+// first entry of a list that starts in column 0 or 2 below it (the reader said "7 of 16" where Charon said "6 of 15").
+inline void Title(const char16_t* text) {
+    static char16_t centred[260];const size_t n=text?Len(text):0;size_t cols=U().cols?U().cols-1:79;if(cols>258)cols=258;
+    size_t pad=n+8<cols?(cols-n)/2:0;if(pad<4 && n+4<cols)pad=4;
+    size_t k=0;for(;k<pad && k<258;++k)centred[k]=u' ';
+    for(size_t i=0;i<n && k<258;++i)centred[k++]=text[i];
+    centred[k]=0;Row(0,centred,0x0f);
+}
 inline void ModeLine(const char16_t* text) {Row(U().rows-2,text,0x70);}
 inline void Echo(const char16_t* text) {Row(U().rows-1,text,7);}
 // r401: a dialogue that only spoke now also stands on the screen: everything
@@ -292,6 +337,9 @@ inline void SayChar(char16_t c) {char16_t text[96];CharText(c,text,96);SayEcho(t
 // `complete` (optional) is called after each change and may speak a match;
 // Up/Down are passed to it as -1/+1 with the text unchanged. False: cancelled.
 using PromptHook=void (*)(const char16_t* text,int move,void* context);
+// r410 (install dialogue): the default of the typed field that is being asked; null = none. While it is set, F2 says
+// the default and Delete puts it back into the field (as in the lists and check boxes of the questions).
+inline const char16_t*& PromptDefault() {static const char16_t* fallback=nullptr;return fallback;}
 inline bool Prompt(const char16_t* label,char16_t* text,size_t cap,PromptHook hook=nullptr,void* context=nullptr,bool announce=true) {
     size_t n=Len(text);
     static char16_t line[400];
@@ -313,6 +361,11 @@ inline bool Prompt(const char16_t* label,char16_t* text,size_t cap,PromptHook ho
             n=Len(text);continue;
         }
         if(key.ctrl && key.ch==u'u') {n=0;text[0]=0;Say(T(u"Wyczyszczono",u"Cleared"));if(hook)hook(text,0,context);continue;}
+        if(PromptDefault() && (key.scan==scF2 || key.scan==scDelete)) {   // r410: the field's default again / back to it
+            const char16_t* fallback=PromptDefault();static char16_t said[300];
+            if(key.scan==scDelete) {n=0;while(fallback[n] && n+1<cap) {text[n]=fallback[n];++n;}text[n]=0;Play(Icon::deleted);Say(n?text:T(u"puste",u"empty"));continue;}
+            Set(said,300,T(u"Domyślnie: ",u"Default: "));Cat(said,300,fallback[0]?fallback:T(u"puste",u"empty"));Say(said);continue;
+        }
         if(Printable(key)) {
             if(n+1>=cap) {Play(Icon::edge);continue;}
             text[n++]=key.ch;text[n]=0;
@@ -564,7 +617,8 @@ inline efi_status CopyFile(const FileRef& from,const FileRef& to) {
     out->Close(out);return EFI_SUCCESS;
 }
 // Copies a folder with everything below it (depth-first, bounded depth).
-inline efi_status CopyTree(const FileRef& from,const FileRef& to,unsigned depth,size_t* files) {
+// r409: `skip` (optional) is asked for every entry directly inside `from`; true leaves the entry out.
+inline efi_status CopyTree(const FileRef& from,const FileRef& to,unsigned depth,size_t* files,bool (*skip)(const char16_t* name)=nullptr) {
     if(depth>8)return EFI_UNSUPPORTED;
     auto status=MakeFolders(to.volume,to.path);if(status!=EFI_SUCCESS)return status;
     efi_file_protocol* dir=nullptr;status=OpenFile(from,EFI_FILE_MODE_READ,0,&dir);if(status!=EFI_SUCCESS)return status;
@@ -577,6 +631,7 @@ inline efi_status CopyTree(const FileRef& from,const FileRef& to,unsigned depth,
         if(status!=EFI_SUCCESS || !size)break;
         const auto* info=reinterpret_cast<const efi_file_info*>(f->info);const char16_t* name=info->FileName;
         if(name[0]==u'.' && (!name[1] || (name[1]==u'.' && !name[2])))continue;
+        if(skip && skip(name))continue;
         f->a.volume=from.volume;f->b.volume=to.volume;
         if(!JoinPath(f->a.path,pathUnits,from.path,name) || !JoinPath(f->b.path,pathUnits,to.path,name)) {status=EFI_BAD_BUFFER_SIZE;break;}
         if(info->Attribute&EFI_FILE_DIRECTORY)status=CopyTree(f->a,f->b,depth+1,files);
@@ -585,6 +640,14 @@ inline efi_status CopyTree(const FileRef& from,const FileRef& to,unsigned depth,
     }
     Release(f);dir->Close(dir);return status;
 }
+// r409: Charon's own folder \EFI\HAK (`from`) GIVEN to another system or medium: everything except
+// what is private to one person or one computer (saved answer sets, plan state: CharonPrivate.h).
+// Every copy of \EFI\HAK into an installed system or onto installation media goes through here.
+inline efi_status CopyCharonTree(const FileRef& from,const FileRef& to,size_t* files) {return CopyTree(from,to,0,files,hakprivate::IsPrivate);}
+// r409: Charon's own folder CARRIED to its re-made home on the same computer (the disk Charon lives
+// on was erased whole and Charon is written back): everything, the private folders too. Never for
+// a copy that goes into another system or onto media.
+inline efi_status CarryCharonTree(const FileRef& from,const FileRef& to,size_t* files) {return CopyTree(from,to,0,files,nullptr);}
 // Deletes a file, or a folder with everything below it.
 inline efi_status DeleteTree(const FileRef& target,unsigned depth) {
     if(depth>8)return EFI_UNSUPPORTED;

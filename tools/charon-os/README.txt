@@ -116,10 +116,10 @@ The settings record
 -------------------
 Established from the sources, not guessed:
   src/efi/CharSettings.h   the record: magic "CHARS00" + format character, sequence number,
-                           one byte per setting, CRC-32; formats 1-9, A, B, C (V1..V12),
-                           sizes 32, 40 and 48 bytes; ranges (EncodeSettings lines 78-97,
-                           DecodeSettings lines 98-140), defaults (lines 50-56), which of
-                           two records wins (ChooseSettings lines 150-155)
+                           settings, CRC-32; formats 1-9, A, B, C, D, E (V1..V14), sizes
+                           32, 40 and 48 bytes; ranges (EncodeSettings, DecodeSettings),
+                           defaults (struct CharSettings), which of two records wins
+                           (ChooseSettings)
   src/efi/BootMenu.h       the two slot files and the save procedure (SettingsSlot,
                            ReadSettingsSlot, LoadCharSettings, SaveCharSettings, lines
                            28-61); the names of the settings in Polish and English
@@ -137,18 +137,33 @@ complete record, stays as it is. A setting the user did not touch keeps its bits
 
 Format written: the one the installed boot manager writes, read from \EFI\HAK\HAKBOOT.EFI
 (its encoder carries "CHARS00" and the format character; checked on r407 builds), otherwise
-the format of the record on the partition, otherwise -Format / --format, otherwise C. A
+the format of the record on the partition, otherwise -Format / --format, otherwise E. A
 setting that the format does not store is shown as such and cannot be changed. When a
-record or the installed Charon uses a format newer than C, the programs show what they
+record or the installed Charon uses a format newer than E, the programs show what they
 can and write nothing.
 
-Known limit in this tree: Charon's record reader rejects byte 41 above 127
-(CharSettings.h line 120), but the default of that byte is 153 (bit 7, "Loading sound
-after the system takes over", line 55/60). A record with that bit cannot be read back, so
-the programs never write it; the setting is not offered. A record Charon itself left in
-that state is reported as invalid and can be repaired (Repair): values out of range take
-their defaults and the record is saved under the next sequence number. When
-CharSettings.h accepts bit 7, add the row to tests/charon_fields.py and remove the mask.
+Formats, all read and all written (the format written is chosen as above):
+  1-6   32 bytes; 7, 8   40 bytes; 9, A, B, C, D, E   48 bytes (CRC in the last four)
+  C     r397 (V12). Byte 41 bit 7, "Loading sound after the system takes over", is
+        accepted by Charon since r408; r397 to r407 reject a record that has it. The
+        programs read it, keep it as the record has it and never turn it on in formats A
+        to C; a new format C record gets bytes 40, 41 = 255, 25.
+  D     r410 (V13): byte 36 bits 2-4 formatting groups (kind of element, state and
+        warnings, position and structure), byte 38 bits 2-3 verbosity profile 0 normal,
+        1 beginner, 2 expert. New records: byte 40 = 252 (formatting off), byte 41 = 153.
+  E     r410 (V14), what Charon r410 writes: profile 3 (custom) allowed; the custom
+        profile's 12 items in byte 32 bits 3-7 (items 0-4), byte 33 bits 2-7 (items 5-10)
+        and byte 37 bit 3 (item 11); byte 37 bit 4 reader bar, bit 5 absolute colours.
+The old settings that share those bytes are read through the masks of DecodeSettings:
+detail = byte 32 & 7, timers = byte 33 & 3, punctuation = byte 36 & 3, capitals = byte
+37 & 7, screen text language = byte 38 & 3. Every bit of a format E record is either one
+of the settings in tests/charon_fields.py or must be zero (DecodeSettings rejects the
+record otherwise), so a record that the programs rewrite keeps all it held: only the bits
+of the setting that was changed, the sequence number and the CRC differ.
+
+A record with a right frame and check sum whose values Charon rejects is reported as
+invalid and can be repaired (Repair): values out of range take their defaults and the
+record is saved under the next sequence number.
 
 The table of settings (names, bits, ranges, first format) is tests/charon_fields.py.
 linux/charon-settings carries a copy; windows\CharonOs.Fields.ps1 is generated from it:
@@ -191,7 +206,9 @@ of HAKBootEFI.cpp, KeyOf out of CharonSynthHost.h; the tree's efi_file_protocol
 for both the PowerShell and the Python program: records the program wrote against Charon's
 EncodeSettings byte for byte and through LoadCharSettings; records Charon's
 SaveCharSettings wrote as the program reads them; both writing in turns; older formats;
-refusals; the repair; synthesizer keys; the Continue file through ParseContinueTarget; the
+formats D and E (the new bits survive a change byte for byte, the masks, which bits each
+format accepts, a boot manager image with CHARS00E, an upgrade of a format D record
+against SaveCharSettings); refusals (format F); the repair; synthesizer keys; the Continue file through ParseContinueTarget; the
 boot manager functions on the firmware stand-in; both installers. tests/normalize-windows.py
 gives the Windows files their release form (UTF-8 with BOM and CRLF for .ps1, CRLF for .cmd).
 The dialogs are built without being shown (-GuiSelfTest) and their controls, names, tab

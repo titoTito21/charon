@@ -1,0 +1,8 @@
+# Ready image (Arch), Polish, KDE added, console sign-in.
+lang=pl
+flow=image
+mode=quick
+arg entry=2
+keys=ENTER ENTER "test" ENTER "test" ENTER
+keys="k" SPACE ENTER ENTER
+keys=DOWN ENTER

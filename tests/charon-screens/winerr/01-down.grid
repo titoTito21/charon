@@ -1,0 +1,10 @@
+CHARON grid 42 100 0 0 1 Menedżer rozruchu Windows
+G05 23*00,8*bf|23*0000,8*042a|                       Recovery
+G08 23*00,35*bf|23*0000,35*0417|                       Your PC/Device needs to be repaired
+G0b 23*00,55*bf|23*0000,55*0412|                       A required device isn't connected or can't be accessed.
+G0e 23*00,22*bf|23*0000,22*040e|                       Error code: 0xc000000f
+G13 23*00,65*bf|23*0000,65*0412|                       device), contact your PC administrator or PC/Device manufacturer.
+G25 23*00,24*bf|23*0000,24*0416|                       Press Enter to try again
+G27 23*00,29*bf|23*0000,29*0417|                       Press F8 for Startup Settings
+G29 23*00,36*bf|23*0000,36*0417|                       Press Esc for UEFI Firmware Settings
+CHARON grid end

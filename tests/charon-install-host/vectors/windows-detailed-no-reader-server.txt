@@ -1,0 +1,17 @@
+# Windows Server evaluation image (language asked before the download), detailed mode, no screen reader, hardware checks skipped, free space.
+lang=en
+flow=windows
+mode=detailed
+arg wversion=server
+arg windex=2
+arg language_asked=1
+arg wlocale=en-US
+keys="srv" ENTER BS BS BS BS "admin" ENTER "test" ENTER "test" ENTER
+keys=ENTER UP ENTER DOWN ENTER ENTER
+keys=SPACE "n" SPACE ENTER
+keys=ENTER UP ENTER ENTER
+put diskmode=free
+arg partition=5
+arg esp=1
+# r410: the group list of the detailed mode: F10 ends it, Enter goes on from the summary.
+keys=F10 ENTER ENTER

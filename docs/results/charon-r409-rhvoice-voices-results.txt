@@ -1,0 +1,343 @@
+Charon r409 - every Polish and English RHVoice voice in the RHVoice add-on (2026-11-23)
+=====================================================================================
+
+Request: the external RHVoice synthesizer module (\EFI\HAK\synths\rhvoice.tts) must offer ALL English and
+ALL Polish RHVoice voices, selectable in Charon; and (added during the work) every voice needs a stable
+identifier that maps to the voice's name on the systems Charon installs.
+
+Result in one paragraph: 13 voices (5 Polish, 8 English) are offered, all load and speak with the shipped
+engine RHVoice 1.18.5 (no engine update needed, none blocked). Natan and Slt stay the defaults (voice
+indices 0 and 1, byte-identical packs). Each further voice is one optional data file. Three voices are
+non-commercial (CC BY-NC-ND 4.0) and three carry no licence file upstream - see section 2. Nothing was
+released; the packagers' part is section 8.
+
+Paths below are relative to the folder that holds work/ and outputs/.
+
+
+1. THE VOICES (official list, verified 2026-11-23)
+--------------------------------------------------
+Sources of the list: github.com/RHVoice/RHVoice .gitmodules (tag 1.18.5 = latest release, and master of
+2026-11-21: the same English/Polish voice set), github.com/RHVoice/packages branch main at 7bf80b87
+(src/languages/en, pl: the data packages RHVoice's own clients download), rhvoice.org/en-voices/ and the
+Polish team's page linked from rhvoice.org/languages/ (zlotowicz.pl/synteza). The organisation has no other
+*-eng or *-pol voice repository. Dasha-Eng, Evgeniy-Eng and Lyubov are in the packages list and the engine
+but not on rhvoice.org/en-voices/ (RHVoice Lab voices).
+
+Data used: git clones of the voice repositories; for every voice HEAD equals the commit RHVoice 1.18.5
+pins as a submodule. The official data archives named in the packages repository were also downloaded:
+their MD5 equals the value published there, and voice.data (16 kHz) in each archive is byte-identical to
+the clone (voice.info differs for Alan and Clb only by two installer-id lines in git). All voices have
+format=4; both sample rates (16000, 24000) exist upstream for every voice; Charon ships the 16 kHz model
+only, as before (size, and the firmware has no use for 24 kHz). Language data needed: Polish 1.21,
+English 2.17 - the versions already in rhvoice-pl.chsp / rhvoice-en.chsp (unchanged).
+
+Voice        Lang Ver.  Gender Licence              Included  16k pack   Repository (github.com/RHVoice/) @ commit
+Natan        pl   4.12  male   CC0-1.0              base      in -pl     natan-pol    42d2a7d7b60ee5b4c512d7e2a8428bbb252b7203
+Alicja       pl   4.1   female CC BY 4.0            yes       1 471 984  alicja-pol   22274019eca0825a21f5379b99b8fed6a6bfdd9d
+Cezary       pl   4.1   male   CC BY-NC-ND 4.0 (NC) yes       2 167 431  cezary-pol   c9f3bb6c66d063913ec7838fef250e3251000099
+Magda        pl   4.46  female CC BY 4.0            yes       2 240 023  magda-pol    a14d3a9223ba268436c74b1f4467bf6d683ecd57
+Michal       pl   4.2   male   CC0-1.0              yes       1 158 273  michal-pol   e59be811263d9cb67cbd220505d41acd7d19c62b
+Slt          en   4.1   female CMU ARCTIC           base      in -en     slt-eng      c17dded68322016aba2868d9c29f11bba14d275f
+Alan         en   4.0   male   none stated (*)      yes       1 019 277  alan-eng     bb3fdb15b9c64109f396f56f6155965bfcf89977
+Bdl          en   4.1   male   none stated (*)      yes       1 089 183  bdl-eng      ea6b944550af6f9b33f2cc5e20f38d3b19087068
+Clb          en   4.0   female none stated (*)      yes       1 237 301  clb-eng      e0aa06cf50334f10844d1a28a72b3fdcf3cdd150
+Dasha-Eng    en   4.2   female CC BY-SA 4.0         yes       1 014 877  dasha-eng    3115c2666cd011debcf7fa4166ec905132338934
+Evgeniy-Eng  en   4.0   male   CC BY-NC-ND 4.0 (NC) yes       1 459 047  evgeniy-eng  c483272eb7ff97936ef7f997e268e1c11478d492
+Ksp          en   4.5   male   CMU ARCTIC           yes         990 238  ksp-eng      858023095833e574f6f90a99b1669c58ad5de02b
+Lyubov       en   4.1   female CC BY-NC-ND 4.0 (NC) yes       1 458 713  lyubov-eng   a32db8ee28c17f8c5fb56b6c044eaa08ac807206
+Blocked: none.
+
+Official data archives (URL, version, bytes, SHA-256; MD5 matched github.com/RHVoice/packages):
+ Natan   https://github.com/RHVoice/natan-pol/releases/download/4.12/RHVoice-voice-Polish-Natan-v4.12.zip      7 456 757  304bb16eea1dee82f9ee149797bf83af73116c02c85c4a69d3c944e138d7557c
+ Alicja  https://github.com/RHVoice/alicja-pol/releases/download/v4.1/data-alicja.zip                          7 618 694  5bee414a3fe06cc4591ff289d98acf71d6834bddbe124dd8e50e63c3fc32066b
+ Cezary  https://github.com/RHVoice/cezary-pol/releases/download/4.1/RHVoice-voice-Polish-Cezary-v4.1.zip     10 842 873  8fd93c59fa0b3f8c92cb01bf488944ce8d988388a03169361161347b2c2f2dd2
+ Magda   https://github.com/RHVoice/magda-pol/releases/download/rev46/RHVoice-voice-Polish-Magda-v4.46.zip     9 798 974  e1799a54b6ed4411272a380edf4c0fa06748d29d38b639a3a6b69c9d3f696ff2
+ Michal  https://github.com/RHVoice/michal-pol/releases/download/4.2/RHVoice-voice-Polish-Michal-v4.2.zip      5 750 556  dfb313dacd9909c1ae882975a988992c1ceb240c2888a820c4a88e508e23505d
+ Slt     https://github.com/RHVoice/slt-eng/releases/download/4.1/data.zip                                     4 857 163  12bc288d198c77ff6c3a42eeae64cf9b357e0b93c6cef6a4348e654555267da1
+ Alan    https://rhvoice.org/download/RHVoice-voice-English-Alan-v4.0.zip                                      4 971 507  479143ae93c04fd2bc73a8ca50aa91af09bb078f1032964c8cdc20cb9a9469dd
+ Bdl     https://rhvoice.org/download/RHVoice-voice-English-BDL-v4.1.zip                                       5 375 003  26ebf8aa9c0962eda7c5c5ccd16d304d14405e8694d45d855d39cec83f61434d
+ Clb     https://rhvoice.org/download/RHVoice-voice-English-CLB-v4.0.zip                                       6 268 919  b120c15f7d3a6e53bff93082016758aa8088e375df4276c60d798994af15238c
+ Dasha   https://github.com/RHVoice/dasha-eng/releases/download/4.2/RHVoice-voice-English-Dasha-Eng-v4.2.zip   2 504 318  cff0fcd4f4019475f6c682a9a448b2e20ee18914a05a7d84d6aa36f9a6749d44
+ Evgeniy https://github.com/RHVoice/evgeniy-eng/releases/download/4.0/data.zip                                 7 335 933  2d84e8b87372957a8ad3f7eeb9b3557f02cab9b6872eaba516cee023700e8dfa
+ Ksp     https://github.com/RHVoice/ksp-eng/releases/download/4.5/RHVoice-voice-English-Ksp-v4.5.zip           2 435 114  6750e0e763491dfac261293e0dd2eef66150372d6b837659c3d39a530d3d610b
+ Lyubov  https://github.com/RHVoice/lyubov-eng/releases/download/4.1/data.zip                                  6 754 678  cbcfdc4b72f3175d552658a40caf02eb3d86a3ea9a38cb30c3813884d785afbe
+ (languages, not repacked: English 2.17 58313d54b4f698e1..., Polish 1.21 5498e80837e714e0...)
+Downloads (untrusted data, nothing executed): work/rhvoice-voices-r409/download/ - <repository>/ clones,
+zips/, packages-repo/, meta/ (web pages, official-zips.json with all hashes, Debian copyright/control,
+cc-by-4.0-legalcode.txt from creativecommons.org, SHA-256 9ba9550ad484...). Scripts used:
+work/rhvoice-voices-r409/scripts/.
+
+
+2. LICENCES - what needs a decision
+-----------------------------------
+a) NON-COMMERCIAL: Cezary, Evgeniy-Eng, Lyubov are CC BY-NC-ND 4.0. The licence allows copying and sharing
+   the unmodified material, in whole or in part and in any format, for non-commercial purposes with
+   credit; it forbids commercial use and sharing adapted material. Charon is given away free and ships
+   each voice's 16 kHz files byte-identical (lossless container only), so they are INCLUDED, with the
+   notice in LICENCES.txt (capital-letter paragraph: who sells or commercially uses a copy must delete
+   three named files), in RHVOICE-VOICES.txt and as "| non-commercial" on the voice-licence lines of
+   rhvoice.manifest. This is a reading of the licence, not legal advice; the READMEs of Evgeniy-Eng and
+   Lyubov say integration "into any product" can be requested from rhvoice@tiflo.org. If the user
+   prefers not to carry them: package-synths-r409.py medium_files(non_commercial=False) leaves the three
+   files out (the module then simply does not offer them).
+b) NO LICENCE FILE: Alan, Bdl, Clb. Their repositories and official archives contain no licence text.
+   Basis for including them: RHVoice's doc/en/License.md (shipped as licences/rhvoice-License.md) lists
+   restrictions for some voices and none for these; Debian's copyright file (rhvoice 1.14.0-3) files
+   them under data/* = GPL-2+. Earlier (r393) Alan was left out for exactly this reason, so this is a
+   change of that decision - the user should confirm it. Removing them = deleting three .chsp files.
+   Their origin in CMU ARCTIC (bdl, clb, awb) is NOT verified from an official source.
+c) Other attributions (CC BY 4.0 Alicja, Magda; CC BY-SA 4.0 Dasha-Eng; CMU ARCTIC Ksp, Slt; CC0 Natan,
+   Michal): names and licence texts are in LICENCES.txt and licences/ of the add-on folder.
+Where it is visible: \EFI\HAK\synths\LICENCES.txt, RHVOICE-VOICES.txt, licences\ (25 files), the manifest.
+Spoken licence notes are not implemented (designed separately); the manifest lines
+"voice-licence = <id> | <licence>[ | non-commercial]" are there for that work (Charon's and
+Charon-Settings.ps1's manifest parsers ignore unknown keys; checked in the source).
+
+
+3. WHAT CHANGED (charon-src-r395)
+---------------------------------
+src/synth/rhvoice/rhvoice_module.cpp
+  :1-24    header: data layout, policy.
+  :47-48   maxVoices 16, maxPrepared 2.
+  :50-83   languages[] (the two base packs) and known[] (13 voices: id, spoken name, language, RHVoice
+           profile, own pack, mount point); voices[]/table[] are filled at start from the packs found.
+  :155-171 Touch, VoiceOfLanguage: ESC 'p' / ESC 'e' now select the last used prepared voice of that
+           language (was: fixed voices 0 and 1).
+  :230-275 Release (base pack stays while another voice of the language is prepared), PreparedCount,
+           ReleaseOldest (same language first, then least recently used), Mount.
+  :279-332 PrepareEntry: base pack + voice pack; a further voice is an RHVoice resource path beside its
+           language's data, without preloading (the discarded word loads it); the engine must list the
+           very voice asked for.
+  :392-408 Prepare: at most two voices prepared; on a failure that is not a missing/corrupt pack another
+           voice is released and the load retried (the HTS loader reports "no memory" as "cannot open").
+  :453-488 synth_engine_start: probes rhvoice-pl/en.chsp and rhvoice-<voice>.chsp, offers what exists.
+src/synth/rhvoice/VOICES.tsv (new)  the one list of voices: Charon id, RHVoice name, spoken name, language,
+           commit, version, licence, official data URL + SHA-256, Speech Dispatcher voice, Debian/Ubuntu
+           package, Arch package, Fedora, NVDA add-on URL, SAPI 5 installer URL. The build reads it.
+src/synth/common/synth_pack.c:40    MAX_MOUNTS 4 -> 8.
+src/synth/host/tts-host-loader.cpp  :13-16 usage, :257-259 "all" and '@' arguments, :309-345 voice list
+           and the cycle test, :398-402 one WAV per voice id.
+src/synth/README.txt :8-13, :51-66  layout and voice handling.
+tools/build-charon-synths.py :16-19 inputs, :398-404 voice-licence lines, :556-581 VOICES.tsv loader and
+           voice_source (asserts the pinned commit and voice.info), :614-624 rhvoice_voice_files, :655-661
+           module table checked against VOICES.tsv, :681-689 one pack per further voice, :745-800 licence
+           text, :826-865 licence files, RHVOICE-VOICES.txt, rhvoice-voices.tsv, rhvoice-base manifest,
+           rhvoice-voice-pack.json, :894-899 host scenarios, :937-942 reference comparison of every voice.
+Not changed: any file of src/efi (CharonSynthModule.h, CharonSynthHost.h, CharonVoiceProvider.h,
+CharSettings.h), src/linux, the install dialogue headers, the ABI (2), the settings format. Charon's limit
+of 16 voices per add-on holds 13. Originals of the edited files: work/backup-r409-rhvoice/.
+New outside the source tree: work/package-synths-r409.py (section 8).
+
+Voice order (index = position in the manifest and in the module): 0 Natan, 1 Slt, 2 Alicja, 3 Cezary,
+4 Magda, 5 Michal, 6 Alan, 7 Bdl, 8 Clb, 9 Dasha-Eng, 10 Evgeniy-Eng, 11 Ksp, 12 Lyubov. Saved settings
+(index 0 or 1) keep their meaning. Charon takes the FIRST voice of the other language for text in that
+language, so Polish text under an English voice is read by Natan and English text under a Polish voice by
+Slt - the defaults are unchanged. Spoken names equal the RHVoice names except "Michał" (id rhvoice-michal).
+Enumeration: the module cannot list a folder (its platform interface has only whole-file read and probe),
+so it probes the 13 known file names; Charon's list comes from the manifest, as before.
+
+
+4. BUILD
+--------
+python tools/build-charon-synths.py work/synth-build-r409 --stage work/synth-modules-r409 --test   (2 min 49 s)
+  log work/synth-build-r409.log (first attempt, failed host test: work/synth-build-r409-try1.log).
+  rhvoice.tts 2 404 608 B  SHA-256 e02f4b31ce5a48d3bc653f06de98dd0504df7005495ef513d4906a8356e001c0  (r397: 2 400 256)
+  espeak.tts    466 688 B  SHA-256 638fe18ce99c9c490e06835c7372ea43708faef6874e7ae67c411c2a6017d176
+     (eSpeak sources unchanged; rebuilt because synth_pack.c is shared - same size as r397, new hash)
+  rhvoice-pl.chsp 1 664 887 B and rhvoice-en.chsp 1 734 200 B: SHA-256 identical to synth-modules-r397.
+  Kept r397/r408 builds were not touched. LICENCES.txt in the stage was corrected afterwards for three
+  file names (same text as the build script now writes). A second build of the same sources gave .tts
+  files with other hashes (the build is not bit-reproducible), so synth-modules-r409 is THE tested build.
+Pack hashes: work/r409-rhvoice-evidence/packs.sha256.
+
+
+5. TESTS
+--------
+5.1 Host (tools/build-charon-synths.py --test; the shipped rhvoice.tts loaded as a PE image by
+    tts-host-loader with emulated boot services; results work/synth-modules-r409/test-wav/
+    host-test-results.json, WAVs rhvoice-<voice>.wav there):
+    - every voice prepared alone, sentence "Menu rozruchu, pozycja 2 z 5." / "Boot menu, item 2 of 5.":
+      audio SAMPLE-IDENTICAL to a hosted reference build of the same RHVoice sources and data (MSVC
+      runtime) for all 13 voices.
+      voice        prepare  memory after  peak      audio   RMS    pitch(median)
+      Natan        334 ms   15.5 MB       19.9 MB   2.37 s  2973   142 Hz
+      Alicja       255 ms   18.0 MB       23.5 MB   2.85 s  2864   205 Hz
+      Cezary       351 ms   20.8 MB       26.5 MB   2.98 s  2934   131 Hz
+      Magda        355 ms   20.9 MB       27.0 MB   1.53 s  1561   203 Hz
+      Michal       240 ms   16.7 MB       21.0 MB   2.64 s  2633   133 Hz
+      Slt          216 ms   13.5 MB       17.1 MB   2.25 s  3296   174 Hz
+      Alan         179 ms   15.5 MB       18.3 MB   2.15 s  2556   133 Hz
+      Bdl          182 ms   15.6 MB       18.3 MB   2.22 s  2931   118 Hz
+      Clb          195 ms   15.7 MB       19.8 MB   2.17 s  5332   182 Hz
+      Dasha-Eng    202 ms   15.5 MB       19.5 MB   2.38 s  2998   235 Hz
+      Evgeniy-Eng  246 ms   17.0 MB       22.4 MB   2.74 s  2917   110 Hz
+      Ksp          176 ms   14.4 MB       17.8 MB   2.48 s  2652   132 Hz
+      Lyubov       202 ms   17.0 MB       20.6 MB   2.64 s  3058   222 Hz
+      (memory = pool memory of the module with that one voice; worst Render call 1.3-2.4 ms)
+    - cycle test: all 13 voices prepared and spoken one after another in one module instance, then
+      23 steps including repeats and jumps: every step speaks; module memory stays at 36-40 MB, peak
+      45.7 MB (limit 64). The first version kept three voices prepared: three large Polish voices used
+      58 MB and the next voice failed to load ("HTS_fopen: cannot open") - found by this test, fixed
+      (two prepared voices + retry), then passed.
+    - a folder with the two base packs only: the module offers 2 voices; a folder without
+      rhvoice-magda.chsp: 12 voices (run by hand with the same loader).
+5.2 Charon in a virtual machine (QEMU 11.1 + OVMF via work/charon-vm.py, WHPX, 512 MB, sound on the host
+    speakers (dsound) and recorded with wavcapture; CHARON.EFI/CHARONVOICE.EFI = the r408u trace builds,
+    AudioDxe r408 - the Charon binaries are unchanged by this work, only \EFI\HAK\synths is new).
+    VMware was not used: the measurement needs the recorded sound stream, which this harness gives.
+    Evidence: work/r409-rhvoice-evidence/ (serial-*.log, slow.json, slow-english.json, fast-voices.json,
+    one WAV per step). Driver: work/rhvoice-voices-r409/scripts/vm-voice-test.py, pitch.py.
+    a) Settings -> "Głos syntezatora" / "Synthesizer voice", Right 13 times, 7 s apart, once with the
+       Polish and once with the English interface. Every step: trace "CHARON synth voice" = 13 voices,
+       the expected index; "CHARON synth" reason 0; no "prepare failed"; Charon says "Syntezator:
+       RHVoice, <name>." / "Synthesizer: RHVoice, <name>."; recorded sound 1.2-3.0 s above the threshold.
+       Which voice is heard was checked by pitch against the host recordings:
+         Polish interface (the chosen Polish voice reads): Alicja 196 Hz, Cezary 115, Magda 200,
+           Michał 121, Natan 121; with an English voice chosen the Polish sentence is read by Natan
+           (121-138 Hz, trace "synth other=0") - as designed.
+         English interface (the chosen English voice reads): Slt 170 Hz, Alan 136, Bdl 125, Clb 180,
+           Dasha-Eng 226, Evgeniy-Eng 109, Ksp 136, Lyubov 226 (host: 174, 133, 118, 182, 235, 110,
+           132, 222); with a Polish voice chosen the English sentence is read by Slt (170-175 Hz,
+           trace "synth other=1"). Loudness also follows the host (Clb loudest, Magda quietest).
+       So each of the 13 voices was heard speaking in Charon, measured, not only loaded.
+    b) Fast switching (the earlier user bug): 26 x Right 0.3 s apart (two full rounds), 7 x Left 0.15 s
+       apart, 7 x Right 0.05 s apart, then the Synthesizer row: 15 x Right 0.3 s apart through TVox ->
+       eSpeak NG -> RHVoice, then each synthesizer once slowly, then 9 mixed keys on both rows 0.25 s
+       apart. After every burst the last choice is announced and heard; TVox, eSpeak NG and RHVoice all
+       stay in the list and speak; loaded add-on table stays at 2 ("CHARON synth slot"); 0 exceptions,
+       0 failed prepares in the whole serial log (serial-b.log).
+    c) Time from the key to the first speech sample (work/charon-synth-latency.py): 0.60-1.03 s for a
+       voice that has to be loaded (Cezary, Magda about 1.0 s; r408 with two voices: none to load),
+       0.19-0.22 s between two prepared voices (r402 baseline 0.19-0.23 s).
+    d) Start with a saved choice: voice 12 (Lyubov) -> trace 13/12, reason 0, greeting spoken (Polish
+       text by Natan); voice 4 (Magda) -> 13/4, greeting by Magda, English by Slt; base-only folder,
+       voice 1 -> the list has 2 voices, reason 0.
+    All five machines were stopped (QMP quit) and their folders deleted; no logger was left running.
+    The six VMware machines running at the time belong to other work and were not touched.
+
+
+6. SIZES
+--------
+\EFI\HAK\synths, everything:        22 265 251 B (r397/r408: 6 845 366 B)  = +15 419 885 B
+  the 11 further voices:            15 306 347 B (990 238 .. 2 240 023 B each)
+  base (eSpeak NG, RHVoice, Natan, Slt, licences): 6 957 931 B with the two-voice manifest
+Upstream size of the same 13 voices, 16 kHz, uncompressed: about 45 MB (pack input 45 373 497 B incl.
+both languages -> 18 705 434 B packed).
+ISO: the boot FAT image is sized from its contents (make-charon-iso: need x 1.15 + 4 MB), so the ISO
+(r408: 83.3 MB) grows by about 18 MB with all voices; the zip (r408: 177.7 MB) by about 15 MB. No limit hit.
+EFI system partition: Charon's own installer (CharonWsSelfInstall.h, Needed/Wanted) copies ALL of
+\EFI\HAK\synths or none of it. With all voices the add-ons need 22 MB instead of 7 MB, so on a small or
+full partition (100 MB with Windows) the chance grows that Charon installs without any add-on synthesizer.
+Not changed here (installer headers are another task). Recommended: a second step in that file - when
+everything does not fit, leave out only \EFI\HAK\synths\rhvoice\rhvoice-*.chsp other than -pl/-en (the
+module copes with any subset; the manifest may stay) before giving up all add-ons.
+RAM in firmware: one RHVoice module instance holds at most two voices: 36-40 MB, peak 45.7 MB (host
+measurement); Charon loads two instances (reader, boot messages). Before: about 29-33 MB each.
+
+
+7. THE VOICE IN INSTALLED SYSTEMS (mapping; what the installers must be given)
+-----------------------------------------------------------------------------
+Stable identifier: the voice id in rhvoice.manifest and in the module = "rhvoice-" + the RHVoice voice name
+in lower case: rhvoice-natan, -alicja, -cezary, -magda, -michal, -slt, -alan, -bdl, -clb, -dasha-eng,
+-evgeniy-eng, -ksp, -lyubov. The part after "rhvoice-" is also RHVoice's data folder name and the last
+part of the Arch package name. Data file: src/synth/rhvoice/VOICES.tsv (copied to the medium as
+\EFI\HAK\synths\rhvoice-voices.tsv).
+
+ id suffix    RHVoice / Speech Dispatcher / NVDA / SAPI name   Debian+Ubuntu package (non-free / multiverse)        Arch [extra]
+ natan        Natan         rhvoice-polish  (Debian 12+)                                         rhvoice-voice-natan + rhvoice-language-polish
+ alicja       Alicja        rhvoice-polish  (Debian 13+ / Ubuntu 25.10+; not in Debian 12)       rhvoice-voice-alicja
+ cezary       Cezary        rhvoice-polish  (as Alicja)                                          rhvoice-voice-cezary
+ magda        Magda         rhvoice-polish  (Debian 12+)                                         rhvoice-voice-magda
+ michal       Michal        rhvoice-polish  (as Alicja)                                          rhvoice-voice-michal
+ slt          Slt           rhvoice-english                                                      rhvoice-voice-slt + rhvoice-language-english
+ alan         Alan          rhvoice-english                                                      rhvoice-voice-alan
+ bdl          Bdl           rhvoice-english                                                      rhvoice-voice-bdl
+ clb          Clb           rhvoice-english                                                      rhvoice-voice-clb
+ dasha-eng    Dasha-Eng     NOT in Debian/Ubuntu (1.14.0-3)                                      rhvoice-voice-dasha-eng (only rhvoice 1.18.5, extra-testing today)
+ evgeniy-eng  Evgeniy-Eng   rhvoice-english                                                      rhvoice-voice-evgeniy-eng
+ ksp          Ksp           NOT in Debian/Ubuntu (1.14.0-3)                                      rhvoice-voice-ksp
+ lyubov       Lyubov        rhvoice-english                                                      rhvoice-voice-lyubov
+ Engine: Debian/Ubuntu rhvoice + speech-dispatcher-rhvoice (source rhvoice: bookworm 1.8.0+dfsg-3, trixie
+ 1.14.0-2, forky/sid 1.14.0-3; Ubuntu multiverse: jammy 1.2.3, noble 1.8.0, questing 1.14.0-2, later
+ 1.14.0-3). In Debian 12 rhvoice-polish holds only Magda and Natan. Arch: rhvoice 1.16.5 in [extra]
+ (official repository, not AUR; the AUR only has rhvoice-git). Fedora: not in Fedora; RHVoice's own
+ document names COPR lostmemories/RHVoice (packages rhvoice, rhvoice-speech-dispatcher-plugin; English
+ voices; no Polish package in its instructions). Sources: sources.debian.org (debian/control, *.install,
+ copyright), Launchpad API, archlinux.org package search, copr.fedorainfracloud.org API, RHVoice
+ doc/en/Packaging-status.md - saved in download/meta where fetched to a file.
+ Speech Dispatcher: the module sd_rhvoice lists RHVoice's voice profiles; a voice's name is voice.info
+ "name" (source: src/sd_module/list_voices.cpp, init.cpp of 1.18.5), e.g. spd-say -o rhvoice -y Natan.
+ Windows: NVDA add-on and SAPI 5 installer per voice (newest official files on github.com/RHVoice,
+ all URLs answered 200 on 2026-11-23) are columns nvda_addon_url / sapi5_url of VOICES.tsv, e.g.
+ .../natan-pol/releases/download/4.12/RHVoice-voice-Polish-Natan-4.12.1021.12.nvda-addon and
+ ...-v4.12.1021.23-setup.exe; engine add-on: github.com/RHVoice/RHVoice/releases (zlotowicz.pl names
+ RHVoice-1.18.201.nvda-addon). Dasha-Eng, Evgeniy-Eng and Lyubov have no NVDA/SAPI package on
+ github.com/RHVoice or rhvoice.org (RHVoice Lab distributes its voices on rhvoice.su - not checked).
+
+How the choice travels today (read in the source, not changed):
+ - The settings record (CharSettings.h, V11+; also tools/charon-os Charon-Settings.ps1 and
+   charon_fields.py) holds only byte 42 synthKey (a 1..255 hash of the manifest FILE NAME:
+   rhvoice.manifest = 0x33, espeak.manifest = 0x20, 0 = TVox) and byte 43 synthVoice (the INDEX of the
+   "voice =" line in that manifest, 0..15). The voice id is NOT in the record.
+ - src/linux/speech.sh (another task, already in the tree) reads /var/lib/charon/voice.conf with
+   CHARON_SYNTH=rhvoice|espeak, CHARON_VOICE=<RHVoice name, lower case>, CHARON_RATE, CHARON_PITCH,
+   CHARON_PUNCTUATION, and the install headers already copy a file voice.conf - but nothing in src/efi
+   writes that file's contents yet (no CHARON_VOICE/CHARON_RATE string outside CharonLinuxScripts.h).
+ What must be passed: CHARON_SYNTH = "rhvoice" when the active add-on's manifest is rhvoice.manifest
+ (id prefix "rhvoice-"), "espeak" for espeak.manifest; CHARON_VOICE = synths::Info::id[settings.synthVoice]
+ of the manifest whose key == settings.synthKey (Charon has it in menuSynths[] / synths::Find), with the
+ prefix "rhvoice-" removed - exactly the "id suffix" column above, already lower case and within
+ speech.sh's [a-z0-9-] filter. Anything outside Charon that has only the settings file must read the
+ manifest from \EFI\HAK\synths and take the (index+1)-th "voice =" line (Charon-Settings.ps1's
+ Get-CharonSynths keeps only the spoken names today, not the ids).
+ For speech.sh's author: dasha-eng and ksp are missing from Debian/Ubuntu packages, Debian 12 has only
+ magda and natan for Polish, Arch [extra] 1.16.5 has no dasha-eng; the upstream data archive of every
+ voice (data_url, data_sha256 in VOICES.tsv) unpacks to /usr/share/RHVoice/voices/<id suffix>/ as a
+ fallback (not tried here).
+
+
+8. FOR THE r409 RELEASE (not run; no release file was written)
+--------------------------------------------------------------
+work/package-synths-r409.py (new; exercised only on a scratch folder) gives the packagers the add-ons:
+  medium_files()                  every file of \EFI\HAK\synths from work/synth-modules-r409 (48 files, 22 265 251 B)
+  medium_files(all_voices=False)  base only (37 files, 6 957 931 B) with the two-voice rhvoice.manifest
+  medium_files(non_commercial=False)   without Cezary, Evgeniy-Eng, Lyubov
+  put_addons(stage)               <stage>/Dodatki-syntezy/EFI/HAK/synths + <stage>/licenses/synth-addons
+The r409 packagers must:
+  1. package-charon-r409.py (zip): the r408 script inherits Dodatki-syntezy from the r404 stage - call
+     put_addons(stage) so that the folder holds the r409 modules and all voices, and licenses/synth-addons
+     the new licence set (LICENCES.txt, RHVOICE-VOICES.txt, rhvoice-voices.tsv, 25 licence/README files).
+  2. make-charon-iso-r409.py, make-charon-github-r409.py, make-charon-testvm-r409all.py: replace
+     synth-modules-r397 by synth-modules-r409 (ISO: files.update from medium_files(); licences from
+     EFI/HAK/synths/LICENCES.txt and licences/ as before, plus RHVOICE-VOICES.txt).
+  3. rhvoice.tts and rhvoice.manifest belong together (the manifest carries the module's SHA-256): never
+     mix r397 and r409 files. An update over an r408 installation overwrites rhvoice.tts, rhvoice.manifest,
+     espeak.tts, espeak.manifest and adds the new packs; no old file becomes stale (pack names unchanged).
+  4. READMEs: say that RHVoice now has 13 voices (list), that each voice beyond Natan and Slt is one file
+     rhvoice\rhvoice-<name>.chsp that may be deleted, and repeat the non-commercial note for Cezary,
+     Evgeniy-Eng, Lyubov; the corresponding source must include src/synth/rhvoice/VOICES.tsv (it is in
+     src/, so the source zip takes it) and the build needs work/rhvoice-voices-r409/download (clones) -
+     add the 11 repositories and commits to source-downloads.json / BUILD-NOTES.md.
+  5. work/charon-vm.py still defaults to synth-modules-r397 (CHARON_SYNTHS); tests of r409 should set
+     CHARON_SYNTHS=synth-modules-r409 or the default should be changed when the release is assembled.
+  6. If the installer gets the "leave out further voices when the partition is small" step (section 6),
+     nothing else is needed in the package.
+
+
+9. NOT VERIFIED / OPEN
+----------------------
+- Real hardware; VMware (only QEMU/OVMF was used); firmware with little memory below 512 MB.
+- Module memory inside firmware was not measured (host loader figures only).
+- The licence readings in section 2 (non-commercial voices in a free distribution; Alan/Bdl/Clb without a
+  licence file) - the user's decision.
+- 24 kHz models (exist for all voices) are not shipped or tested.
+- A manifest that lists a voice whose file was deleted: Charon then uses the first voice of that
+  language (read in CharonSynthHost.h VoiceIndex; host test shows the module offers 12 voices; not driven
+  in a VM). The menu still shows the deleted voice's name.
+- Only one voice per add-on can be chosen in the settings; the other language is always read by the
+  first voice of that language (Natan / Slt). Choosing e.g. Magda for Polish AND Alan for English at the
+  same time would need a second settings byte.
+- Speech Dispatcher voice-name matching by lower-case name, NVDA/SAPI voice identifiers inside those
+  programs, the COPR package contents, and rhvoice.su packages were not tried on a real system.
+- Whether the current tree of src/efi (being changed by other tasks) still builds with these synth
+  sources was not tried: src/efi was not touched and the VM runs used the r408u binaries.

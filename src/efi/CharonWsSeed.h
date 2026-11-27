@@ -143,8 +143,10 @@ inline bool WindowTake(void* context,const uint8_t* data,size_t size) {
     auto& s=*static_cast<WindowSink*>(context);if(s.got+size>s.capacity)return false;
     memcpy(s.out+s.got,data,size);s.got+=size;return true;
 }
+inline const held::File*& QcowLocal() {static const held::File* local=nullptr;return local;}   // r410: the image a plan fetched up front (null: from the network)
 inline bool QcowFetch(uint64_t offset,uint8_t* out,size_t size) {
     auto& q=Q();static https::Response answer;
+    if(QcowLocal()) {q.last=https::Result::ok;return held::Read(*QcowLocal(),offset,out,size);}
     for(unsigned attempt=0;attempt<4;++attempt) {
         https::Request rq;rq.url=q.url;rq.range=true;rq.rangeStart=offset;rq.rangeEnd=offset+size-1;
         WindowSink sink{out,size,0};
@@ -200,9 +202,10 @@ inline bool QcowToDisk(const char* url,const disks::Disk& d,const char16_t* what
     if(d.hasCharon && !R().on && !hakefi::selfram::Active()) {Fail(T(u"To jest dysk, z którego działa Charon, a Charon nie jest jeszcze wczytany do pamięci. Zaczekaj chwilę i spróbuj ponownie.",u"This is the disk Charon is running from, and Charon is not yet loaded into memory. Wait a moment and try again."));return false;}
     if(d.readOnly || !d.io || !d.io->WriteBlocks) {Fail(T(u"Na tym dysku nie da się zapisywać.",u"This disk cannot be written to."));return false;}
     q.client.transport=net::tcp::Transport();
-    auto result=https::Probe(q.client,url,probe);
+    QcowLocal()=held::Find(url);   // r410
+    auto result=QcowLocal()?https::Result::ok:https::Probe(q.client,url,probe);
     if(result!=https::Result::ok) {net::HttpsFail(q.client,result);return false;}
-    q.fileSize=probe.totalLength!=https::unknownLength?probe.totalLength:probe.contentLength!=https::unknownLength?probe.contentLength:0;
+    q.fileSize=QcowLocal()?QcowLocal()->size:probe.totalLength!=https::unknownLength?probe.totalLength:probe.contentLength!=https::unknownLength?probe.contentLength:0;
     if(!q.fileSize) {Fail(T(u"Serwer nie podał rozmiaru obrazu.",u"The server did not give the image's size."));return false;}
     // The address after redirects: every range request then goes straight to the mirror.
     {const char* final=q.client.url[0]?q.client.url:url;size_t n=0;for(;final[n] && n+1<sizeof(q.url);++n)q.url[n]=final[n];q.url[n]=0;}

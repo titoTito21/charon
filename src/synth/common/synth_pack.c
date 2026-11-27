@@ -37,7 +37,7 @@ typedef struct mount {
     size_t count;
 } mount;
 
-#define MAX_MOUNTS 4
+#define MAX_MOUNTS 8   /* r409: rhvoice mounts up to 2 language packs + 3 voice packs */
 static mount mounts[MAX_MOUNTS];
 static size_t mount_count;
 static int cache_enabled;

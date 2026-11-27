@@ -16,7 +16,13 @@
 #include "CharonWsFetch.h"
 #include "CharonWsRamDisk.h"
 #include "CharonWsReaders.h"
+#include "CharonWsDetailed.h"   // r410: the detailed mode's groups of questions and what carries their answers
+#include "CharonWpaPsk.h"   // r409
+#include "CharonVoiceRest.h"   // r409
+#include "CharSettings.h"
+#include "CharonSynthHost.h"
 namespace hakefi {
+efi_status LoadCharSettings(efi_file_protocol* root,CharSettings& settings);   // BootMenu.h (r409: the voice hand-over below)
 namespace ws {
 void StartProgram(efi_handle volume,const char16_t* path,const char16_t* title,const char16_t* args);   // CharonWorkspace.h
 namespace install {
@@ -28,6 +34,103 @@ struct Text {
     void Number(uint64_t v) {char d[24];size_t n=0;do {d[n++]=char('0'+v%10);v/=10;}while(v);while(n) {char c[2]={d[--n],0};Add(c);}}
     void Line(const char* a,const char* b=nullptr,const char* c=nullptr,const char* d=nullptr) {Add(a);if(b)Add(b);if(c)Add(c);if(d)Add(d);Add("\n");}
 };
+// r409: an answer file that outgrew its buffer is never written cut: said, and the installation does not start.
+inline void AnswersDoNotFit() {
+    Fail(T(u"Odpowiedzi nie mieszczą się w pliku odpowiedzi instalatora, więc instalacja nie zostanie uruchomiona. Na dysku docelowym nic się nie zmieniło. Skróć najdłuższe odpowiedzi, na przykład listy programów.",
+           u"The answers do not fit in the installer's answer file, so the installation will not be started. Nothing changed on the target disk. Shorten the longest answers, for example lists of programs."));
+}
+// r409: the voice Charon itself speaks with goes to the installed system: /var/lib/charon/voice.conf,
+// NAME=value lines read by src/linux/speech.sh (CHARON_SYNTH, CHARON_VOICE, CHARON_RATE, CHARON_PITCH,
+// CHARON_PUNCTUATION - the names and scales are speech.sh's). synth: the active synthesizer's manifest
+// name without ".manifest" (rhvoice, espeak; tvox for the built-in voice; "" unknown: line left out);
+// voice: the voice's id in that manifest without the "<synth>-" prefix (natan, magda, slt);
+// rate and pitch: the screen reader's, 5..20 tenths; punctuation: 0 none, 1 some, 2 most, 3 all.
+inline void VoiceConf(Text& t,const char* synth,const char* voice,unsigned rate,unsigned pitch,unsigned punctuation) {
+    static const char* const levels[]={"none","some","most","all"};   // r409, read in the code: speechtext::Level levelNone=0, levelSome=1, levelMost=2, levelAll=3 (CharonSpeechText.h); the setting is checked to be 0..3 (CharSettings.h); speech.sh takes exactly these four words
+    t.Line("# Written by Charon: the voice and the reader settings Charon itself uses (read by speech.sh).");
+    if(synth[0])t.Line("CHARON_SYNTH=",synth);
+    if(voice[0])t.Line("CHARON_VOICE=",voice);
+    t.Add("CHARON_RATE=");t.Number(rate);t.Add("\n");
+    t.Add("CHARON_PITCH=");t.Number(pitch);t.Add("\n");
+    t.Line("CHARON_PUNCTUATION=",levels[punctuation&3]);
+}
+// The active synthesizer and voice by those names, from Charon's settings record and the manifests.
+inline void CurrentVoice(char* synth,size_t synthCap,char* voice,size_t voiceCap,CharSettings& settings) {
+    synth[0]=0;voice[0]=0;settings=CharSettings{};
+    LoadCharSettings(U().host->root,settings);
+    auto put=[](char* out,size_t cap,const char* in) {size_t i=0;for(;in[i] && i+1<cap;++i)out[i]=in[i];out[i]=0;};
+    if(!settings.synthKey) {put(synth,synthCap,"tvox");return;}
+    static synths::Info found[synths::maxSynths];
+    const size_t n=synths::ScanAll(U().host->boot,U().host->selfDevice,U().host->root,found,synths::maxSynths);
+    const synths::Info* info=synths::Find(found,n,settings.synthKey);
+    if(!info)return;
+    size_t k=0;
+    for(;info->manifest[k] && info->manifest[k]!=u'.' && k+1<synthCap;++k) {char16_t c=info->manifest[k];if(c>=u'A' && c<=u'Z')c=char16_t(c+32);synth[k]=c<128?char(c):'_';}
+    synth[k]=0;
+    if(settings.synthVoice>=info->voices)return;
+    const char* id=info->id[settings.synthVoice];size_t skip=0;
+    while(synth[skip] && id[skip]==synth[skip])++skip;
+    put(voice,voiceCap,(!synth[skip] && id[skip]=='-')?id+skip+1:id);
+}
+// r409: the Wi-Fi connection Charon itself uses goes to the system installed now: network.conf, NAME=value
+// lines read by src/linux/network.sh (the names are its own). Only Wi-Fi is written: Charon knows no static
+// address and no proxy, and a system on a cable needs no file (DHCP is every system's default). The password
+// is the passphrase as typed (network.sh takes a passphrase or a 64-digit key; Charon has no PBKDF2-SHA1 to
+// compute the key). The text holds a secret: the caller writes it only to the target of this installation
+// and wipes its buffer; it is never spoken, shown or logged.
+inline void NetworkConf(Text& t,const char* mac,const char* ssid,bool open,const char* key) {
+    t.Line("# Written by Charon: the Wi-Fi connection chosen in Charon (read by network.sh).");
+    t.Line("CHARON_NET_TYPE=wifi");
+    if(mac[0])t.Line("CHARON_NET_MAC=",mac);
+    t.Line("CHARON_NET_METHOD=dhcp");
+    t.Line("CHARON_WIFI_SSID=",ssid);
+    t.Line("CHARON_WIFI_SECURITY=",open?"open":"wpa-psk");
+    if(!open)t.Line("CHARON_WIFI_PSK=",key);
+}
+// network.conf for the network joined now. Returns its size; 0: no Wi-Fi was joined in Charon, or its name
+// cannot stand in a line of text (control characters), or it did not fit.
+inline size_t NetworkConfNow(char* out,size_t capacity) {
+    const auto& j=net::Joined();out[0]=0;
+    if(!j.valid || !j.ssid.length || j.ssid.length>32)return 0;
+    static char ssid[33];
+    for(size_t i=0;i<j.ssid.length;++i) {const uint8_t c=j.ssid.name[i];if(c<32 || c==127)return 0;ssid[i]=char(c);}
+    ssid[j.ssid.length]=0;
+    static char mac[18];mac[0]=0;auto& n=net::N();
+    if(n.wifiAdapter<n.count && n.adapters[n.wifiAdapter].wifi) {
+        static const char hex[]="0123456789abcdef";size_t k=0;
+        for(int i=0;i<6;++i) {if(i)mac[k++]=':';mac[k++]=hex[n.adapters[n.wifiAdapter].mac[i]>>4];mac[k++]=hex[n.adapters[n.wifiAdapter].mac[i]&15];}
+        mac[k]=0;
+    }
+    // r409: the computed key, never the passphrase (CharonWpaPsk.h; network.sh and Charon-Network.ps1 both take a key
+    // of 64 hexadecimal digits). A key that is already 64 digits is passed on; a passphrase that cannot be a WPA2
+    // passphrase (not 8 to 63 bytes) gives no file at all rather than a file with the passphrase in it.
+    static char key[65];key[0]=0;
+    if(!j.open) {
+        size_t n=0;while(n<64 && j.key[n])++n;
+        bool hexKey=n==64;for(size_t i=0;i<n && hexKey;++i) {const char c=j.key[i];hexKey=(c>='0' && c<='9') || (c>='a' && c<='f') || (c>='A' && c<='F');}
+        if(hexKey) {for(size_t i=0;i<=64;++i)key[i]=i<64?j.key[i]:char(0);}
+        else if(!wpapsk::KeyHex(j.key,n,j.ssid.name,j.ssid.length,key))return 0;
+    }
+    Text t{out,capacity,0,false};
+    NetworkConf(t,mac,ssid,j.open,key);
+    for(auto& c:key)c=0;
+    if(t.overflow) {for(size_t i=0;i<capacity;++i)out[i]=0;return 0;}
+    return t.size;
+}
+// True: Charon's only connection is Wi-Fi (no adapter on a cable has an address).
+inline bool OnlyWifi() {
+    if(!net::Joined().valid)return false;
+    auto& n=net::N();net::IpInfo info;
+    for(size_t i=0;i<n.count;++i)if(!n.adapters[i].wifi && net::ReadIp(n.adapters[i],info))return false;
+    return true;
+}
+// voice.conf as it is now. Returns its size (0: it did not fit).
+inline size_t VoiceConfNow(char* out,size_t capacity) {
+    static char synth[64],voice[48];CharSettings settings;CurrentVoice(synth,sizeof(synth),voice,sizeof(voice),settings);
+    Text t{out,capacity,0,false};out[0]=0;
+    VoiceConf(t,synth,voice,settings.readerRate,settings.readerPitch,settings.punctuation);
+    return t.overflow?0:t.size;
+}
 inline const Choice systems[]={{u"Debian (stabilny)",u"Debian (stable)","debian"},{u"Ubuntu (LTS)",u"Ubuntu (LTS)","ubuntu"},{u"Windows 11",u"Windows 11","windows"}};
 inline const Choice modes[]={
     {u"tryb ekspresowy: jak najmniej pytań",u"express mode: as few questions as possible","quick"},
@@ -55,7 +158,7 @@ inline const Choice mirrors[]={{u"automatyczny (deb.debian.org)",u"automatic (de
 // What every system asks. quick = asked in the quick mode too.
 inline const Question commonQuestions[]={
     {"locale",true,Kind::choice,u"Język systemu:",u"System language:","en_US",CHARON_CHOICES(locales),nullptr,nullptr},
-    {"keyboard",false,Kind::choice,u"Układ klawiatury:",u"Keyboard layout:","",CHARON_CHOICES(keyboards),u"W trybie ekspresowym układ klawiatury wynika z języka.",u"In express mode the keyboard layout follows the language."},
+    {"keyboard",false,Kind::choice,u"Układ klawiatury:",u"Keyboard layout:","",CHARON_CHOICES(keyboards),u"Bez twojego wyboru układ klawiatury wynika z języka.",u"Without your choice the keyboard layout follows the language."},
     {"timezone",false,Kind::choice,u"Strefa czasowa:",u"Time zone:","",CHARON_CHOICES(zones),nullptr,nullptr},
     {"hostname",false,Kind::name,u"Nazwa komputera:",u"Computer name:","charon-pc",nullptr,0,u"Małe litery, cyfry i myślnik.",u"Lower-case letters, digits and a hyphen."},
     {"fullname",false,Kind::text,u"Twoje imię i nazwisko:",u"Your full name:","",nullptr,0,nullptr,nullptr},
@@ -156,7 +259,7 @@ inline bool ConfirmPlan(const char16_t* systemName) {
     return true;
 }
 // A writable volume with room for the installer's files (not a read-only one).
-inline bool WorkVolume(uint64_t need,efi_handle& volume) {
+inline bool WorkVolume(uint64_t need,efi_handle& volume,bool tell=true) {   // r409: tell=false: the caller has another place to offer
     efi_handle volumes[32];const size_t n=Volumes(volumes,32);uint64_t best=0;volume=nullptr;
     for(size_t i=0;i<n;++i) {
         if(hakefi::selfram::IsVolume(volumes[i]))continue;   // r408: never Charon's copy in memory - files put there are gone after a restart
@@ -169,7 +272,7 @@ inline bool WorkVolume(uint64_t need,efi_handle& volume) {
         if(volumes[i]==U().host->selfDevice) {volume=volumes[i];return true;}
         if(freeBytes>best) {best=freeBytes;volume=volumes[i];}
     }
-    if(!volume) {static char16_t text[300];Set(text,300,T(u"Żadna partycja FAT nie ma dość wolnego miejsca na pliki instalatora; potrzeba ",u"No FAT partition has enough free space for the installer's files; needed: "));
+    if(!volume && tell) {static char16_t text[300];Set(text,300,T(u"Żadna partycja FAT nie ma dość wolnego miejsca na pliki instalatora; potrzeba ",u"No FAT partition has enough free space for the installer's files; needed: "));
         systools::PutSize(text,300,need,Pl());Fail(text);}
     return volume!=nullptr;
 }
@@ -185,8 +288,17 @@ inline bool EnsureNetwork() {
     return false;
 }
 // Waits until what was said has been heard (at most `tenths` tenths of a second).
+// r409: the wait also ends when a key is waiting - the key is NOT read here, so the next question gets it - and
+// when the voice rests after a stall of the sound card (nothing would be heard; the dialogue must not look hung).
+// The timing without a key and without a stall is unchanged.
 inline void HearOut(unsigned tenths) {
-    for(unsigned i=0;i<tenths;++i) {U().host->boot->Stall(100000);Pump();auto* fx=U().host->effects;if(i>5 && fx && fx->SpeechIdle && fx->SpeechIdle(fx->context))break;}
+    auto* input=U().host->system?U().host->system->ConIn:nullptr;
+    for(unsigned i=0;i<tenths;++i) {
+        U().host->boot->Stall(100000);Pump();auto* fx=U().host->effects;
+        if(i>5 && fx && fx->SpeechIdle && fx->SpeechIdle(fx->context))break;
+        if(input && input->WaitForKey && U().host->boot->CheckEvent(input->WaitForKey)==EFI_SUCCESS)break;
+        if(i>5 && hakefi::VoiceResting())break;
+    }
 }
 inline bool Fetch(const char16_t* url,efi_handle volume,const char16_t* path,const char16_t* what) {
     static FileRef target;target.volume=volume;Set(target.path,pathUnits,path);
@@ -200,6 +312,39 @@ inline bool FetchToMemory(const char16_t* url,Memory& memory,size_t extra,const 
     memory.data=nullptr;memory.capacity=0;memory.size=0;memory.extra=extra;memory.reserved=false;
     uint64_t received=0;return net::DownloadAny(url,none,&received,&memory,T(u"Pobieranie",u"Downloading"));
 }
+// r410 (agent 3): an installer's two files (kernel and initrd) at once - net::many::Download, two kept-alive
+// connections. False: said why; neither file is kept.
+inline bool FetchPair(const char16_t* url1,Memory* memory1,size_t extra1,const FileRef* file1,const char16_t* what1,
+                      const char16_t* url2,Memory* memory2,size_t extra2,const FileRef* file2,const char16_t* what2) {
+#ifndef HAK_CHARON_HTTPS   // a build without Charon's own client: one after the other, as before r410
+    auto one=[](const char16_t* url,Memory* m,size_t extra,const FileRef* f,const char16_t* what)->bool {
+        return m?FetchToMemory(url,*m,extra,what):Fetch(url,f->volume,f->path,what);};
+    if(!one(url1,memory1,extra1,file1,what1))return false;
+    if(one(url2,memory2,extra2,file2,what2))return true;
+    if(memory1)Free(*memory1);
+    return false;
+#else
+    static char ascii[2][400];static net::many::Item items[2];
+    if(!net::many::Ascii(url1,ascii[0],400) || !net::many::Ascii(url2,ascii[1],400)) {Fail(T(u"Adres zawiera niedozwolone znaki.",u"The address contains characters that are not allowed."));return false;}
+    static char16_t text[300];Set(text,300,memory1?T(u"Pobieram do pamięci: ",u"Downloading into memory: "):T(u"Pobieram: ",u"Downloading: "));
+    Cat(text,300,what1);Cat(text,300,T(u" i ",u" and "));Cat(text,300,what2);Say(text);HearOut(60);
+    Memory* memory[2]={memory1,memory2};const size_t extra[2]={extra1,extra2};const FileRef* file[2]={file1,file2};
+    for(int i=0;i<2;++i) {
+        memset(&items[i],0,sizeof(items[i]));items[i].url=ascii[i];items[i].size=https::unknownLength;
+        if(memory[i]) {Memory& m=*memory[i];m.data=nullptr;m.capacity=0;m.size=0;m.extra=extra[i];m.reserved=false;items[i].memory=&m;items[i].extra=extra[i];}
+        else items[i].file=file[i];
+    }
+    net::many::Options o{};o.connections=2;o.label=T(u"Pobieranie",u"Downloading");
+    const net::many::Outcome r=net::many::Download(items,2,o);
+    if(!r.failed)return true;
+    for(int i=0;i<2;++i)if(memory[i])Free(*memory[i]);
+    net::many::Explain(*r.firstFailure);
+    return false;
+#endif
+}
+inline bool FetchPairToMemory(const char16_t* url1,Memory& m1,size_t extra1,const char16_t* what1,const char16_t* url2,Memory& m2,size_t extra2,const char16_t* what2) {
+    return FetchPair(url1,&m1,extra1,nullptr,what1,url2,&m2,extra2,nullptr,what2);
+}
 // ---- Charon kept in memory ---------------------------------------------------------
 // An installation may erase the very disk Charon runs from. So everything
 // Charon consists of (\EFI\HAK on its own disk: the boot manager, the screen
@@ -211,11 +356,17 @@ inline bool FetchToMemory(const char16_t* url,Memory& memory,size_t extra,const 
 // unpacks Charon onto the new EFI system partition and registers the screen
 // reader add-on (Driver####) and the Charon boot manager (a Boot#### entry
 // after the new system's own), so Charon is still in UEFI afterwards.
-inline bool SkipInArchive(const char16_t* name) {
+// r409: true while the archive is made for an installation that erases the disk Charon itself lives on: Charon's
+// saved answer sets and plan state are then CARRIED in the archive (the installer's late_command puts the whole of
+// /charon/EFI/HAK on the new EFI partition), because nothing else brings them over the wipe. network.conf never goes.
+inline bool& CarryHome() {static bool carry=false;return carry;}
+inline bool SkipInArchive(const char16_t* name,bool top=false) {
     // Per-installation records that would be wrong on a new disk, and bulk.
     static const char16_t* const skipped[]={u"continue.bin",u"continue-set",u"installed-by.txt",u"reader-only",u"downloads",u"charon-install"};
     for(const auto* s:skipped)if(SameFold(name,s))return true;
-    return false;
+    // r409: directly inside \EFI\HAK (`top`): saved answer sets and plan state stay on Charon's own medium (CharonPrivate.h)
+    if(top && CarryHome() && !SameFold(name,u"network.conf"))return false;
+    return top && hakprivate::IsPrivate(name);
 }
 inline void ArchiveName(const char16_t* path,char* out,size_t cap) {
     static const char prefix[]="charon";size_t n=0;for(;prefix[n];++n)out[n]=prefix[n];
@@ -243,9 +394,10 @@ inline bool HakTree(crypt::Cpio* cpio,uint64_t& bytes,size_t& files) {
     while(depth) {
         static FileRef folder;folder.volume=U().host->selfDevice;Set(folder.path,pathUnits,stack[--depth]);
         if(ReadFolder(folder,list)!=EFI_SUCCESS)continue;
+        const bool top=SameFold(folder.path,u"\\EFI\\HAK");
         for(size_t i=0;i<list.count;++i) {
             const auto& e=list.entries[i];
-            if(SkipInArchive(e.name))continue;
+            if(SkipInArchive(e.name,top))continue;
             static FileRef child;child.volume=folder.volume;if(!JoinPath(child.path,pathUnits,folder.path,e.name))continue;
             ArchiveName(child.path,name,sizeof(name));
             if(e.directory) {
@@ -317,6 +469,17 @@ inline bool AppendCharon(Memory& memory,const char* answersName,const char* answ
             if(size && size<(uint64_t(64)<<20)) {uint8_t* at=cpio.Begin("charon/EFI/HAK/HAKBOOT.EFI",0100644,size_t(size));ok=at && ReadInto(self,at,size);}
         }
     }
+    // r410: the answers of the detailed mode that differ from the defaults, and the script that applies them in the
+    // installed system (late_command takes both along). With every answer at its default nothing is added.
+    if(detailed::Carried()) {static char env[16384];const size_t n=detailed::Env(env,sizeof(env));
+        if(!n)ok=false;else {cpio.File("charon/answers.env",env,n);cpio.File("charon/personal.sh",personalScript,sizeof(personalScript)-1);}
+        for(auto& c:env)c=0;}
+    {static char conf[512];const size_t n=VoiceConfNow(conf,sizeof(conf));if(n)cpio.File("charon/voice.conf",conf,n);}   // r409: late_command copies it for speech.sh
+    // r409: the Wi-Fi network Charon is on, for the installed system (the installer itself works over the cable):
+    // network.conf with the computed key and the script that applies it; late_command takes both along.
+    {static char conf[400];const size_t n=NetworkConfNow(conf,sizeof(conf));
+     if(n) {cpio.File("charon/network.conf",conf,n);cpio.Program("charon/network.sh",networkScript,sizeof(networkScript)-1);}
+     for(auto& c:conf)c=0;}
     cpio.Program("charon/install-charon.sh",charonScript,sizeof(charonScript)-1);
     cpio.Program("charon/speech.sh",speechScript,sizeof(speechScript)-1);
     // r406: progress tones in the installer and in the installed system's set-up
@@ -393,9 +556,19 @@ inline void DebianLateCommand(Text& p,bool speech) {
     p.Add("d-i preseed/early_command string (sh /charon/progress.sh watch /target </dev/null >/dev/null 2>&1 3>&- 4>&- 5>&- 6>&- &)\n");   // debconf's descriptors closed: the installer waits for them
     p.Add("d-i preseed/late_command string : > /tmp/charon-watch-stop; mkdir -p /target/boot/efi/EFI/HAK /target/var/lib/charon; "
           "cp -r /charon/EFI/HAK/. /target/boot/efi/EFI/HAK/; cp /charon/install-charon.sh /charon/goodbye.wav /charon/progress.sh /charon/charon-tone /target/var/lib/charon/; "
-          "chmod 755 /target/var/lib/charon/charon-tone; in-target sh /var/lib/charon/install-charon.sh || true");
+          "chmod 755 /target/var/lib/charon/charon-tone; cp /charon/voice.conf /target/var/lib/charon/ 2>/dev/null; in-target sh /var/lib/charon/install-charon.sh || true");   // r409: voice.conf (Charon's synthesizer, rate, pitch, punctuation for speech.sh) is copied when the add-on archive holds one
     if(speech || ask::Any("desktop")) {static char args[200];ReaderArguments(args,sizeof(args));   // r406: a desktop alone too (sign-in mode)
-        p.Add("; cp /charon/speech.sh /target/var/lib/charon/; in-target sh /var/lib/charon/speech.sh ");p.Add(args);p.Add(" > /target/var/lib/charon/speech.log 2>&1 || true");}
+        // r409: in-target sends what its command prints to the installer's syslog (debian-installer-utils, in-target:
+        // log-output -t in-target chroot /target ...), so a redirection after it wrote an empty speech.log; the
+        // redirection now happens inside the new system. CHARON_CHROOT=1: speech.sh starts and builds nothing here.
+        p.Add("; cp /charon/speech.sh /target/var/lib/charon/; in-target sh -c \"CHARON_CHROOT=1 sh /var/lib/charon/speech.sh ");p.Add(args);p.Add(" > /var/lib/charon/speech.log 2>&1\" || true");}
+    // r409: a step of a multi-system plan (CharonWsPlanDialogue.h sets the answer "plan"): the last act of the
+    // installation tells Charon that this step is done (EFI/HAK/plan/stepN.done on the EFI partition).
+    // r409: the Wi-Fi connection chosen in Charon (charon/network.conf is in the archive only when there is one).
+    p.Add("; if [ -f /charon/network.conf ]; then cp /charon/network.sh /charon/network.conf /target/var/lib/charon/; chmod 600 /target/var/lib/charon/network.conf; in-target sh /var/lib/charon/network.sh apply || true; fi");
+    if(detailed::Carried())   // r410
+        p.Add("; if [ -f /charon/answers.env ]; then cp /charon/personal.sh /charon/answers.env /target/var/lib/charon/; chmod 600 /target/var/lib/charon/answers.env; in-target sh /var/lib/charon/personal.sh install || true; fi");
+    if(ask::Any("plan"))p.Add("; in-target sh /var/lib/charon/install-charon.sh plan-done || true");
     p.Add("; /charon/charon-tone -p 100 784 110 0 30 1175 170 || true\n");
 }
 // Filled from the answers: /preseed.cfg for debian-installer.
@@ -404,6 +577,18 @@ inline void DebianPreseed(Text& p) {
     p.Line("# Written by Charon from spoken answers.");
     p.Line("d-i debian-installer/locale string ",ask::Get("locale"),".UTF-8");
     p.Line("d-i keyboard-configuration/xkb-keymap select ",ask::Get("keyboard"));
+    // r409 (seen in VMware: the installation stopped at "Configuring keyboard-configuration ... Keyboard layout:" during
+    // "Select and install software" and waited for Enter). The line above answers the installer's own question only.
+    // When the package keyboard-configuration is configured inside the new system, its config script asks
+    // keyboard-configuration/variant (and layout) at priority critical unless they are answered there (console-setup,
+    // debian/keyboard-configuration.config: ask_debconf ... "$layout_priority"). Answers owned by the package are put
+    // into the new system's debconf database by the installer and marked as seen: the layout Charon chose, no variant.
+    p.Line("keyboard-configuration keyboard-configuration/xkb-keymap select ",ask::Get("keyboard"));
+    p.Line("keyboard-configuration keyboard-configuration/layoutcode string ",ask::Get("keyboard"));
+    p.Line("keyboard-configuration keyboard-configuration/variantcode string");
+    p.Line("keyboard-configuration keyboard-configuration/modelcode string pc105");
+    p.Line("keyboard-configuration keyboard-configuration/layout select");
+    p.Line("keyboard-configuration keyboard-configuration/variant select");
     p.Line("d-i netcfg/choose_interface select auto");
     p.Line("d-i netcfg/get_hostname string ",ask::Get("hostname"));
     p.Line("d-i netcfg/get_domain string");
@@ -455,22 +640,25 @@ inline void DebianPreseed(Text& p) {
 }
 inline bool RunDebian(bool guided) {
     static char16_t url[400];static Memory kernel,initrd;
+    // r409: the whole of Charon's own disk is erased by this installation: answer sets and plan state travel in the archive.
+    CarryHome()=!guided && ask::Is("diskmode","whole") && Chosen().disk<disks::D().count && disks::D().list[Chosen().disk].hasCharon;
     const ArchivePlan plan=MeasureCharon();
     if(!plan.reader)Say(T(u"Uwaga: na dysku Charona nie ma plików czytnika ekranu; w nowym systemie Charona trzeba będzie zainstalować osobno.",
         u"Note: Charon's disk has no screen reader files; Charon will have to be installed in the new system separately."));
-    Set(url,400,u"http://deb.debian.org/debian/dists/stable/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux");
-    if(!FetchToMemory(url,kernel,0,T(u"jądro instalatora Debiana",u"the Debian installer's kernel")))return false;
+    static char16_t url2[400];   // r410 (agent 3): kernel and initrd at once (FetchPairToMemory)
+    Set(url2,400,u"http://deb.debian.org/debian/dists/stable/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux");
     // The graphical netboot initrd is the one that carries espeakup and the
     // sound drivers, so the installer itself can speak (speakup.synth=soft).
     const bool speech=guided || ask::Is("speech","yes");
     Set(url,400,u"http://deb.debian.org/debian/dists/stable/main/installer-amd64/current/images/netboot/");
     Cat(url,400,speech?u"gtk/debian-installer/amd64/initrd.gz":u"debian-installer/amd64/initrd.gz");
-    if(!FetchToMemory(url,initrd,size_t(plan.bytes)+(64u<<10),speech?T(u"instalator Debiana z mową",u"the Debian installer with speech")
-        :T(u"instalator Debiana",u"the Debian installer"))) {Free(kernel);return false;}
+    if(!FetchPairToMemory(url2,kernel,0,T(u"jądro instalatora Debiana",u"the Debian installer's kernel"),url,initrd,size_t(plan.bytes)+(64u<<10),
+        speech?T(u"instalator Debiana z mową",u"the Debian installer with speech"):T(u"instalator Debiana",u"the Debian installer")))return false;
     // After the installer's own initrd: the answers and Charon itself.
-    static char preseed[12000];Text text{preseed,sizeof(preseed),0,false};preseed[0]=0;
+    static char preseed[48000];Text text{preseed,sizeof(preseed),0,false};preseed[0]=0;   // r409: was 12000; static, not on the stack
     if(guided) {text.Line("# Written by Charon: the guided installation only brings Charon along.");DebianLateCommand(text,false);}
     else DebianPreseed(text);
+    if(text.overflow) {for(auto& c:preseed)c=0;Free(kernel);Free(initrd);AnswersDoNotFit();return false;}
     const bool packed=!text.overflow && AppendCharon(initrd,"preseed.cfg",preseed,text.size);
     for(auto& c:preseed)c=0;
     if(!packed) {Free(kernel);Free(initrd);Fail(T(u"Nie udało się wczytać Charona i twoich odpowiedzi do pamięci.",u"Charon and your answers could not be loaded into memory."));return false;}
@@ -484,6 +672,7 @@ inline bool RunDebian(bool guided) {
         :T(u"Wszystko jest w pamięci. Uruchamiam instalator Debiana bez mowy. Instalacja potrwa od kilkunastu minut do godziny. Na końcu komputer sam uruchomi się ponownie.",
            u"Everything is in memory. Starting the Debian installer without speech. The installation takes from a quarter of an hour to an hour. At the end the computer restarts by itself."));
     HearOut(200);
+    if(!guided)net::ForgetJoined();   // r409: the install files are written; the Wi-Fi passphrase does not stay in memory
     StartFromMemory(kernel,initrd,u"Debian installer",arguments);
     for(size_t i=0;i<initrd.size;++i)initrd.data[i]=0;   // the answers were in there
     Free(kernel);Free(initrd);

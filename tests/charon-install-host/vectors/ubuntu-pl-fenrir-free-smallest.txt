@@ -1,0 +1,9 @@
+# Ubuntu, Polish, express: Fenrir added, so the console reader is asked; free space on the smallest disk.
+lang=pl
+flow=ubuntu
+mode=quick
+keys=ENTER ENTER "test" ENTER "test" ENTER
+keys=ENTER "f" SPACE ENTER
+keys=DOWN ENTER ENTER
+put diskmode=free
+arg largest=0

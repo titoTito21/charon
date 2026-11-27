@@ -1,0 +1,545 @@
+Charon r409 - multi-system plan (several systems installed in one go)
+=====================================================================
+Design: work/charon-multiboot-spec-2026-11-23.md (with its "User decisions" and the RAM-disk
+requirement); answer-set format: work/charon-detailed-questions-spec-2026-11-23.md 6.1.
+
+STATUS ON 2026-11-23, AFTER PHASE B2b (Windows in a plan): five sets passed end to end in VMware
+Workstation WITH REAL GUEST RESTARTS and are offered to users (flags in Presets() true):
+  CharonDOS and Debian, ready-made image          (section 5)
+  CharonDOS and Debian, its installer             (section 5)
+  Windows and Debian, its installer               (section 5b, T1)
+  CharonDOS and Windows                           (section 5b, T2)
+  CharonDOS, Windows and Debian, its installer    (section 5b, T4)
+Hidden behind the test switch \EFI\HAK\plan-test: "Debian, its installer, and Ubuntu, ready-made
+image" (never run) and the own list. Limits of what "passed" covers are in 5b: Windows 11
+Enterprise evaluation only, express mode, no TPM in the test machines (the hardware checks were
+skipped after Charon asked), one disk erased whole. NOT DONE: two Windows in one plan, Ubuntu's
+installer, a disk whose content is kept, unattended plans, real hardware.
+
+Three kinds of statement are kept apart in this file:
+  RAN AND PASSED   executed (host test, or in a virtual machine), result checked
+  COMPILED ONLY    built for the EFI target (or parsed), never executed
+  NOT VERIFIED     neither
+
+
+1. What exists
+--------------
+Core, host tested (phases A, B1)
+  src/efi/CharonPlanText.h, CharonPlanModel.h, CharonPlanLayout.h, CharonPlanState.h
+        answers in namespaces, the answer-set file, plan, step order, pre-flight, serial
+        pre-authorisation (the typed word is ALWAYS required; confirm=disk-match is refused),
+        layout, plan file + 32-byte pointer variable, state machine, finish rule, registry, report.
+  src/efi/CharonSeedDisk.h (Part 3)   ReservePlaceholder, RetypePartition, RemovePartition, FreeGaps.
+  src/efi/CharonClockZone.h, CharonDiskIdentity.h; CharonWsDisks.h (serial, model);
+  CharonSystemTools.h (clock tools in local time); src/dos (WINNT / LINUX, clock in local time);
+  src/linux/install-charon.sh (plan-done / plan-failed / plan-active, Charon first during a plan,
+  first-entry after it), firstboot.sh (reports its step, restarts into Charon);
+  tools/charon-addon/Install-Charon.ps1 -PlanResult.
+Firmware binding and dialogue (phases B1, B2a)
+  src/efi/CharonWsPlan.h          Storage on the plan's EFI partition + variable CharonPlan; Open
+        (an unreadable plan can be discarded: its step files are zeroed and deleted too); AtStart
+        (everything it says also stands on the screen); Continue (announcement, three seconds in
+        which Space or Escape pauses, pass-through with BootNext, first start of an image, the
+        question after a failure, unattended policy); Finish; WriteContinue (Charon's Continue
+        target written to the plan's EFI partition itself, whatever medium Charon was started
+        from); the marks on an image's own EFI partition (below).
+  src/efi/CharonWsPlanDialogue.h  NEW. EntryQuestion ("One system, or several systems side by
+        side?"), the ready sets, the own list (add / remove / done), the shared answers once,
+        each system's own questions (the single-system tables, asked through the existing
+        ask::Run), the disk, pre-flight, summary, the ONE typed word; Prepare (step 0); the
+        runners WriteDos, WriteImage, InstallDebian; RemoveSeed; FinishExtras.
+  Edits in shared headers (all small, additive):
+    CharonWsInstall3.h   install::PlanDialogue() (a hook, 1 line) and its call at the top of
+                         Dialogue() (1 line). Without the hook, or when it returns false, the
+                         dialogue is exactly as before.
+    CharonWsInstall.h    DebianLateCommand: one line, emitted only when the answer "plan" is set:
+                         "in-target sh /var/lib/charon/install-charon.sh plan-done".
+    CharonWorkspace.h    includes, planrun::Register(), the waiting plan's turn in ws::Run.
+    CharonWsCore.h       Host::planResume, planContinue.      BootMenu.h: five small edits (B1).
+    HAKBootEFI.cpp       the resident reader (driver) loads \EFI\HAK\clock.txt.
+  No existing function was split or moved. The plan's steps CALL the single-system code:
+  commonQuestions / imageQuestions / debianQuestions, ResolveReaders, DeriveDefaults, HashPassword,
+  ImageUserData, images::UrlToDisk / QcowToDisk / SeedOnto / CharonOnto, RunDebian, dossys::
+  FindPackage / EmptyGpt / FormatFat32 / PutOption, dosapps::AskGroup / Fetch. The sequence of
+  RunImage's "write" half is repeated in WriteImage (about 25 lines) instead of cutting RunImage
+  in two while others edit it: a change in RunImage's order must be mirrored there.
+
+How the pieces work together (as it ran)
+  - The answers of each system are captured from the question store into [system.<id>] of the
+    plan (the clear password never; its hash does) and put back before that system's generator
+    runs, so every generator reads ask::Get as always.
+  - Step 0, after the typed word: variable CharonPlan (state "preparing"), new GPT, the EFI
+    partition (CharonDOS's partition when CharonDOS is in the plan), a named placeholder per
+    system; then FIRST Charon onto the new EFI partition (from its copy in memory, with its answer
+    sets when the disk was Charon's own home), the plan file, the entries "Charon" (first) and
+    "Charon voice". Nothing is written before the layout and the pre-flight have passed.
+  - A ready image: its placeholder is removed, the image's partitions go into exactly that range
+    (images::Remap with the range as "the gap"), its own small EFI partition stays inside.
+    Because its first-start script looks for the plan on ITS EFI partition, Charon leaves a mark
+    there (EFI/HAK/plan/plan.txt, current), fetches the marker the image wrote and removes the
+    mark; the image's CIDATA seed partition is removed after its first start is done.
+  - Debian's installer: its placeholder is removed, FreeGaps must report exactly one free range
+    of 16 MiB or more starting where the range starts (else the step fails before the installer
+    is started), then the existing "free space" preseed (biggest_free).
+  - Try again: FreeRange also removes whatever a failed attempt left INSIDE the range (never
+    anything that lies partly outside), so a half-written image can be written again.
+  - Finish: CharonDOS's entry is written only now; Charon's own entries are pointed back at the
+    plan's EFI partition (an image's first start registers the copy on the image's partition).
+
+What a plan can hold in this version
+  CharonDOS (without a Windows 95/98/ME/XP profile), the ready images of Debian, Ubuntu and
+  Fedora, Debian's installer; on ONE disk that is erased whole. Not wired (the core computes
+  them, the dialogue does not offer them): Windows, Ubuntu's installer, a disk whose content is
+  kept, several disks, the shared data partition question, typed sizes, "move" in the own list.
+
+
+2. Host tests (all RAN AND PASSED on 2026-11-23 with the final tree)
+---------------------------------------------------------------------
+  python3.15 tests/charon-r409-plan-host.py            7 of 7 parts:
+      Windows plan-step fragments (prepared for B2b)       4 golden files identical
+      plan core, clock zone, disk identity, boot order     237 checks, 0 failed
+      CharonDOS host tests (tests/CharonDosTests.py)       64 of 64 cases (17 WINNT/LINUX, 3 clock)
+      Linux plan hooks, run by sh                          11 checks, 0 failed
+      tests/CharonSeedDiskTests.cpp, in-memory mode        126 checks, 0 failed
+      COMPILED ONLY: plan headers as one object for the EFI target; CHARONDOS.EFI
+  python3.15 tests/charon-install-answers-host.py      310 passed, 0 failed, nothing re-recorded
+      (304 when B1 ended; the other agents added vectors. The one generator line added here is
+      emitted only inside a plan, so no golden file changed.)
+  tools/charon-os/tests/run-tests.py                   108 passed, 0 failed
+Builds of the whole tree (new directories)
+  work/charon-win-r409plan12/CHARON.EFI + work/charon-win-r409plan12-drv/CHARONVOICE.EFI
+        the final tree (two sets offered, registry names re-read after the workspace, abandoned-
+        plan rule)                                             COMPILED AND LINKED ONLY
+  work/charon-win-r409plan11t/CHARON.EFI   trace build, = plan12 without the last three changes;
+        the build of the VMware run V-DEB2                    RAN in a VM
+  work/charon-win-r409plan10t/CHARON.EFI   trace build of the VMware runs V-T3, V-DEB            RAN in a VM
+  work/charon-win-r409plan5-drv/CHARONVOICE.EFI   the reader add-on on the test media (B1 build)
+  work/charondos-r409plan11/CHARONDOS.EFI  the final CharonDOS (V-DEB2); r409plan6: the earlier runs
+  (the QEMU runs of section 3 used the builds plan6 and plan9, since deleted: same sources at
+  that time)
+  The driver build compiles again (the other agent fixed CharonWsWinPart.h).
+
+
+3. Virtual machine runs (QEMU + OVMF, WHPX, 4 CPUs, 4 GB, SATA disk with a serial number, e1000
+   user network, HD audio on the host's speakers through dsound, QMP wavcapture; no bootindex)
+---------------------------------------------------------------------------------------------
+Harness: work/charon-r409-plan-vm.py (machines), -ram.py (Charon on the only disk), -tail.py
+(console text from the serial log), -peek.py (the disk's GPT and FAT files from the host),
+-timing.py / -timing-all.py, -wavs.py. Evidence: work/r409plan-evidence/. All four machines were
+stopped and deleted afterwards; no QEMU process of this work is left.
+Nobody listened with ears. "Sound" below is measured on the recording: seconds that hold signal
+(work/r409plan-evidence/sound-summary.txt). The machine's sound also went to the host's speakers.
+
+ENVIRONMENT DEFECT, the same in every run: this QEMU does not come back from a guest's reboot
+(Linux prints "reboot: machine restart" / the Debian installer "Requesting system reboot", then
+the screen freezes; QMP system_reset does not help). Each time the machine was stopped and
+started again by hand, with its disk and firmware variables kept. What the plan does after a
+real restart was therefore exercised after a power cycle, not after a warm reset. Whether a
+warm restart behaves the same is NOT VERIFIED here; VMware restarts guests normally.
+
+T3  CharonDOS + Debian 13 ready image, empty 48 GB disk, Charon on a USB stick (build plan6)
+    RAN AND PASSED, with the defect above (one power cycle after the image's first start).
+    - dialogue: entry question, set, express mode, shared answers once, per-system questions,
+      disk, summary, typed YES                        t3-serial-part1.log
+    - step 0, CharonDOS written, 3 DOS programs fetched, image downloaded (3072 MB) into its
+      range, first start: cloud-init ran Charon's first-start script, which wrote step3.done and
+      restarted                                        t3-serial-part1.log
+    - next start: firmware started the entry "Charon"; the plan found the marker, removed the
+      seed partition, finished: registry, first-entry, clock.txt, Continue target, report
+                                    t3-REPORT.TXT, t3-LOG.TXT, t3-plan-done.txt
+      (In this build what Charon said at that start was spoken but not on the screen - fixed,
+      and seen fixed in the RAM run.)
+    - boot order afterwards: CharonDOS, Charon, the disk, the shell (firmware's own Boot Manager
+      menu)                                           t3-serial-part4-noplan-start.log
+    - CharonDOS started by the firmware; TIME said 07:46:16 while the host's universal time was
+      12:46:34 (zone America/New_York from the English default: universal clock, local time
+      shown); LINUX /L listed "1: Debian 13" (the registry's name); WINNT said that no Windows
+      was found; LINUX said "Starting Debian 13 from disk 1. CharonDOS ends.", GRUB started,
+      Debian came up to its login prompt - also after its seed partition had been removed.
+      No crash. Sound in 74 of 83 seconds.           t3-serial-part3-dos-linux.log, t3-dos-linux.wav
+RAM  CharonDOS + Debian (installer), Charon on the machine's ONLY disk, no stick (build plan9)
+    RAN AND PASSED, with the defect above (one power cycle after the installer).
+    - Charon started from the internal disk, copied itself into memory, offered that disk
+      ("Charon runs from it"), the summary said "Charon runs from memory and will put itself
+      onto this disk"; the disk was erased and Charon was back on the new EFI partition before
+      the first restart                               ram-serial-part1-plan-and-failure.log
+    - FAILURE INJECTION: the network link was cut (QMP set_link off) before the typed word. The
+      DOS programs failed to download (said, logged, the step went on); Debian's installer could
+      not be downloaded: "The plan has stopped. Step 2, Debian: Charon could not finish its own
+      work: Debian's installer could not be downloaded or started. Finished and bootable:
+      CharonDOS. Not touched: nothing. Try again, skip this system and continue, or stop here."
+      The link was restored, "try again" chosen: the step ran again and the installer started.
+    - Debian's installer partitioned ONLY its range (root 45141 MiB + its own swap 2473 MiB after
+      the 1536 MiB CharonDOS/EFI partition), reused the shared EFI partition (\EFI\debian there),
+      and its last command wrote step2.done.          ram-debian-2.png, ram-debian-3.png
+    - next start: firmware started "Charon" from the new EFI partition; the report stood on the
+      screen: "The plan is finished. Systems installed: 2 of 2. ..."
+                                                      ram-serial-part2-resume-finish.log
+    - then CharonDOS first; TIME in local time; LINUX: "Starting Debian from disk 1. CharonDOS
+      ends." and Debian (charon-pc-debian) came up to its login prompt.
+                                 ram-serial-part3-dos-linux.log, ram-dos-linux.png
+      Sound in the first 59 of 124 seconds (CharonDOS, the hand-over, GRUB); silent afterwards:
+      whether this installed Debian speaks at its login prompt was NOT VERIFIED in this run.
+    Two facts the spec had marked unverified were seen here: Debian's installer in "biggest
+    free space" mode reuses the existing EFI partition, and it stays inside the one gap.
+NO PLAN  an ordinary start (required: the BootMenu.h and disks::Load() edits sit on every start)
+    RAN AND PASSED. With no variable CharonPlan, Charon started from the firmware's entry said
+    "Welcome to Charon. Press Space to open the options menu" and went on by itself to its
+    Continue target (CharonDOS). Sound in 50 of 56 seconds.
+                                 t3-serial-part4-noplan-start.log, t3-noplan-start.wav
+    The first start of each run (no plan yet) also showed the usual menu and messages.
+DISK LIST TIMING  the same single-system dialogue (ready Debian image) up to "Which disk should
+    be erased?", time from the last progress line of the copy into memory to the question:
+        build before this work (work/charon-win-r409e):   1.11 s, 1.24 s
+        build with it (work/charon-win-r409plan9):         1.27 s
+    One sample of the new build only (a second start lost a keystroke of the test script at the
+    password and was not measured). No slow-down is visible; QEMU's SATA disk answers the
+    identify request from memory. Slow firmware remains NOT VERIFIED.
+                                                      disk-list-timing.txt
+NOT RUN: Debian installer + Ubuntu image (two Linux, two first starts), the Fedora image, the own
+list, "skip" and "stop here" after a failure, the pause key, a failure in the middle of an image
+download (the retry path that clears a half-written range is COMPILED ONLY), Polish, VMware,
+real hardware, anything unattended.
+
+
+4. Defects found by the VM runs and fixed
+-----------------------------------------
+- What Charon says when it resumes a plan was only spoken, not on the screen: AtStart now opens
+  the dialogue screen. Seen fixed in the RAM run.
+- The report claimed "answer files with passwords were erased" when no such file had existed.
+- "Next: Debian 13" after "Debian 13 is being written": now "After that, its first start."
+- The files current and stepN.done stayed in \EFI\HAK\plan after the finish; an empty BOOT.CFG
+  was written. (Fixed after T3; the RAM run's disk was not looked at for these two.)
+- A ready image's loader was looked for on "another volume that has no Charon" - but Charon is
+  copied onto the image's own EFI partition. Now the partition's GUID is recorded when the image
+  is written and nothing is guessed. (Found by reading, before T3.)
+
+
+5. VMware Workstation runs with real guest restarts (after B2a); the sets that are now offered
+---------------------------------------------------------------------------------------------
+Machines: make-vmware-vm.py (UEFI, 4 CPUs, 4 GB, NVMe disk of 48 GB, e1000 NAT, HD audio on the
+host), Charon from a CD image made by work/make-charon-iso-r409plan.py (a TRACE build: what Charon
+says goes to the serial port), harness work/charon-r409-plan-vmw.py (+ -attach.py). All three
+machines were stopped and deleted afterwards. Evidence: work/r409plan-evidence/vmw-*.
+VMware's firmware does not load Driver#### options. What that means for a plan, as seen: the
+finish step leaves "Charon" first (not CharonDOS), with CharonDOS as Charon's Continue target and
+no wait, and writes first-entry = Charon; at every start Charon speaks ("Welcome to Charon") and
+goes straight on to CharonDOS, so the reader is there through Charon itself. The report says so:
+"Boot order: Charon, which goes straight on to CharonDOS (this firmware does not load the reader
+by itself), then the others."
+
+V-T3  CharonDOS + Debian 13 ready image (build plan10, trace)             RAN AND PASSED
+    - plan built and run as in QEMU; the image's first start ended with "reboot: Restarting
+      system" and the machine restarted BY ITSELF into Charon, which finished the plan:
+      "The plan is finished. Systems installed: 2 of 2. CharonDOS: 1536 megabytes, installed,
+      1 minute. Debian 13: 46 gigabytes, user user, installed, 6 minutes. Boot order: Charon,
+      which goes straight on to CharonDOS ..."            vmw-t3-serial-run1.txt (lines 1263-1300)
+    - after a hard reset: "Welcome to Charon", then CharonDOS            vmw-t3-after-reset.png
+    - LINUX: "Starting Debian 13 from disk 1. CharonDOS ends."; after the hand-over Charon's
+      reader READ GRUB ("Booting Debian GNU slash Linux ... Loading Linux 6.12.117 ...") and then
+      "The system takes over."; Debian came up to its login prompt. No crash.
+                                                          vmw-t3-serial-linux2.txt
+      This is the evidence for the hand-over rule read from the source in phase A: the voice's
+      Stop does not end the reader; it speaks again in the loader.
+    - sound on the host, measured on the VMware process's audio session: 376 seconds with
+      signal over the run                                 vmw-t3-sound-meter.txt
+    - looked at from inside the installed Debian (serial login): \EFI\HAK\plan holds only
+      log.txt, plan-done.txt and report.txt (the leftover "current" / stepN.done are gone); no
+      empty BOOT.CFG; first-entry = Charon; clock.txt and systems.txt as written; BootOrder
+      0004 Charon (pointing at the plan's EFI partition again), 0005 CharonDOS, then the
+      firmware's own; "RTC in local TZ: no"; local time right for the zone; espeakup active.
+                                                          vmw-t3-inside-debian.txt
+V-DEB  CharonDOS + Debian (installer), first run (build plan10)           PASSED, NOT COUNTED
+    The installer ran to its end without stopping at any question (the keyboard-configuration
+    stop reported elsewhere did not occur in the express mode used here), wrote its marker and
+    asked for the restart ("The guest has requested that the virtual machine be hard reset") -
+    and one second later the machine was POWERED OFF by my own harness (a stop meant for the
+    other machine). After power-on the plan finished. Not a real restart, so not counted.
+    LINUX on it: Charon's reader read GRUB's menu ("grub: menu, 3 items. Debian GNU slash Linux,
+    1 of 3"), Debian came up.                              vmw-deb-serial-linux2.txt, vmw-deb-linux.png
+V-DEB2  the same set again (build plan11, trace), nothing stopped by hand  RAN AND PASSED
+    - THE PAUSE KEY: Space during the first announcement: "Plan paused. Continue, skip this
+      system, or stop here." - "continue" chosen, the plan went on.
+    - the installer's restart was the guest's own ("requested ... hard reset", no power-off in
+      vmware.log); Charon came back and finished: "The plan is finished. Systems installed: 2 of 2."
+                                                          vmw-deb2-serial-run1.txt, vmw-deb2-vmware.log
+    - with the CharonDOS of this build LINUX started Debian at once: the defect below is fixed.
+    - names from the registry in the boot menu's device list: "Disk or partition - Debian (shim:
+      ...)" where the firmware's entry is called "debian" - at the NEXT start of the menu.
+      In the start that finished the plan the list still said "debian" (the table was read
+      before the finish wrote the file): the menu now reads both files again when the
+      workspace returns (COMPILED ONLY, build plan12).     vmw-deb2-serial-all.txt
+    No sound measurement in the two Debian-installer runs (the meter could not tell this
+    machine's process from another agent's); V-T3 has it.
+Defects these runs found
+    - LINUX offered Charon's own disc as a second "Linux" when the disc was left in the drive
+      (on the disc Charon is \EFI\BOOT\BOOTX64.EFI with no HAKBOOT.EFI to compare with). Fixed in
+      src/dos/launch_select.h (a volume with Charon's reader add-on is Charon's medium), host
+      test added, and seen fixed in V-DEB2.
+    - the device list's names (above).
+    - NOT MINE, seen in passing: the device list calls the CharonDOS entry "CharonDOS (Windows
+      Boot Manager)" although no Windows is on the machine (the boot-manager detector's name).
+Sets now offered without the test switch (CharonWsPlanDialogue.h Presets(), proven = true)
+    "CharonDOS and Debian, ready-made image"; "CharonDOS and Debian, its installer".
+    Still hidden: "Debian, its installer, and Ubuntu, ready-made image" (never run), the own
+    list (never run), everything with Windows.
+NOT RUN in this round either: Debian installer + Ubuntu image, the Fedora image, "skip" and
+"stop here" after a failure, a failure in the middle of an image download, a run in Polish,
+anything unattended, real hardware.
+
+An abandoned plan (decided and implemented; COMPILED ONLY)
+    A plan ends without its finish step when its file cannot be read and the user says
+    "discard" (CharonWsPlan.h Open -> DiscardEverywhere). Rule: (1) every volume that carries a
+    plan's files or marks loses them - the plan's EFI partition and the EFI partition of every
+    ready image, where the mark is what makes the image's start-up script keep Charon first and
+    report to a plan that no longer exists; answer files are overwritten with zeros first;
+    (2) the entries "Charon" and "Charon voice" are pointed at the plan's EFI partition when it
+    is there and holds Charon - an image's first start had registered the copy on the image's
+    own partition; when the plan's partition is not there they are left as they are (a working
+    entry is not replaced by a guess); (3) nothing else is touched: installed systems stay,
+    unused ranges stay as placeholders named "Charon plan N: ...". "Stop here" on a readable
+    plan is not this case: it runs the normal finish step, which already points the entries back.
+    Still open: a plan that is readable but whose user simply never comes back (the image's copy
+    of Charon keeps being the one the firmware starts; it finds the plan through the variable).
+
+Prepared for B2b (host tested, not included in the EFI program)
+    src/efi/CharonWsPlanWindows.h: FirstLogon (hibernation and fast start-up off; for two
+    Windows the text boot menu, its name and wait; Install-Charon.ps1 -Mode Manager -Default,
+    then -PlanResult done, or -PlanResult failed when Charon could not be put first; restart),
+    TimeZoneElement (13 zones). Golden files tests/golden/charon-r409-plan/ (4 files), checked by
+    tests/charon-r409-plan-host.py for identity, well-formed XML and the 1024-character limit.
+    Finding that shrinks B2b: the plan's disk section needs NO new XML - it is WindowsAnswers'
+    existing branch for diskmode=partition with plan::PositionNumber(); the universal clock and
+    BitLocker prevention are the existing answers clockutc=yes and nobitlocker=yes.
+    B2b depends on the other agent's fix of Install-Charon.ps1 -Mode Manager (error 1314).
+
+
+5b. PHASE B2b: Windows in a plan (2026-11-23)
+---------------------------------------------
+How it is built (CharonWsPlanDialogue.h InstallWindows, CharonWsWinPart.h ProvidePlan)
+  - Windows has its own range in the computed layout (64 GB at least for Windows 11); it is a
+    placeholder until its step. The installer's temporary media partition is INSIDE that range:
+    at the step the range becomes free space, and once the image's size is known Charon makes the
+    Windows partition at the start of the range and "Charon Windows media" (FAT32, image + Charon
+    + 700 MB) at its end. So the layout accounts for the space, nothing outside the range is
+    touched, and the space goes back to Windows: at the first sign-in Charon-MediaCleanup.ps1
+    removes the partition and extends C: (moving the recovery partition Setup made to the end of
+    the range). The script now looks only at partitions before the end of the removed partition,
+    so other systems' partitions behind Windows do not stop it, and it overwrites
+    Autounattend.xml (both copies) with zeros before the partition goes.
+    (Deviation from the coordinator's wording "reserved as a placeholder": the media partition is
+    not a range of its own; it is carved from the Windows range, because its size is known only
+    when the server has answered. The summary says so before the typed word.)
+  - Setup installs through the existing diskmode=partition branch into the partition by its
+    position number, Microsoft reserved partition COUNTED (measured: PartitionID 3 behind EFI
+    and MSR in T1, T2, T4), using the plan's EFI partition (with CharonDOS: CharonDOS's).
+  - Decision D4: the typed password waits in the step's own file \EFI\HAK\plan\stepN\answers.env on
+    the EFI partition (the plan file holds only the hash); plan::Resume overwrites and deletes it
+    when the step is done, the finish step at the latest. The answer file itself must lie where
+    Setup reads it, on the media partition: overwritten at the first sign-in (above), and after
+    the step Charon checks that the partition is gone and removes it itself if not
+    (CleanAfterWindows, COMPILED ONLY: Windows removed it in every run).
+  - The answer file is the single-system one plus, only when the answer "plan" is set: the time
+    zone (TimeZoneElement), and as the LAST first-logon commands hibernation and fast start-up off,
+    Install-Charon.ps1 -Mode Manager -Default (Charon first again), -PlanResult done -PlanStep N
+    (or failed, with the log's tail), restart. Clock in universal time (clockutc=yes forced) and
+    BitLocker prevention (existing answer). \charon\carry is NOT used in a plan (an older copy of
+    the plan's files must never be copied over the live ones).
+  - Every restart of Setup comes back to Charon (BootNext), which says the step and its start
+    number and passes on to \EFI\Microsoft\Boot\bootmgfw.efi (3 pass-throughs per installation).
+  - Pre-flight before anything is written: TPM 2.0 through the firmware's TCG2 protocol - when it
+    is missing Charon says so and asks whether Setup shall skip the hardware checks (no: the plan
+    is not made); the download addresses of ready images and of Windows are asked (HEAD) and a
+    dead address refuses the plan. Debian's netboot files are not asked.
+  - Finish: Charon is put back as \EFI\BOOT\BOOTX64.EFI (Setup overwrites it); registry, entries,
+    Continue target as for the other systems.
+  - Versions: the list of the single-system dialogue (Microsoft's own images only). Tiny11 and
+    other unofficial images are NOT in plans. Profiles: asked per Windows system (detailed and
+    express mode, default "unchanged"); ReviOS and AtlasOS, which need a step done by hand, are
+    refused aloud in a plan and replaced by "unchanged".
+  - Install-Charon.ps1 -PlanResult: a mounted volume that already holds the plan is used (the
+    limit "fails when the EFI partition has a drive letter"); parsed, and the unchanged path RAN
+    in every Windows run; the new branch itself NOT VERIFIED.
+
+VMware runs (UEFI, 4 CPUs, 6 GB, one sparse NVMe disk, no stick, HD audio on the host with the
+meter on the machine's process, guestOS windows11-64, NO virtual TPM: Charon asked and the answer
+"skip the hardware checks" was given - recorded here as asked). Charon from a CD image (trace
+build), Windows 11 Enterprise evaluation 26H2; the image came from a range server on the host
+(\EFI\HAK\windows-iso-url.txt -> the ISO already under work\win11ent-dl), except in T4. Express
+mode, NVDA + Narrator. All machines deleted. Evidence: work/r409plan-evidence/vmw-t*.
+
+T1  Windows 11 + Debian (installer), build plan13t                         RAN AND PASSED
+    - dialogue: TPM question (answered "no" once: "The plan was not made; nothing was changed";
+      then "yes"), address check, summary, YES.
+    - my first machine had the wrong guest type and Windows Setup hung at its logo: I switched
+      the machine off and on. That became a real failure-and-retry: Charon, started from the new
+      EFI partition, found the step launched and no loader - "The plan has stopped. Step 1,
+      Windows 11: ... the system's boot loader was not found" - "try again": Charon copied itself
+      into memory, "The installer's files of an earlier attempt are on this disk's temporary
+      partition; I am using them, nothing is downloaded", Setup started.   (T6: retry; and
+      Windows installed with Charon running FROM MEMORY off the only disk.)
+    - Setup unattended to the desktop with NVDA; three restarts through Charon ("This is start
+      number 2 / 3 / 4"); first-logon commands; the guest restarted itself; Charon found
+      step1.done and went on: "Plan, step 2 of 3: Debian is installing itself" (Charon into
+      memory again, Debian's installer from the network, no key pressed), restart, finish:
+      "The plan is finished. Systems installed: 2 of 2. Windows 11: 77 gigabytes ... Debian: 22
+      gigabytes ... Boot order: Charon's menu first; after 5 s it starts Windows 11."
+      5 guest-requested resets in vmware.log, no power-off after the retry.
+    - D1: after a reset Charon spoke and started Windows by itself; at the next reset Space
+      opened Charon's menu ("Continue ... Windows 11"), Boot devices listed "Debian" and
+      "Windows 11" by their registry names, Enter on Debian started Debian.
+    - clock: Windows' lock screen 10:13 when the host had 15:13 UTC (zone America/New_York);
+      Debian "10:18:06 EST / 15:18:06 UTC" when the host had 15:18:12 UTC; clock.txt rtc=utc.
+    - disk seen from Debian: EFI 1 G, reserved 16 M, NTFS 76.1 G, NTFS 893 M (recovery, moved to
+      the end of the Windows range), ext4 20.9 G, swap 1.2 G: the media partition is gone and
+      Windows has its space. \EFI\HAK\plan: log.txt, plan-done.txt, report.txt and an EMPTY folder
+      step1 (the password file was erased; the empty folder is now removed too, COMPILED ONLY).
+    - sound: 1118 seconds with signal (vmw-t1-sound-meter.txt).
+    Evidence: vmw-t1-serial-part1..3.txt, vmw-t1-vmware.log, vmw-t1-*.png (-09/-10 Setup,
+    -14 desktop with NVDA, -17 report, -19/-20 menu, -21/-22 Debian).
+T2  CharonDOS + Windows 11, build plan13t                                  RAN AND PASSED
+    - (the machine was switched off once during the CharonDOS step for the same guest-type
+      reason: "Step 1, CharonDOS: Charon's own work was cut off in the middle" - "try again").
+    - Windows installed into the range behind CharonDOS's partition (which is the EFI partition);
+      report: "CharonDOS: 1536 megabytes, installed ... Windows 11: 88 gigabytes ... Boot order:
+      Charon, which goes straight on to CharonDOS (this firmware does not load the reader ...)".
+    - after a reset: CharonDOS by itself; TIME "Current time is 10:24:25" (host 15:24 UTC);
+      WINNT: "Starting Windows 11 from disk 1. CharonDOS ends." - "Loading, please wait." - "The
+      system takes over. The Windows logo in the middle of the screen." (Charon's reader spoke
+      after the hand-over; sound measured through it) - Windows' lock screen at 10:24.
+    - sound: 798 seconds with signal. Evidence: vmw-t2-serial-*.txt, vmw-t2-06/-07 png.
+T4  CharonDOS + Windows 11 + Debian (installer), build plan14t             RAN AND PASSED
+    - first attempt: while another test disk was being created on the host (90 GB written at
+      once), writes to the virtual disk failed in the CharonDOS step ("Writing to the CharonDOS
+      drive failed", "The state of the plan could not be written to the EFI partition"): a
+      failure of the test host, kept as vmw-t4-serial-part1-write-failure.txt. After a reset:
+      "cut off in the middle" - "try again" - 38 of 38 programs.
+    - Windows' image was then downloaded FROM MICROSOFT'S SERVER (7.7 GB; the address file is not
+      among the files Charon carries to the new EFI partition), with Charon in memory.
+    - "The plan is finished. Systems installed: 3 of 3. CharonDOS ... Windows 11: 82 gigabytes
+      ... Debian: 26 gigabytes"; 5 guest-requested resets.
+    - CharonDOS: WINNT started Windows; LINUX: "Starting Debian from disk 1. CharonDOS ends.",
+      Charon's reader read GRUB's menu, Debian: "11:14:38 EST / 04:14:38 PM UTC" (host 16:14:44
+      UTC); disk: CharonDOS 1.5 G, reserved, NTFS 81.4 G, NTFS 893 M, ext4 24.8 G, swap.
+    - sound: 1287 seconds with signal. Evidence: vmw-t4-*.
+T6  failures in a plan with Windows
+    retry                                                                  RAN AND PASSED (T1)
+    a failure in the middle of the Windows download, then "skip", then "stop here"
+        machine r409vmw-t6: Charon ON THE ONLY DISK (no CD, no stick; build plan14t), set
+        Windows + Debian; the image server was stopped during the download: "I removed the
+        installer's temporary partition." "The plan has stopped. Step 1, Windows 11: ... Windows
+        Setup could not be prepared or started; the reason was said. ... Try again, skip this
+        system and continue, or stop here." - skip.                        RAN AND PASSED
+        DEFECT FOUND: the next step refused - "the disk does not have exactly one free range for
+        Debian's installer" (the broken attempt had left a Windows partition and a hole in
+        Windows' range). "stop here" then ran the finish step with the two leftover questions
+        and "Systems installed: 0 of 2".                                   RAN (vmw-t6-serial.txt)
+        FIX: before an installer that takes the free space, the range of every system that was
+        skipped or failed becomes one placeholder again (ReserveAgain).
+    the same again with the fix, IN POLISH (build plan15t, machine r409vmw-t6b) RAN AND PASSED
+        whole dialogue in Polish (TPM question "T tak, N nie", summary, word TAK), server
+        stopped during the download, "pomin ten system i kontynuuj": Debian's installer started
+        and installed, restart, the leftover question for Windows' range answered "zwolnij",
+        "Plan zakonczony. Zainstalowane systemy: 1 z 2", after a reset Debian started by itself
+        after 5 s. Seen from Debian: no partition in Windows' range, \EFI\HAK\plan holds only the
+        three closing files (no password file).
+        Two wrong lines in that report, FIXED AFTERWARDS (COMPILED ONLY): it called the freed
+        range "reserved and unused", and it warned that the password file could not be erased
+        although the closing erased it (the report was made before the erasing).
+        Seen and NOT fixed: a failure reason coming from a step runner is English inside a
+        Polish sentence; the Polish report on the text screen showed letters with diacritics
+        missing ("zakoczony") - the screen console, not the speech (not looked into).
+Not run: Windows versions other than the Enterprise evaluation (Microsoft's download page in a
+plan: the address is asked at the step; the code path of the single-system dialogue), detailed
+mode with a profile, a machine WITH a TPM, two Windows, a plan in Polish that installs Windows to
+the end, Secure Boot on, real hardware. Sound was measured as signal on the host; which program
+spoke in Windows Setup was not determined (as in the single-system trials).
+No "CHARON audio stalled, stream rests" line appeared in any of these runs.
+
+Other changes of this phase
+  - install::HearOut (CharonWsInstall.h): the wait for speech also ends when a key is waiting
+    (the key is not read, the next question gets it) and when the voice rests after a stall of
+    the sound card (new CharonVoiceRest.h: one flag, set and cleared by the voice provider's Rest
+    and "rest over"; two one-line additions in CharonVoiceProvider.h). Timing without a key and
+    without a stall unchanged. In builds plan14t and later; RAN in T4, T6, T6b as ordinary use;
+    the stall branch itself NOT VERIFIED (no stall occurred). The plan code waits for speech only
+    through HearOut and through the 3-second pause window, which reads keys.
+  - InstallDebian, WriteImage, InstallWindows: Charon goes into memory before the table of the
+    disk it runs from changes (RAN: T1, T4, T6b).
+  - tests: golden vector windows-plan-step (+6 checks: 316), the harness' key pool made a deque
+    (several "put" lines in one vector handed out dangling pointers); no existing golden file
+    changed (compared with a copy taken before).
+
+Final builds (COMPILED AND LINKED; they differ from what ran by: the three flags, the report
+order and the freed-range line of the finish step, the removal of the empty step folders)
+  work/charon-win-r409plan18/CHARON.EFI   work/charon-win-r409plan18-drv/CHARONVOICE.EFI
+  work/charondos-r409plan16/CHARONDOS.EFI (= the CharonDOS of the runs, rebuilt)
+  ran in VMware: plan13t (T1, T2; deleted), work/charon-win-r409plan14t (T4, T6),
+  work/charon-win-r409plan15t (T6b); the reader add-on on the media: work/charon-win-r409plan12-drv
+Host suites on the final tree: charon-install-answers-host.py 316 passed; charon-r409-plan-host.py
+5 of 5 parts without the CharonDOS parts (7 of 7 with them two edits earlier; src/dos unchanged
+since); charon-os 108 passed and charon-wpa-psk 10 passed (before the last edits, which do not
+touch them).
+
+What blocks or limits a release
+  1. Everything above ran in VMware only, with the evaluation image and without a TPM.
+  2. VMware's firmware does not load Driver#### options: "CharonDOS first" was therefore always
+     "Charon first, straight on to CharonDOS". The other branch (firmware that loads the reader)
+     is NOT VERIFIED in a plan.
+  3. The device list names CharonDOS's entry "CharonDOS (Windows Boot Manager: Windows 11)" when
+     Windows shares its EFI partition (the boot-manager detector; not this work).
+  4. The last fixes of the finish step are compiled only.
+
+6. What is left
+---------------
+ 1. Two Windows on one boot store (FirstLogon has the lines; never run; only through the own list).
+ 2. Ubuntu's installer in a plan; a disk whose content is kept; several disks; unattended plans.
+ 3. The set "Debian, its installer, and Ubuntu, ready-made image": never run, hidden.
+ 4. Debian's netboot addresses in the pre-flight.
+ 5. Failure reasons of the step runners in Polish.
+ 6. The resident reader's clock line (HAKBootEFI.cpp): compiled, not run.
+
+7. Risks
+--------
+- The guest-restart path was only exercised through power cycles (section 3).
+- An image's first start re-registers the entry "Charon" to the copy on the image's own EFI
+  partition; until the finish step points it back, Charon runs from that copy. It finds the plan
+  through the variable (seen working in T3). If the plan is abandoned in between, the entry
+  stays pointing at the image's partition.
+- WriteImage repeats RunImage's write sequence; RunImage is being edited by others.
+- Removing an image's CIDATA seed after its first start: Debian started again afterwards (T3);
+  Ubuntu and Fedora NOT VERIFIED.
+- The Windows answer file with the password will lie on the EFI partition from step 0 until its
+  step is done (decision D4) once B2b exists; nothing of that kind exists in a B2a plan (Linux
+  gets only the password hash; no step files were written in either run).
+- Disks without identify data (USB, SCSI, virtio) can never be authorised for an unattended plan.
+
+=====================================================================================================
+r410 (2026-11-26) - the triple preset "Windows, Debian, instalator, i Charon Hypervisor"
+=====================================================================================================
+The Presets() struct now carries TWO independent flags (CharonWsPlanDialogue.h): `offered` (shown in
+the normal release list - a shipping decision) and `proven` (the FULL end-to-end install was run in a
+VM and passed). They are kept apart so a set can be shown without asserting a VM-verified install.
+
+This preset: offered = TRUE (user's decision 2026-11-26 - ship it visible; the user will verify the
+end-to-end install on their own hardware), proven = FALSE.
+
+Proof scope, stated honestly:
+  PROVEN IN A VM (agent 1, work/r410a-evidence/bw/triple-boot-01..62.png; see charon-r410-install-
+  results.txt SESSION 10):
+    - the WHOLE triple-preset plan Q&A drives correctly end to end: kilka systemow -> express ->
+      polski -> user/password -> Windows 11 Enterprise evaluation -> NVDA+Narrator -> profil bez
+      zmian -> TPM hardware-check skip (no vTPM in the harness) -> GNOME + Orca + Speakup ->
+      graphical speaking login -> default boot Windows 11 -> disk selection -> typed confirmation;
+    - the windows-iso-url.txt override is honoured ("Uzywam adresu obrazu z pliku windows iso url");
+    - the "everything-first" download failure happens BEFORE any partition is touched: the up-front
+      size-check aborted and the disk was left UNCHANGED (the user's core guarantee).
+  PROVEN STANDALONE (agent 2): the Charon Hypervisor target boots and speaks (shipping apkovl ovl22,
+    md5 6666d934510a1612503af8c51d16c790).
+  NOT YET VERIFIED: the end-to-end triple install (Windows + Debian installer + Charon Hypervisor all
+    installed side by side in one run, then the Charon Hypervisor booting IN that triple-boot layout).
+    To be verified by the user on real hardware. It was NOT completed in the test harness, blocked
+    purely by host networking - the harness host is Wi-Fi only; Charon's EFI e1000 gets no DHCP lease
+    on VMware NAT (a regression) and bridged-over-Wi-Fi cannot carry the guest's internet, and the
+    Charon Hypervisor must fetch Alpine+QEMU from Alpine's official HTTPS servers (no mirror override,
+    by design - user point 2b). Not a Charon defect.

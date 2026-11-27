@@ -1,0 +1,7 @@
+# Ready image (debian), express mode, Enter at every question.
+lang=en
+flow=image
+mode=quick
+arg entry=0
+keys=ENTER ENTER "test" ENTER "test" ENTER
+keys=ENTER ENTER

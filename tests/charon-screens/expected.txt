@@ -1,0 +1,152 @@
+# r410 screen model: expected reading of every recorded screen. '?' in front: known wrong or unsure reading.
+canopy/00-start.grid: opencore unknown title=29
+canopy/01-right.grid: opencore unknown title=29
+canopy/02-left.grid: opencore unknown title=29
+canopy/03-spc.grid: opencore unknown title=29
+clover/00-start.grid: clover unknown title?=37 help=55
+clover/01-right.grid: clover unknown title?=37 help=55
+clover/02-left.grid: clover unknown title?=37 help=55
+clover/03-f1.grid: clover unknown title?=21
+clover/04-esc.grid: clover unknown title?=37 help=55
+clover/05-o.grid: clover unknown title?=21
+clover/06-down.grid: clover unknown title?=21
+clover/07-down.grid: clover menu title?=21 list=1/12 sel="GUI tuning->"
+clover/08-esc.grid: clover unknown title?=37 help=55
+clover/09-spc.grid: clover menu title?=21 list=1/4 sel="Run bootmgfw.efi"
+clover/10-down.grid: clover menu title?=21 list=2/4 sel="Boot Windows from Hard Disk"
+clover/11-esc.grid: clover unknown title?=37 help=55
+clovertext/00-start.grid: clover menu title?=1 list=1/6 sel="Boot Microsoft EFI Boot from GRUBTEST" windows=1
+clovertext/01-right.grid: clover menu title?=1 list=2/6 sel="Clover Boot Options" windows=1
+clovertext/02-left.grid: clover menu title?=1 list=1/6 sel="Boot Microsoft EFI Boot from GRUBTEST" windows=1
+clovertext/03-down.grid: clover menu title?=1 list=2/6 sel="Clover Boot Options" windows=1
+clovertext/04-up.grid: clover menu title?=1 list=1/6 sel="Boot Microsoft EFI Boot from GRUBTEST" windows=1
+clovertext/05-o.grid: clover menu title?=1 list=1/13 sel="Boot Args:" windows=1
+clovertext/06-down.grid: clover menu title?=1 list=2/13 sel="Configs->" windows=1
+clovertext/07-esc.grid: clover menu title?=1 list=1/6 sel="Boot Microsoft EFI Boot from GRUBTEST" windows=1
+grub/00-start.grid: grub menu title=1 list=1/6 default=1 sel="Charon test entry one" countdown=5 help=25,26,27 windows=1
+grub/01-down.grid: grub menu title=1 list=2/6 sel="Charon test entry two" help=25,26,27 windows=1
+grub/02-down.grid: grub menu title=1 list=3/6 sel="UEFI firmware settings" help=25,26,27 windows=1
+grub/03-up.grid: grub menu title=1 list=2/6 sel="Charon test entry two" help=25,26,27 windows=1
+grub/04-end.grid: grub menu title=1 list=6/6 sel="Graphical GRUB menu" help=25,26,27 windows=1
+grub/05-home.grid: grub menu title=1 list=1/6 sel="Charon test entry one" help=25,26,27 windows=1
+grub/06-e.grid: grub editor title=1 help=25,26,27 edit*=4,2 text="..." windows=1
+grub/07-down.grid: grub editor title=1 help=25,26,27 edit*=4,2 text="..." windows=1
+grub/08-end.grid: grub editor title=1 help=25,26,27 edit*=4,2 text="..." windows=1
+grub/09-x.grid: grub editor title=1 help=25,26,27 edit*=5,3 text="..." windows=1
+grub/10-backspace.grid: grub editor title=1 help=25,26,27 edit*=5,2 text="..." windows=1
+grub/11-esc.grid: grub menu title=1 list=1/6 sel="Charon test entry one" help=25,26,27 windows=1
+grub/12-c.grid: grub commandline title=1 edit=8,6 text=""
+grub/13-h_e_l_p_ret.grid: grub commandline title?=0 edit=30,6 text=""
+grub/14-l_s_spc_tab.grid: grub commandline title?=0 edit=30,9 text="ls"
+grub/15-l_s_ret.grid: grub commandline title?=0 edit=30,6 text="" message=error
+grub/16-esc.grid: grub menu title=1 list=1/6 sel="Charon test entry one" help=25,26,27 windows=1
+grubgfx/00-start.grid: grub menu title=1 list=1/6 default=1 sel="Charon test entry one" countdown=4 help=30,31,32
+grubgfx/01-down.grid: grub menu title=1 list=2/6 sel="Charon test entry two" help=30,31,32
+grubgfx/02-down.grid: grub menu title=1 list=3/6 sel="UEFI firmware settings" help=30,31,32
+grubgfx/03-up.grid: grub menu title=1 list=2/6 sel="Charon test entry two" help=30,31,32
+grubgfx/04-e.grid: grub editor title=1 help=30,31,32
+grubgfx/05-esc.grid: grub menu title=1 list=2/6 sel="Charon test entry two" help=30,31,32
+grubgfx/06-c.grid: grub unknown title=1
+grubgfx/07-esc.grid: grub menu title=1 list=2/6 sel="Charon test entry two" help=30,31,32
+grubsub/00-start.grid: grub menu title=1 list=1/6 default=1 sel="Charon test entry one" countdown=5 help=25,26,27 windows=1
+grubsub/01-c.grid: grub commandline title=1 edit=8,6 text=""
+grubsub/02-c_o_n_f_i_g_f_i_l_e_spc_.grid: grub menu title=1 list=2/4 depth=1 sel="Advanced options for Debian GNU/Linux" countdown=15 help=25,26,27 windows=1
+grubsub/03-down.grid: grub menu title=1 list=3/4 depth=1 sel="Windows Boot Manager (on /dev/sda1)" help=25,26,27 windows=1
+grubsub/04-down.grid: grub menu title=1 list=4/4 depth=1 sel="UEFI Firmware Settings" help=25,26,27 windows=1
+grubsub/05-ret.grid: grub menu title=1 list=4/4 depth=1 sel="UEFI Firmware Settings" help=25,26,27 windows=1
+grubsub/06-down.grid: grub menu title=1 list=4/4 depth=1 sel="UEFI Firmware Settings" help=25,26,27 windows=1
+grubsub/07-esc.grid: grub menu title=1 list=4/4 depth=1 sel="UEFI Firmware Settings" help=25,26,27 windows=1
+grubtheme/00-start.grid: grub menu title?=3 list=1/6 default=1 sel="Charon test entry one" countdown=4 help=36
+grubtheme/01-down.grid: grub menu title?=3 list=2/6 sel="Charon test entry two" help=36
+grubtheme/02-down.grid: grub menu title?=3 list=3/6 sel="UEFI firmware settings" help=36
+grubtheme/03-up.grid: grub menu title?=3 list=2/6 sel="Charon test entry two" help=36
+grubtheme/04-e.grid: grub unknown title=2
+grubtheme/05-esc.grid: grub menu title?=3 list=2/6 sel="Charon test entry two" help=36
+ipxe/00-start.grid: ipxe error title?=0 message=error
+ipxe/01-down.grid: ipxe error title?=0 message=error
+ipxe/02-up.grid: ipxe error title?=0 message=error
+ipxecmd/00-start.grid: ipxe commandline title?=0 edit=9,6 text="" message=error
+ipxecmd/01-h_e_l_p_ret.grid: ipxe commandline title?=0 edit=30,6 text="" message=error
+ipxecmd/02-c_o_n_f_i_g_ret.grid: ipxe options title=1 list=1/16 more-below sub1 sub2 sub3 sub4 sub5 sub6 sub7 sub8 sel="builtin/"
+ipxecmd/03-down.grid: ipxe options title=1 list=2/16 more-below sub1 sub2 sub3 sub4 sub5 sub6 sub7 sub8 sel="cpuid/"
+ipxecmd/04-esc.grid: ipxe options title=1 list=2/16 more-below sub1 sub2 sub3 sub4 sub5 sub6 sub7 sub8 sel="cpuid/"
+limine/00-start.grid: limine menu title=1 list=1/2 default=1 sel="Charon probe loader" countdown=23 message?=question
+limine/01-down.grid: limine menu title=1 list=2/2 sel="Windows Boot Manager" countdown=23 message?=question
+limine/02-up.grid: limine menu title=1 list=1/2 sel="Charon probe loader" countdown=23 message?=question
+limine/03-e.grid: limine editor title=1
+limine/04-esc.grid: limine menu title=1 list=1/2 sel="Charon probe loader"
+opencore/00-start.grid: opencore menu title=1 list=1/3 default=1 sel="1. CHARON"
+opencore/01-down.grid: opencore menu title=1 list=2/3 sel="2. GRUBTEST"
+opencore/02-down.grid: opencore menu title=1 list=3/3 sel="3. Windows"
+opencore/03-up.grid: opencore menu title=1 list=2/3 sel="2. GRUBTEST"
+opencore/04-spc.grid: opencore menu title=1 list=2/3 sel="2. GRUBTEST"
+opencore/05-tab.grid: opencore unknown title=1
+opencore/06-tab.grid: opencore unknown title=1
+refind/00-start.grid: refind unknown title?=35 countdown=19 help=47
+refind/01-right.grid: refind unknown title?=35 help=47
+refind/02-left.grid: refind unknown title?=35 help=47
+refind/03-f2.grid: refind unknown title?=20 help=47
+refind/04-down.grid: refind unknown title?=22 help=47
+refind/05-up.grid: refind unknown title?=22 help=47
+refind/06-esc.grid: refind unknown title?=35 help=47
+refind/07-a.grid: refind unknown title?=13 help=47
+refind/08-esc.grid: refind unknown title?=35 help=47
+refindtext/00-start.grid: refind menu title=1 list=1/9 default=1 sel="Boot EFI\probe\GPROBE.EFI from GRUBTEST" countdown=19 help=29,30
+refindtext/01-down.grid: refind menu title=1 list=2/9 sel="Boot EFI\probe\PROBE.EFI from GRUBTEST" help=29,30
+refindtext/02-up.grid: refind menu title=1 list=1/9 sel="Boot EFI\probe\GPROBE.EFI from GRUBTEST" help=29,30
+refindtext/03-f2.grid: refind unknown title?=1 help=29,30
+refindtext/04-esc.grid: refind menu title=1 list=1/9 sel="Boot EFI\probe\GPROBE.EFI from GRUBTEST" help=29,30
+sdboot/00-start.grid: systemd-boot menu list=1/3 default=1 sel="Charon probe loader" countdown=23
+sdboot/01-down.grid: systemd-boot menu list=2/3 sel="Windows Setup"
+sdboot/02-up.grid: systemd-boot menu list=1/3 sel="Charon probe loader"
+sdboot/03-h.grid: systemd-boot menu list=1/3 sel="Charon probe loader"
+sdboot/04-p.grid: systemd-boot unknown title?=0 help=13
+sdboot/05-esc.grid: systemd-boot menu list=1/3 sel="Charon probe loader"
+sdboot/06-e.grid: systemd-boot menu list=1/3 sel="Charon probe loader"
+sdboot/07-end.grid: systemd-boot menu list=3/3 sel="Reboot Into Firmware Interface"
+sdboot/08-x.grid: systemd-boot menu list=3/3 sel="Reboot Into Firmware Interface"
+sdboot/09-backspace.grid: systemd-boot menu list=3/3 sel="Reboot Into Firmware Interface"
+sdboot/10-esc.grid: systemd-boot menu list=3/3 sel="Reboot Into Firmware Interface" help=18
+sdboot/11-d.grid: systemd-boot menu list=3/3 sel="Reboot Into Firmware Interface"
+sdboot/12-t.grid: systemd-boot menu list=3/3 sel="Reboot Into Firmware Interface" countdown?=31
+shell/00-start.grid: shell commandline title?=0 countdown=1 edit=11,7 text=""
+shell/01-h_e_l_p_spc_minus_b_ret.grid: shell pager title?=0 message=question
+shell/02-spc.grid: shell pager title?=0 message=question
+shell/03-q.grid: shell commandline title?=0 edit=30,7 text=""
+shell/04-m_a_p_ret.grid: shell commandline title?=0 edit=30,7 text=""
+shell/05-h_e_l_p_spc_e_d_i_t_ret.grid: shell commandline title?=0 edit=30,7 text=""
+shell/06-e_d_i_t_spc_a_dot_t_x_t_.grid: shell commandline title?=0 edit=1,7 text="" message=error
+shell/07-a_b.grid: shell commandline title?=0 edit=1,9 text="ab" message=error
+shell/08-f3.grid: shell commandline title?=0 edit=1,9 text="ab" message=error
+shell/09-c_l_s_ret.grid: shell commandline title?=0 edit=3,7 text="" message=error
+syslinux/00-start.grid: syslinux menu title=1 list=1/3 default=1 sel="Debian test one" countdown=56 help=17 windows=1
+syslinux/01-down.grid: syslinux menu title=1 list=2/3 sel="Debian test two" countdown=55 help=17 windows=1
+syslinux/02-down.grid: syslinux menu title=1 list=3/3 sel="Rescue shell" countdown=55 help=17 windows=1
+syslinux/03-up.grid: syslinux menu title=1 list=2/3 sel="Debian test two" countdown=55 help=17 windows=1
+syslinux/04-tab.grid: syslinux commandline title=1 countdown=55 help=17 edit=17,10 text="vmlinuz2" windows=1
+syslinux/05-a.grid: syslinux commandline title=1 countdown=55 help=17 edit=17,11 text="vmlinuz2a" windows=1
+syslinux/06-backspace.grid: syslinux commandline title=1 countdown=55 help=17 edit=17,10 text="vmlinuz2" windows=1
+syslinux/07-esc.grid: syslinux menu title=1 list=2/3 sel="Debian test two" countdown=55 help=17 windows=1
+syslinux/08-f1.grid: syslinux menu title=1 list=2/3 sel="Debian test two" countdown=55 help=17 windows=1
+syslinux/09-esc.grid: syslinux commandline title=1 countdown=55 help=17 edit=29,6 text="" windows=1
+winedit/00-start.grid: windows menu title=3 list=1/2 default=1 sel="Windows Setup" countdown=11 help=6,8,25,48
+winedit/01-f10.grid: windows error title=3 help=48 message=error
+winedit/02-spc_a.grid: windows error title=3 help=48 message=error
+winedit/03-backspace.grid: windows error title=3 help=48 message=error
+winedit/04-esc.grid: windows error title=3 help=48 message=error
+winedit/05-f8.grid: windows error title=3 help=48 message=error
+winedit/06-down.grid: windows error title=3 help=48 message=error
+winedit/07-esc.grid: windows error title=3 help=48 message=error
+winerr/00-start.grid: windows error title?=5 help=37,39,41 message=error
+winerr/01-down.grid: windows error title?=5 help=37,39,41 message=error
+winerr/02-up.grid: windows error title?=5 help=37,39,41 message=error
+winmenu/00-start.grid: windows menu title=3 list=1/2 default=1 sel="Windows Setup" countdown=11 help=6,8,25,48
+winmenu/01-down.grid: windows menu title=3 list=2/2 sel="Windows Memory Diagnostic" help=6,8,48
+winmenu/02-up.grid: windows menu title=3 list=1/2 sel="Windows Setup" help=6,8,25,48
+winmenu/03-tab.grid: windows menu title=3 list=1/1 tool1 sel="Windows Memory Diagnostic" help=6,8,48
+winmenu/04-ret.grid: memdiag progress title?=3 help=48 progress=19
+winmenu/05-f1.grid: memdiag menu title=3 list=2/3 sel="Standard" help=34,48
+winmenu/06-tab.grid: memdiag menu title=3 list=1/3 sel="Default" help=34,48
+winmenu/07-down.grid: memdiag menu title=3 list=2/3 sel="On" help=48
+winmenu/08-tab.grid: memdiag unknown title=3 help=48
+winmenu/09-esc.grid: memdiag progress title?=3 help=48 progress=65

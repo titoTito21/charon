@@ -1,0 +1,9 @@
+# r409: Windows, Charon speaks Polish, the profile "Win11Debloat, AI features off" (-Profile NoAI -Language pl).
+lang=pl
+flow=windows
+mode=quick
+keys=HOME ENTER ENTER "test" ENTER "test" ENTER
+keys=ENTER DOWN DOWN DOWN DOWN ENTER
+put diskmode=whole
+arg partition=3
+arg esp=0

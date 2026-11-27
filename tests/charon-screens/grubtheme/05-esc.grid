@@ -1,0 +1,10 @@
+CHARON grid 37 119 0 0 1 GRUB
+G03 41*00,14*90|41*0000,14*440c|                                         GRUB Boot Menu
+G0a 20*00,21*f0|20*0000,21*040f|                    Charon test entry one
+G0c 20*00,21*90|20*0000,21*4410|                    Charon test entry two
+G0d 20*00,22*f0|20*0000,22*040f|                    UEFI firmware settings
+G0f 20*00,12*f0|20*0000,12*040c|                    Probe loader
+G11 20*00,15*f0|20*0000,15*040f|                    Graphical probe
+G12 20*00,19*f0|20*0000,19*040f|                    Graphical GRUB menu
+G24 17*00,102*ff|17*0000,102*040c|                 Press enter to boot the selected OS, `e' to edit the commands before booting or `c' for a command-line
+CHARON grid end

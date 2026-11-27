@@ -27,9 +27,59 @@ rhvoice.tts + rhvoice/{rhvoice-pl,rhvoice-en}.chsp
   Voice data is shipped byte-identical to upstream (16 kHz model only), only
   losslessly compressed: LZMA, with a reversible float32 byte-plane
   reordering of the HTS pdf blocks in voice.data; every file is checked
-  against its CRC-32 after decompression. Neither voice has a
-  no-derivatives or non-commercial condition (Alan was not used because its
-  repository carries no licence statement).
+  against its CRC-32 after decompression. The two base voices have no
+  no-derivatives or non-commercial condition.
+
+rhvoice/rhvoice-<voice>.chsp: the other Polish and English voices (r409)
+  Optional data: rhvoice.tts offers a voice when its pack is present, and
+  any of these files may be deleted. Each pack holds one voice's files of
+  the 16 kHz model, byte-identical to its repository at the commit that
+  RHVoice 1.18.5 pins, compressed as above (no change to the model: the
+  packing is a technical format change, not an adaptation). Full list with
+  commits, versions and download addresses: RHVOICE-VOICES.txt.
+
+  NON-COMMERCIAL VOICES - Cezary (Polish), Evgeniy-Eng and Lyubov (English):
+  Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+  (licences/cc-by-nc-nd-4.0.txt, also licences/cezary-LICENSE.txt). They may be copied and shared unchanged,
+  with credit, for non-commercial purposes only; they may not be used
+  commercially or modified. Charon is distributed free of charge. Anyone who
+  wants to sell or commercially use a copy of Charon must first delete
+  rhvoice-cezary.chsp, rhvoice-evgeniy-eng.chsp and rhvoice-lyubov.chsp (or
+  obtain permission: rhvoice@tiflo.org for Evgeniy-Eng and Lyubov, see their
+  READMEs).
+    Cezary: Jan Staszczyk (speaker), Paulina Gajoch (initiative), Tomasz
+    Bilecki (audio editing), Zvonimir Stanecic (training, packaging).
+    licences/cezary-README.md
+    Evgeniy-Eng: Evgeny Chebatkov (speaker); RHVoice Lab: Artem Plaksin,
+    Sergey Parshakov, Denis Shishkin, Beka Gozalishvili.
+    licences/evgeniy-eng-README.md
+    Lyubov: Lyubov Sablina (speaker); RHVoice Lab: Artem Plaksin, Sergey
+    Parshakov, Beka Gozalishvili, Zvonimir Stanecic. licences/lyubov-README.md
+
+  Alicja, Magda (Polish): Creative Commons Attribution 4.0 International
+  (licences/cc-by-4.0.txt).
+    Alicja: Magdalena Marciniszyn (speaker), Arkadiusz Swietnicki
+    (initiative), Tomasz Bilecki (audio editing), Zvonimir Stanecic
+    (training, packaging). licences/alicja-README.md
+    Magda: Magda Roczen (speaker), Roman Roczen (audio editing), Grzegorz
+    Zlotowicz (training, packaging). licences/magda-README.md
+  Michal (Polish): CC0-1.0 / public domain (licences/michal-LICENSE.txt).
+    Michal Dziwisz (speaker), Tomasz Bilecki, Zvonimir Stanecic.
+    licences/michal-README.md
+  Dasha-Eng (English): Creative Commons Attribution-ShareAlike 4.0
+  International (licences/dasha-eng-LICENSE.txt). Copyright (C) 2026 Nikita
+  Tseykovets, Zvonimir Stanecic; Anton Chazov (audio editing).
+  licences/dasha-eng-README.md
+  Ksp (Indian English): CMU ARCTIC licence (licences/ksp-LICENSE.txt),
+  Carnegie Mellon University; RHVoice voice by Dorota Krac and Zvonimir
+  Stanecic. licences/ksp-README.md
+  Alan (Scottish English), Bdl, Clb (American English): their repositories
+  (github.com/RHVoice/alan-eng, bdl-eng, clb-eng) carry no licence file.
+  RHVoice's licence document (licences/rhvoice-License.md) lists
+  restrictions for some voices and none for these three, and RHVoice has
+  distributed them with the engine from its first releases; Debian files
+  them under RHVoice's GPL-2.0-or-later data. They are shipped here on that
+  basis, unchanged.
 
 Runtime parts in both modules
   musl 1.2.5 (MIT, licences/musl-COPYRIGHT.txt), LZMA SDK 26.06 LzmaDec

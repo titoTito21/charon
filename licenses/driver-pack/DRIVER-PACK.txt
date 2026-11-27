@@ -1,0 +1,495 @@
+CHARON DRIVER PACK (r407)
+=========================
+Written 2026-11-22. Pack: work/charon-drivers-r407 (the r400 pack is untouched).
+Regenerate: tools/make-charon-driverpack.py (fetch, ipxe, edk2, assemble, verify).
+A second pack with more network drivers (newer Intel, server cards, Wi-Fi, experimental
+Realtek) is made by tools/make-charon-netpack.py and described in NETWORK-DRIVERS.txt;
+where that file says more about network cards than section 3 here, that file counts.
+Sound: only section 5 here; codecs, amplifiers and laptops are in AUDIO-CODECS.txt.
+
+READ THIS FIRST
+  * NOTHING in this pack has been run on a physical computer.
+  * The classes added in this step - input-, disk-, usb-, virt-, fs- and the folder
+    manual - have NOT BEEN RUN AT ALL, not even in a virtual machine. They were built or
+    downloaded, and every image was checked to be a PE32+ x86-64 UEFI driver image
+    (machine 0x8664, subsystem 11 or 12) whose SHA-256 equals MANIFEST.json. That is all.
+  * The network images: an earlier build of the same iPXE 2.0.0 source was run in QEMU
+    (see 1.1). The images in this pack were rebuilt afterwards, no hash of the earlier
+    ones was kept and iPXE puts the build time into its images, so it cannot be shown
+    that these are the images that ran. Their status is also "PE header only".
+    The serial logs of that run were overwritten by a failed run and deleted
+    (work/r407-driverpack-evidence/NOTE.txt).
+  * The loading rules of section 2 for the new classes are in src/efi/CharonDriverPack.h.
+    That header compiles with the flags of the build (-Wall -Wextra -Werror) but is NOT
+    YET INCLUDED by the program: until the call sites of section 7 are added, Charon
+    loads only nic-*, wifi-* and net-* (CharonWsNet.h), exactly as before.
+
+"Check" column: PE = image format and hash only. QEMU-old = PE, and an earlier build of
+the same source was run in QEMU before the final rebuild (not these bytes).
+
+
+1. WHAT IS IN THE PACK   (104 driver images, 7.4 MB; with sources and licences 30 MB)
+
+1.1 Network adapters (nic-*.efi, 15 files) and the IPv4 stack (net-*.efi, 11 files)
+
+File                          Hardware                                      Source                          Licence        Check
+----------------------------  --------------------------------------------  ------------------------------  -------------  --------
+nic-10-intel.efi              Intel 1G/2.5G: 8254x (e1000), 82571-82583,    iPXE 2.0.0 "intel", built from  GPL-2.0-or-    QEMU-old
+                              I217/I218/I219 up to 8086:57a1 (e1000e),      source in a throw-away Alpine   later          (1)
+                              82575-I350, I210, I211, I225, I226            machine
+nic-11-realtek.efi            Realtek RTL8139, 8169, 8168/8111, 8136.       iPXE "realtek"                  GPL-2.0+       QEMU-old
+                              NOT RTL8125/8126/8127, Killer E2600/E3000                                                    (2)
+nic-12-broadcom.efi           Broadcom NetXtreme (tg3), II (bnx2),          iPXE tg3, bnx2, bnxt, b44       GPL-2.0+       PE
+                              NetXtreme-C/E (bnxt), BCM44xx (b44)
+nic-13-aquantia.efi           Marvell/Aquantia AQC107/108/111/112/113       iPXE "aqc1xx"                   GPL-2.0+       PE
+nic-14-marvell-atheros.efi    Marvell Yukon (sky2, skge), Atheros L1E,      iPXE sky2, skge, atl1e, jme     GPL-2.0+       PE
+                              JMicron JMC250/260
+nic-15-intel-10g.efi          Intel 82598/82599/X540/X550, X710/XL710,      iPXE intelx, intelxl, ice,      GPL-2.0+       PE
+                              E810, virtual functions                       igbvf, intelxvf, intelxlvf
+nic-20-virtual.efi            virtio-net, VMware vmxnet3, Amazon ENA,       iPXE virtio-net, vmxnet3, ena,  GPL-2.0+       QEMU-old
+                              Google gVNIC                                  gve                                            (3)
+nic-30-usb.efi                USB adapters with a maker's protocol, through iPXE usbio + smsc75xx,          GPL-2.0+       PE (4)
+                              the firmware USB stack: Microchip/SMSC        smsc95xx, lan78xx, dm96xx,
+                              LAN75xx/95xx/78xx, Davicom DM96xx, iPhone     iphone; two changes (6.1)
+                              tethering
+nic-40-older.efi              nVidia nForce, VIA Rhine/Velocity, SiS        iPXE, 21 drivers                GPL-2.0+       QEMU-old
+                              190/900, AMD PCnet, Intel 8255x, 3Com 3c90x,                                                 (5)
+                              DEC Tulip, NatSemi and others
+nic-usb-31-asix-ax88772.efi   ASIX AX88772/A/B/C USB 2.0 (0b95:7720, 772a,  edk2-platforms Drivers/ASIX,    BSD-2-Clause-  PE
+                              772b, 7e2b, 17ef:7203)                        commit 4db2845d, built (MSVC)   Patent
+nic-usb-32-asix-ax88179.efi   ASIX AX88179/AX88178A USB 3.0 gigabit         same                            BSD-2-C-P      PE
+                              (0b95:1790, 178a)
+nic-usb-33-class-common.efi   common part of the three class drivers below  edk2 MdeModulePkg UsbNetwork/   BSD-2-C-P      PE
+                                                                            NetworkCommon, built (MSVC)
+nic-usb-34-class-rndis.efi    USB RNDIS (Android tethering; interface       edk2 UsbNetwork/UsbRndis        BSD-2-C-P      PE
+                              classes 02/02/ff and ef/04/01, not e0/01/03)
+nic-usb-35-class-cdc-ecm.efi  USB CDC-ECM adapters (02/06/00)               edk2 UsbNetwork/UsbCdcEcm       BSD-2-C-P      PE
+nic-usb-36-class-cdc-ncm.efi  USB CDC-NCM adapters (02/0d/00)               edk2 UsbNetwork/UsbCdcNcm       BSD-2-C-P      PE
+net-10..20-*.efi (11 files)   IPv4 stack: Dpc, Snp, Mnp, Arp, Ip4, Udp4,    edk2 NetworkPkg; binaries taken BSD-2-C-P      PE (as
+                              Dhcp4, Tcp, Dns, HttpUtilities, Http          from QEMU's edk2-x86_64-code.fd                r400)
+
+  (1) earlier build in QEMU: e1000 (82540EM), 82545EM, e1000e (82574L) got a DHCP lease;
+      igb (82576) bound and read the MAC but the link stayed down - not passed.
+  (2) earlier build: rtl8139 got a lease. (3) earlier build: vmxnet3 got a lease; with
+      virtio-net OVMF's own driver kept the card. (5) earlier build: pcnet, i82559er,
+      tulip got a lease each.
+  (4) the image changed after the earlier run: iPXE's ecm, ncm, acm and axge were taken
+      out in favour of the edk2 drivers nic-usb-*, which follow the UEFI driver model.
+      The earlier USB run had not produced a recorded result.
+  The six edk2 USB drivers were renamed from nic-31..36-usb-* to nic-usb-31..36-* in
+  this step (same bytes): the prefix nic-usb- is the class of rule 2.7.
+
+1.2 Input (input-*.efi, 2 files)
+
+File                          Hardware                                      Source                          Licence        Check
+----------------------------  --------------------------------------------  ------------------------------  -------------  -----
+input-10-usb-keyboard.efi     USB keyboards, HID boot protocol (interface   edk2 MdeModulePkg/Bus/Usb/      BSD-2-C-P      PE
+                              03/01/01), on the firmware's USB stack        UsbKbDxe, built (MSVC)
+input-20-usb-mouse.efi        USB mice, HID boot protocol (03/01/02),       edk2 .../Bus/Usb/UsbMouseDxe    BSD-2-C-P      PE
+                              Simple Pointer
+
+1.3 Storage (disk-*.efi, 11 files)
+
+File                          Hardware                                      Source (edk2 MdeModulePkg)      Licence        Check
+----------------------------  --------------------------------------------  ------------------------------  -------------  -----
+disk-10-nvme.efi              NVMe disks (PCI class 01/08/02)               Bus/Pci/NvmExpressDxe           BSD-2-C-P      PE
+disk-20-sata-controller.efi   SATA AHCI (01/06) and IDE (01/01)             Bus/Pci/SataControllerDxe       BSD-2-C-P      PE
+                              controllers. Not RAID mode (01/04)
+disk-21-ata-atapi-passthru    ATA/ATAPI commands for disk-20                Bus/Ata/AtaAtapiPassThru        BSD-2-C-P      PE
+disk-22-ata-bus.efi           ATA disks                                     Bus/Ata/AtaBusDxe               BSD-2-C-P      PE
+disk-30-scsi-bus.efi          SCSI bus: CD/DVD (ATAPI), UFS, SCSI cards     Bus/Scsi/ScsiBusDxe             BSD-2-C-P      PE
+disk-31-scsi-disk.efi         SCSI disks and optical drives                 Bus/Scsi/ScsiDiskDxe            BSD-2-C-P      PE
+disk-40-sdmmc-controller.efi  SD/eMMC host controllers, SDHCI (08/05)       Bus/Pci/SdMmcPciHcDxe           BSD-2-C-P      PE
+disk-41-sd-card.efi           SD cards                                      Bus/Sd/SdDxe                    BSD-2-C-P      PE
+disk-42-emmc.efi              eMMC storage (cheap laptops, tablets)         Bus/Sd/EmmcDxe                  BSD-2-C-P      PE
+disk-50-ufs-controller.efi    UFS host controllers (01/09)                  Bus/Pci/UfsPciHcDxe             BSD-2-C-P      PE
+disk-51-ufs-passthru.efi      UFS storage                                   Bus/Ufs/UfsPassThruDxe          BSD-2-C-P      PE
+
+1.4 USB (usb-*.efi, 5 files)
+
+File                          Hardware                                      Source (edk2 MdeModulePkg)      Licence        Check
+----------------------------  --------------------------------------------  ------------------------------  -------------  -----
+usb-10-xhci.efi               USB 3 host controllers, xHCI (0c/03/30)       Bus/Pci/XhciDxe                 BSD-2-C-P      PE
+usb-11-ehci.efi               USB 2 host controllers, EHCI (0c/03/20)       Bus/Pci/EhciDxe                 BSD-2-C-P      PE
+usb-12-uhci.efi               USB 1.1 host controllers, UHCI (0c/03/00)     Bus/Pci/UhciDxe                 BSD-2-C-P      PE
+usb-20-bus.efi                USB bus: enumeration, hubs                    Bus/Usb/UsbBusDxe               BSD-2-C-P      PE
+usb-30-mass-storage.efi       USB sticks, disks, card readers (bulk-only    Bus/Usb/UsbMassStorageDxe       BSD-2-C-P      PE
+                              and CBI transports; no UAS driver)         
+
+1.5 Virtual machines (virt-*.efi, 12 files; source edk2 OvmfPkg, BSD-2-Clause-Patent, check PE)
+  virt-10-virtio-pci-legacy (1af4:1000-103f), virt-11-virtio-pci-modern (1af4:1040-107f),
+  virt-20-virtio-blk, -21-virtio-scsi, -22-virtio-net, -23-virtio-rng, -24-virtio-serial,
+  -25-virtio-fs, -26-virtio-keyboard, virt-30-vmware-pvscsi (15ad:07c0),
+  virt-31-lsi-53c895a (1000:0012), virt-32-lsi-fusion-mpt (1000:0030, 0054, 0058).
+  For firmware of a virtual machine that lacks them (OVMF and VMware bring their own).
+
+1.6 File systems (fs-*.efi, 20 files; every one reads only)
+
+File                 File system                              Source                                        Licence           Check
+-------------------  ---------------------------------------  --------------------------------------------  ----------------  -----
+fs-10-ntfs.efi       NTFS (Windows)                           ntfs-3g UEFI driver 1.9, official release     GPL-2.0-or-later  PE
+                                                              binary ntfs_x64_signed.efi (Secure Boot
+                                                              signed: Microsoft Corporation UEFI CA 2011)
+fs-11-exfat.efi      exFAT (large sticks, SD cards)           EfiFs 1.13 official release binary (GRUB      GPL-3.0-or-later  PE
+                                                              2.16 file system code), exfat_x64.efi
+fs-20-ext4.efi       ext4, also ext2/ext3 volumes it accepts  Ext4Pkg/Ext4Dxe of the edk2 (AUDK) workspace  BSD-2-Clause-     PE
+                                                              (first: edk2-platforms Features/Ext4Pkg),     Patent
+                                                              built (MSVC)
+fs-21-ext2.efi       ext2/ext3/ext4 (what fs-20 refuses)      EfiFs 1.13 ext2_x64.efi                       GPL-3.0+          PE
+fs-22-btrfs.efi      Btrfs                                    EfiFs 1.13                                    GPL-3.0+          PE
+fs-23-xfs.efi        XFS                                      EfiFs 1.13                                    GPL-3.0+          PE
+fs-24-f2fs.efi       F2FS                                     EfiFs 1.13                                    GPL-3.0+          PE
+fs-25-zfs.efi        ZFS (pools GRUB can read)                EfiFs 1.13                                    GPL-3.0+          PE
+fs-30-hfsplus.efi    Apple HFS+                               EfiFs 1.13                                    GPL-3.0+          PE
+fs-31-hfs.efi        Apple HFS                                EfiFs 1.13                                    GPL-3.0+          PE
+fs-40-udf.efi        UDF (DVD, Windows ISO)                   EfiFs 1.13                                    GPL-3.0+          PE
+fs-41-iso9660.efi    ISO 9660, Joliet, Rock Ridge             EfiFs 1.13                                    GPL-3.0+          PE
+fs-50-jfs.efi        IBM JFS                                  EfiFs 1.13                                    GPL-3.0+          PE
+fs-51-reiserfs.efi   ReiserFS 3                               EfiFs 1.13                                    GPL-3.0+          PE
+fs-52-nilfs2.efi     NILFS2                                   EfiFs 1.13                                    GPL-3.0+          PE
+fs-53-ufs2.efi       UFS2 (FreeBSD)                           EfiFs 1.13                                    GPL-3.0+          PE
+fs-54-ufs1.efi       UFS1                                     EfiFs 1.13                                    GPL-3.0+          PE
+fs-55-bfs.efi        BeFS (Haiku, BeOS)                       EfiFs 1.13                                    GPL-3.0+          PE
+fs-60-squash4.efi    SquashFS 4 (live systems)                EfiFs 1.13                                    GPL-3.0+          PE
+fs-61-erofs.efi      EROFS (live systems)                     EfiFs 1.13                                    GPL-3.0+          PE
+
+1.7 Folder manual (28 files) - never loaded by a rule, see 2.9
+  PS/2 and serial (edk2, BSD-2-Clause-Patent, built): SioBusDxe.efi (OvmfPkg), Ps2KeyboardDxe.efi,
+    Ps2MouseDxe.efi, PciSioSerialDxe.efi, UsbMouseAbsolutePointerDxe.efi.
+  OpenCore (Acidanthera OpenCorePkg 1.0.8 as in the workspace, BSD-3-Clause, built): OpenNtfsDxe.efi
+    (NTFS, read-only, not signed), OpenPartitionDxe.efi (partition driver that also reads the Apple
+    Partition Map). OpenCore's OpenHfsPlus is NOT in the pack: it does not link with MSVC here.
+  NTFS (ntfs-3g UEFI driver 1.9, GPL-2.0-or-later, release binaries): ntfs-3g-readwrite.efi (WRITES;
+    never use it on a hibernated or fast-startup Windows volume), ntfs-3g-readonly-unsigned.efi.
+  EfiFs 1.13 (GPL-3.0-or-later, release binaries, read-only): efifs-ntfs, efifs-fat, efifs-afs
+    (AtheOS), efifs-sfs (Amiga SFS), efifs-cbfs, efifs-romfs, efifs-minix, -minix2, -minix3 and
+    their _be forms, efifs-ufs1_be, efifs-cpio, -cpio_be, -newc, -odc, -tar (archives as volumes),
+    efifs-procfs. With these the pack holds all 37 x64 drivers of the EfiFs 1.13 release.
+
+MANIFEST.json (format 2) lists for every file: name, version, source URL, SHA-256 of the
+source (archive, or every compiled file), how it was built or obtained, licence, SHA-256
+and size of the image, and the PCI/USB IDs or classes it binds (736 distinct PCI/USB IDs);
+"classes" repeats the loading rules. licences/ holds every licence text, source/ the
+sources: iPXE 2.0.0 archive with recipe and changes, the ASIX sources, the compiled edk2
+module folders (source/edk2, source/edk2-usbnetwork), the EfiFs 1.13 archive with the GRUB
+snapshot its release pins (commit f10ad08f), the ntfs-3g UEFI driver 1.9 archive, and the
+two tools. `make-charon-driverpack.py verify` passes for all 104 images.
+
+
+2. LOADING RULES
+
+Folder \EFI\HAK\drivers on any volume the firmware can read (Charon's stick first); a
+name that occurs on several volumes is taken once; files load in name order. Every
+image goes through the firmware's LoadImage and StartImage: with Secure Boot on, the
+firmware refuses images it does not trust, Charon counts and reports them and goes on.
+A failure is reported and never stops Charon.
+
+2.1 nic-*.efi    (CharonWsNet.h LoadDrivers - in the program today)
+    Only when the firmware drives no network adapter at all. Then all controllers are
+    connected. Reason for "at all": the iPXE images open PCI I/O and USB I/O with
+    EFI_OPEN_PROTOCOL_EXCLUSIVE (iPXE src/interface/efi/efi_open.c, efi_open_by_driver),
+    so once they are resident, any later ConnectController on an adapter the firmware
+    drives lets iPXE take it away from the firmware's driver. This is why the gap
+    "the firmware drives the built-in card, a second PCI card gets no driver" is NOT
+    closed: no safe rule exists with these images. For USB adapters see 2.7.
+2.2 wifi-*.efi   (same place) when no adapter is driven or no Wi-Fi connection protocol.
+2.3 net-*.efi    (same place) only when adapters exist without an IPv4 service.
+
+The rules below are in CharonDriverPack.h (namespace hakefi::ws::drivers). "Nothing
+drives it" means there: the handle's PCI I/O or USB I/O protocol has no BY_DRIVER,
+EXCLUSIVE or BY_CHILD_CONTROLLER opener (OpenProtocolInformation); for PCI devices
+also no other handle has a device path below the controller; a check that fails or
+cannot be made counts as "driven". Every hardware rule works in this order:
+  (1) ConnectController on the undriven handles with the drivers the firmware already
+      has (fast boot leaves controllers unconnected);
+  (2) only if some are still undriven, the files of the class are loaded;
+  (3) ConnectController on those handles ONLY. The rules never connect all handles, so
+      a pack driver is never offered a controller the firmware drives.
+An image is loaded at most once: before loading, the firmware's list of loaded images
+is searched for the same file path (holds across restarts of Charon in one boot). A
+file that failed is not tried again in the same run; a handle is offered once per run.
+
+2.4 fs-*.efi     LoadFileSystems()
+    When a block device with a medium has neither a file system nor a partition or file
+    system driver holding its Disk I/O. All fs-* load, then only those block devices
+    are connected. Returns and says the number of new volumes.
+2.5 disk-*.efi   LoadDisks()
+    When a PCI device of class 01 (mass storage) or 08/05 (SD host controller) has no
+    driver. A SECOND STORAGE DRIVER ON A CONTROLLER THE FIRMWARE DRIVES CAN DESTROY DATA
+    (two drivers issuing commands to one disk); the rule exists to make that impossible:
+    disk-* is not even loaded while every storage controller has a driver.
+2.6 usb-*.efi    LoadUsbControllers()
+    When a UHCI, EHCI or xHCI controller (0c/03/00, 20, 30) has no driver, carries no
+    USB host controller protocol, and the firmware does not own it through USB legacy
+    support (xHCI and EHCI: "HC BIOS owned" bit of USBLEGSUP; UHCI: SMI enable in
+    LEGSUP). A second driver on a running controller would reset it: the keyboard and
+    the stick Charon started from would vanish. OHCI has no driver.
+2.7 nic-usb-*.efi  LoadUsbNetwork()
+    When a USB interface that these six drivers bind (CDC-ECM, CDC-NCM, RNDIS, the ASIX
+    IDs) has no driver and no Simple Network protocol - also while the firmware drives
+    another adapter. Safe because these edk2 drivers open USB I/O BY_DRIVER without
+    EXCLUSIVE. This closes the gap of 2.1 for USB adapters and phone tethering only.
+2.8 input-*.efi  LoadInput()
+    When a USB HID boot keyboard or mouse interface has no driver and carries no text
+    input or pointer protocol. Residual risk, stated plainly: a firmware that polls USB
+    keyboards outside the UEFI driver model and publishes its text input on another
+    handle would look "undriven"; none is known, none was tested.
+    virt-*.efi   LoadVirtual(): when a virtio device (1af4:1000-107f), VMware PVSCSI
+    (15ad:07c0) or an LSI 53C895A / Fusion-MPT with the subsystem vendor of QEMU or
+    VMware (never a real LSI card) has no driver.
+    LoadHardware() runs usb, disk, virt, input, nic-usb in that order (each step can
+    make devices for the next); LoadStorage() runs usb, disk, virt and then fs.
+2.9 manual\*.efi   ManualRefresh(), ManualName(i), LoadManual(i)
+    Never by a rule. The user picks a file; after it starts, all controllers are
+    connected (as the UEFI Shell's "load" does). For drivers whose binding cannot be
+    predicted from outside (2.10) or that duplicate a driver loaded by rule.
+2.10 audio-*.efi   RESERVED. Nothing loads it; see section 5.
+
+Why PS/2 is in manual: edk2's Ps2KeyboardDxe binds only a handle that has the Super I/O
+protocol (EFI_SIO_PROTOCOL) and ends in the ACPI node PNP0303. On PC firmware nothing
+publishes such a handle in a form another driver may open. SioBusDxe (written for
+QEMU) makes one by binding a PCI-ISA bridge (class 06/01) that no driver manages, and
+assumes the fixed ports 60h/64h. On a real PC the bridge is normally held by the
+maker's chipset driver (then SioBusDxe cannot bind and nothing happens); where it is
+free, the keyboard controller is usually already polled by firmware code outside the
+driver model, and a second driver resetting it could take the working keyboard away.
+So: honest answer, PS/2 cannot be added safely on arbitrary firmware; the three files
+are there for someone who knows the machine. (Internal laptop keyboards are PS/2
+devices behind the embedded controller; the firmware drives them, its setup needs them.)
+
+
+3. WHAT CANNOT WORK BEFORE THE SYSTEM STARTS
+
+Hardware                        State         Why / what the user can do
+------------------------------  ------------  ----------------------------------------------------------------
+Realtek RTL8125/8126/8127,      NOT IN THIS   No open UEFI driver in iPXE 2.0.0. Realtek's own UNDI driver has
+Killer E3000 (the usual card    PACK          no licence that allows passing it on: by hand (section 4). See
+of current desktop boards)                    NETWORK-DRIVERS.txt for the experimental driver of the second pack.
+Realtek USB RTL8152/8153/8156   NOT COVERED   Maker's protocol, no open driver; their CDC configuration is not
+(most USB-C docks)                            the one firmware selects. Realtek's UNDI driver: by hand.
+Newest Intel I219 / I225 / I226 SECOND PACK   iPXE 2.0.0 lacks the newest IDs; nic-16-intel-newer of the second
+IDs, Killer E3100                             pack (NETWORK-DRIVERS.txt). Intel's own drivers: by hand.
+Killer E2200/E2400/E2500        NOT COVERED   No UEFI driver known (Qualcomm Atheros "alx").
+Wi-Fi of current laptops        NOT COVERED   No open UEFI driver for Intel AX/BE, Realtek rtw88/rtw89, MediaTek
+(Intel, Realtek, MediaTek,                    mt76, Qualcomm ath10k-ath12k; the makers publish none. Where the
+Qualcomm)                                     firmware has a Wi-Fi driver, Charon uses it. Old Atheros cards:
+                                              second pack. Practical way: phone USB tethering (nic-usb-34..36).
+A second PCI network card while NOT COVERED   Rule 2.1: the iPXE images would take the firmware's card too.
+the firmware drives one
+Mobile broadband, Thunderbolt   NOT COVERED   No driver.
+networking
+Bluetooth keyboards, headsets,  NOT POSSIBLE  No open Bluetooth host stack exists for UEFI: edk2 has only the
+speakers, braille displays                    protocol headers (MdePkg/Include/Protocol/Bluetooth*.h), no HCI
+                                              transport, L2CAP, pairing store or HID profile. Only what a
+                                              maker built into the firmware works.
+I2C keyboards, touchpads,       NOT POSSIBLE  "HID over I2C" needs an I2C host controller driver for the chipset
+touch screens (tablets, some                  (Intel LPSS / Synopsys DesignWare, AMD), the bus description from
+2-in-1 computers)                             ACPI and an I2C-HID driver. edk2 has only the generic bus layer
+                                              (MdeModulePkg/Bus/I2c/I2cDxe, which needs platform protocols);
+                                              no x86 host controller driver and no I2C-HID driver is published
+                                              (edk2, edk2-platforms, Project Mu HidPkg: USB transport only).
+PS/2 keyboard the firmware      NOT SAFELY    See the end of section 2. By hand only.
+does not drive
+USB keyboard on a controller    COVERED BY    usb-* then input-* (rules 2.6, 2.8). Not run.
+or interface without a driver   RULE
+OHCI USB controllers            NOT COVERED   edk2 has no OHCI driver for PCs.
+USB4 / Thunderbolt devices      NOT COVERED   Need the firmware's connection manager; a PCIe device behind an
+                                              already opened tunnel is an ordinary PCI device (rules 2.5, 2.6).
+NVMe behind Intel VMD / RST,    NOT COVERED   The disks are not PCI devices of class 01/08 then; the controller
+SATA in RAID mode (class 01/04)               is a RAID device that needs Intel's RST driver, which is part of
+                                              the firmware when the mode is on. disk-20 does not bind 01/04.
+RAID and SAS cards (Broadcom/   NOT COVERED   Their option ROM carries the maker's UEFI driver. The LSI drivers
+LSI MegaRAID, Adaptec, ...)                   of virt-* are for emulated controllers and are never offered a
+                                              real card (rule 2.8).
+Realtek PCIe card readers       NOT COVERED   Vendor class, not SDHCI; no open driver (OpenCore's binary
+(RTS52xx)                                     collection has an Rts52xx.efi without any licence: not shipped).
+APFS (current macOS)            NOT COVERED   No open UEFI driver exists. Every APFS container carries Apple's
+                                              own driver, which OpenCore loads from the disk at run time; that
+                                              is Apple's proprietary code and cannot be shipped.
+ReFS, bcachefs, Storage Spaces, NOT COVERED   No driver. EfiFs reads single plain volumes: no LVM, no Linux
+LVM, mdraid, LUKS, BitLocker,                 software RAID, nothing encrypted, no multi-device Btrfs/ZFS.
+VeraCrypt volumes
+Graphics without a firmware     NOT POSSIBLE  No generic graphics driver exists: edk2's GraphicsOutputDxe needs
+GOP driver                                    data handed over by the firmware's early phase, OpenCore's
+                                              BiosVideo needs the legacy BIOS (CSM). QemuVideoDxe, VirtioGpuDxe
+                                              (virtual machines only) were not built.
+Hyper-V generation 2            NOT NEEDED    Its firmware has the drivers (Microsoft publishes them: mu_msvm,
+                                              MsvmPkg); they are tied to that firmware. Not built.
+Xen paravirtual disks           NOT BUILT     OvmfPkg XenBusDxe/XenPvBlkDxe need Xen set up by the firmware's
+                                              early phase.
+Sound: see section 5 and AUDIO-CODECS.txt.
+
+
+4. ADDING A MAKER'S DRIVER BY HAND
+
+  1. Get the UEFI driver from the maker of the device or of the computer, never from
+     driver collections or firmware dumps: the x64 version ("X64", "EFIx64"), a file
+     ending in .efi. Known places for network cards:
+       Realtek PCIe (RTL8111/8125/8126/8127): realtek.com, "PCIe FE / GBE / 2.5G /
+         Gaming Ethernet Family Controller Software", UEFI, "UEFI UNDI Driver".
+       Realtek USB (RTL8152/8153/8156): realtek.com, "USB FE / GbE / 2.5GbE ... Family
+         Controller Software", UEFI.
+       Intel: intel.com, "Intel Ethernet Connections Boot Utility, Preboot Images, and
+         EFI Drivers" (PREBOOT.zip), x64 .efi files; its readme says which is for which.
+     (File and folder names inside the makers' archives were not checked here.)
+  2. Rename it so that the beginning of the name says what it is, and the end is .efi:
+       nic-      wired or USB network card           (loaded when no adapter is driven)
+       wifi-     Wi-Fi
+       disk-     storage controller, RAID, card reader (loaded when a storage controller
+                 has no driver)
+       usb-      USB host controller
+       input-    USB keyboard or mouse
+       fs-       file system
+     Example: nic-05-rtkundi.efi. Files load in name order; a low number goes first.
+     A driver that fits none of these, or that you want to decide about yourself: put it
+     into the sub-folder manual under any name ending in .efi.
+  3. Copy it to \EFI\HAK\drivers on Charon's stick or on any FAT volume of the computer
+     (create the folder if needed).
+  4. Network: Workspace, Network; Charon loads the drivers when no card works, L loads
+     again and says how many were loaded or failed. The other classes: after the call
+     sites of section 7 are in the program.
+  Secure Boot: with Secure Boot on, the firmware refuses every driver that is not
+  signed with a key it trusts. Makers' drivers are usually signed with the Microsoft
+  UEFI CA key; in this pack only fs-10-ntfs.efi is signed (Microsoft Corporation UEFI CA
+  2011, which some computers - "Secured-core" - do not trust until it is allowed in
+  setup). Everything else in the pack needs Secure Boot off, or your own key enrolled
+  and the files signed with it.
+  A maker's UNDI network driver needs the firmware's SnpDxe on top; when the firmware
+  lacks it, net-11-SnpDxe.efi of the pack provides it together with the other net-*.
+
+
+5. SOUND   (short; codecs, amplifiers, laptops: AUDIO-CODECS.txt)
+
+Charon speaks through EFI\HAK\AudioDxe.efi (OpenCore AudioDxe, BSD-3-Clause, with
+Charon's stream extension) and its built-in AC'97, ES1371 and USB Audio Class outputs.
+Searched for further loadable UEFI sound DRIVERS (edk2, edk2-platforms, edk2-staging,
+Project Mu, OpenCore/Acidanthera, coreboot based edk2 forks, GitHub); result:
+  Intel SOF / cAVS / SoundWire DSP   none exists
+  AMD ACP                            none exists
+  USB Audio Class 1/2/3              no driver. Goldfish64/AudioPkg has an unfinished
+                                     UsbAudioController (archived 2020, installs no audio
+                                     protocol). edk2's XhciDxe and EhciDxe return
+                                     EFI_UNSUPPORTED for isochronous transfers, which is
+                                     why a class driver on top of them cannot play.
+                                     Charon's own output (CharonUsbAudio.h) drives the
+                                     isochronous endpoint itself, beside the xHCI driver.
+  virtio-snd                         none exists (not in OvmfPkg)
+  HDMI / DisplayPort                 no separate driver; AudioDxe sees the digital pins,
+                                     real output unconfirmed (AUDIO-CODECS.txt)
+  Bluetooth                          none (no Bluetooth stack, section 3)
+  Another HD Audio driver            ethindp/edk2, branch audio-output-protocol: an
+                                     HdaAudioDxe with its own audio output protocol,
+                                     BSD-2-Clause-Patent, not upstream, analog only,
+                                     unknown whether it works. It covers the hardware
+                                     AudioDxe covers and does not speak Charon's stream
+                                     protocol: not taken.
+The UEFI specification defines no audio protocol. So the pack contains no sound driver
+and the class audio-*.efi stays reserved: a driver would be usable only if it offered
+Charon's stream protocol (HAKAudioStream.h), and none does.
+
+
+6. HOW THE FILES WERE MADE
+
+6.1 iPXE (nic-10..40): iPXE publishes no driver images. tools/make-charon-driverpack.py
+  ipxe boots the official Alpine Linux 3.24.4 "virt" ISO (SHA-256 pinned) in a throw-away
+  QEMU machine, installs gcc from Alpine's repository, builds the pinned iPXE 2.0.0
+  source into *.efidrv groups and hands them back as a tar archive on a raw disk; the
+  machine is deleted. Changes (in source/ipxe-build): config/local/usb.h links no host
+  controller, USB disk or keyboard driver and no EFI_USB_IO provider, only "usbio", the
+  client of the firmware's USB stack; ipxe-usb.patch lets the USB core try the other
+  configurations a driver accepts and limits the interrupt polling interval to 255 ms.
+6.2 edk2 and OpenCore (nic-usb-*, input-*, disk-*, usb-*, virt-*, fs-20, seven files in manual):
+  built with MSVC in the edk2 (AUDK) workspace work/ha, RELEASE, by the stage "edk2".
+  The workspace is not a git checkout, so no commit can be named: the pack carries a copy
+  of every compiled module folder and MANIFEST.json the SHA-256 of every file in it.
+  ASIX: edk2-platforms commit 4db2845d, every file SHA-256 pinned. Two additions for
+  loading on any firmware (source/edk2/CharonDriverPkg): UefiStallTimerLib, a TimerLib
+  on the Stall() boot service and the time stamp counter (edk2's instances need a
+  platform; AtaAtapiPassThru, AtaBusDxe, UfsPassThruDxe, XhciDxe, Ps2KeyboardDxe use
+  it), and a copy of Ext4Dxe whose only change is the package reference of one library.
+  The stage takes work/ha/.charon-build.lock, writes only into its own Build folder and
+  removes it. Two builds of the same sources gave different image hashes (the MSVC link is
+  not bit-reproducible here); MANIFEST.json describes the images that are in the pack. NOT RUN.
+6.3 Release binaries (fs-10, fs-11, fs-21..61, 21 files in manual): downloaded from the
+  projects' own GitHub release pages, https://github.com/pbatard/efifs/releases/tag/v1.13
+  (2026-10-08) and https://github.com/pbatard/ntfs-3g/releases/tag/1.9 (2026-06-19); the
+  SHA-256 of every file equals the digest GitHub's release API reports for the asset and
+  is pinned in the tool. Not rebuilt, not run on the host.
+6.4 Licences: iPXE GPL-2.0-or-later (files under GPL-2.0-only, UBDL, BSD); EfiFs and GRUB
+  GPL-3.0-or-later; ntfs-3g GPL-2.0-or-later (library LGPL); edk2 BSD-2-Clause-Patent;
+  OpenCorePkg BSD-3-Clause.
+  The GPL drivers are separate programs in separate files, loaded through the firmware
+  and shipped beside Charon (aggregation). The pack carries the licence texts and the
+  complete corresponding source: source/ipxe-2.0.0.tar.gz with recipe and changes,
+  source/efifs-1.13.tar.gz with source/grub-f10ad08f....tar.gz (the GRUB commit the
+  EfiFs release pins as its submodule; EfiFs's own patch to GRUB is in its archive),
+  source/ntfs-3g-uefi-1.9.tar.gz. Not checked: that the published binaries can be
+  reproduced bit for bit from those archives.
+
+
+7. CALL SITES STILL TO ADD (CharonDriverPack.h is included by nothing yet)
+  CharonWorkspace.h, after  #include "CharonWsNet.h" :
+      #include "CharonDriverPack.h"
+  CharonWorkspace.h, Show(), the line  if(view==View::files)LoadFiles();  becomes
+      if(view==View::files) {drivers::LoadStorage(false);LoadFiles();}
+  CharonWorkspace.h, Show(), before ScanPrograms() in the View::programs line:
+      drivers::LoadStorage(false);
+  CharonWorkspace.h, Show(), in the View::network block after the net::LoadDrivers line:
+      if(drivers::LoadUsbNetwork(false))net::LoadAdapters();
+  CharonWorkspace.h, key L of View::network:  ...net::LoadDrivers(true);
+      drivers::LoadUsbNetwork(true,true);net::LoadAdapters();...
+  CharonWorkspace.h, Run(), after the opening announcement:
+      drivers::LoadInput(false);
+  A command "Load drivers" (palette): drivers::LoadHardware(true,true);
+      drivers::LoadFileSystems(true,true);  and a list over drivers::ManualRefresh() /
+      ManualName(i) whose Enter calls drivers::LoadManual(i).
+
+
+R408 LOAD TEST (2026-11-22, QEMU 11 + OVMF, WHPX, pack charon-drivers-r408, app build charon-win-r408b4)
+  The rules of CharonDriverPack.h are wired into the workspace since r408 (the lines of the section above).
+  What was run, each on a fresh machine, speech and trace lines recorded, no assertion, exception or audio
+  fault in any serial log, the voice and the keys worked afterwards:
+  fs-      Files view with a GPT disk holding ext4, NTFS, exFAT and btrfs partitions (NVMe; the same on an SD
+           card and on a PVSCSI disk): "File systems: drivers loaded 20, new volumes 4" in 0.3 s; folders listed
+           and README.TXT read on all four. A second visit, and the Programs view after it, load nothing.
+           A second boot of the same machine: the same.
+  disk-    SD host controller (sdhci-pci, not driven by this OVMF): 11 files loaded in 0.13 s, controller
+           driven, its volumes appear. UFS host controller (QEMU ufs): driven by the pack; the test image had a
+           512-byte GPT on a 4096-byte unit, so only the unit appeared, no partitions.
+  virt-    VMware PVSCSI (not driven by this OVMF): 12 files loaded, controller driven, 4 volumes.
+  input-   The rule ran with a USB keyboard on xHCI: OVMF drives it, no target, nothing loaded, keys neither
+           lost nor doubled. The files of the class were NOT loaded by the rule (no firmware at hand that
+           leaves a keyboard undriven). usb-: the same, not loaded.
+  nic-     e1000 and RTL8139 without option ROM: 20 files (nic-, nic-usb-, wifi-) started in 0.5 to 1.7 s,
+           adapter listed, DHCP lease 10.0.2.15. With the option ROM (firmware drives the card): only wifi-
+           files are started, DHCP works. net-* was not needed (OVMF has the IPv4 stack).
+  nic-usb- QEMU usb-net (RNDIS first): an adapter appears, DHCP gets NO answer in 30 s - the limit described
+           in NETWORK-DRIVERS.txt 1.2 (not a fault; a real RNDIS or CDC device was never tried).
+  After the loads: Continue started GRUB, GRUB's screens were read, "exit" came back to Charon.
+  The longest time a load kept Charon silent: 1.7 s (the 20 network files, RTL8139 + USB adapter).
+  Found and fixed in the test:
+  - CharonWsNet.h started every network driver file once per volume holding \EFI\HAK\drivers (Charon's disk
+    and, since r408, its RAM copy: every file twice) and again at every press of L. Now once per run.
+  - The root folder of an ext4, exFAT or btrfs volume listed empty the second time: the efifs drivers hand
+    out one root file for every OpenVolume. Charon now rewinds a root folder before reading it.
+  - The UEFI programs list showed all pack drivers (the 200-entry list was full). It now leaves out
+    \EFI\HAK\drivers except drivers\manual, whose files are started from that list.
+  Known: efifs volumes have no label in Charon's list ("no label"); only the NTFS driver reports one.
+  Still not wired: the palette command "Load drivers" and a list over manual\ (LoadHardware, LoadManual).
+
+
+SOURCES
+  iPXE 2.0.0: https://github.com/ipxe/ipxe/releases/tag/v2.0.0 ; exclusive open: src/interface/efi/efi_open.c (efi_open_by_driver)
+  edk2: https://github.com/tianocore/edk2 (MdeModulePkg/Bus/..., OvmfPkg/...) ; edk2-platforms ASIX: https://github.com/tianocore/edk2-platforms/tree/4db2845d14425599238be86b8a73d288f7c0b4a6/Drivers/ASIX
+  Ext4Pkg: https://github.com/tianocore/edk2-platforms/tree/master/Features/Ext4Pkg ; AUDK: https://github.com/acidanthera/audk
+  EfiFs: https://github.com/pbatard/efifs (release v1.13) ; GRUB commit f10ad08fa2a02dce95774c1b5caee38254b30531, https://gitlab.freedesktop.org/gnu-grub/grub
+  ntfs-3g UEFI driver: https://github.com/pbatard/ntfs-3g (release 1.9)
+  PS/2: edk2 MdeModulePkg/Bus/Isa/Ps2KeyboardDxe/Ps2Keyboard.c (ACPI PNP0303 + gEfiSioProtocolGuid), OvmfPkg/SioBusDxe
+  Isochronous transfers: edk2 MdeModulePkg/Bus/Pci/XhciDxe/Xhci.c (XhcIsochronousTransfer returns EFI_UNSUPPORTED)
+  Audio search: https://github.com/Goldfish64/AudioPkg (branch usb-audio), https://github.com/ethindp/edk2 (branch audio-output-protocol), https://github.com/acidanthera/OpenCorePkg
+  Hyper-V firmware: https://github.com/microsoft/mu_msvm ; Project Mu HID: https://github.com/microsoft/mu_plus (HidPkg)
+  APFS: OpenCore Configuration, "EnableJumpstart" (https://github.com/acidanthera/OpenCorePkg/blob/master/Docs/Configuration.tex)
+  Realtek downloads: https://www.realtek.com/Download/List?cate_id=584 , https://www.realtek.com/Download/List?cate_id=585
+  Intel preboot package: https://www.intel.com/content/www/us/en/download/15755/intel-ethernet-connections-boot-utility-preboot-images-and-efi-drivers.html
+  UEFI 2.10: 7.3 (OpenProtocol, OpenProtocolInformation, ConnectController), 7.4 (LoadImage, StartImage), 14.4 (PCI I/O), 17.2 (USB I/O)
+  xHCI 1.2 section 7.1.1 and EHCI 1.0 appendix C (USB legacy support, BIOS owned semaphore)

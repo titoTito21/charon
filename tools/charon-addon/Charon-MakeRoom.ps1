@@ -12,7 +12,9 @@ spoken with System.Speech (SAPI) as well as printed.
 
   -SizeGB N        space to free, in GB (default 64).
   -Yes             no questions. Without it the plan is read out and the word
-                   TAK / YES has to be typed (as in Install-Charon.ps1).
+                   ZMNIEJSZ / SHRINK has to be typed; the question names the
+                   drive and both sizes (r410: a word of its own, not TAK/YES,
+                   because it changes the existing system).
   -DryRun          read-only queries only; prints the plan. Nothing is changed
                    and no log file is written.
   -ClockUtc        Windows keeps the hardware clock in UTC, as Linux does
@@ -33,17 +35,28 @@ What it does, in this order:
     on an MBR disk it stops, because Charon and a UEFI dual boot need GPT),
     every partition, the Windows volume's size and free space, and the largest
     possible shrink (Get-PartitionSupportedSize);
- 3. BitLocker / device encryption (Get-BitLockerVolume, else WMI
-    Win32_EncryptableVolume, which is what manage-bde reads):
-      - protection ON, or encryption in progress: shrinking is fine, but a
-        changed boot order makes Windows ask for the recovery key. With consent
-        protection is SUSPENDED for the next 2 restarts
-        (Suspend-BitLocker -RebootCount 2). The volume stays encrypted.
-      - NOT encrypted: PreventDeviceEncryption=1, so that automatic device
-        encryption does not start later (the same value Rufus and Charon's
-        answer file set).
-      - encrypted but protection off ("waiting for activation"): reported,
-        nothing is changed.
+ 3. REFUSALS (r410, user's rule; nothing is changed when one applies, exit 2):
+      - BitLocker / device encryption (Get-BitLockerVolume, else WMI
+        Win32_EncryptableVolume, which is what manage-bde reads): a volume that
+        is encrypted in any way (fully, partly, encrypting, decrypting, paused,
+        protection on or off) is never shrunk; the state could not be read:
+        refused too. The refusal names the way out: "manage-bde -off C:" and
+        wait for "Fully Decrypted" (manage-bde -status C:).
+        https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/manage-bde-status
+      - hibernation on: the file hiberfil.sys exists in the root of the
+        Windows drive ("If this file is not present, the computer cannot
+        hibernate"; fast start-up also needs it). It cannot be moved, and a
+        hibernated Windows must not be written by the second system. Way out:
+        "powercfg /hibernate off" (deletes it).
+        https://learn.microsoft.com/en-us/troubleshoot/windows-client/setup-upgrade-and-drivers/disable-and-re-enable-hibernation
+        https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/powercfg-command-line-options
+      - a dirty volume (Win32_Volume.DirtyBitSet, the bit "fsutil dirty query"
+        shows; set means chkdsk runs at the next start): way out: restart
+        Windows and let chkdsk finish, or "chkdsk C: /f".
+        https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/fsutil-dirty
+      NOT encrypted: PreventDeviceEncryption=1, so that automatic device
+      encryption does not start later (the same value Rufus and Charon's answer
+      file set).
  4. Secure Boot (Confirm-SecureBootUEFI): if on, warns that some Linux systems
     and Charon itself need a signed loader (shim) and a MOK enrolment;
  5. fast start-up and, if asked, the UTC clock;
@@ -52,8 +65,8 @@ What it does, in this order:
 Only the partition holding the running Windows is ever resized. No other
 partition or disk is touched; nothing is created, formatted or deleted.
 
-Decisions and limits (honest list; this script was only parsed and run with
--DryRun, never for real):
+Decisions and limits (honest list; up to r409 this script was only parsed and
+run with -DryRun; r410 helper bw: see tests/charon-r410-install-results.txt):
 - RealTimeIsUniversal is written as REG_DWORD 1. That is what the Arch Linux
   wiki documents for current Windows
   (https://wiki.archlinux.org/title/System_time#UTC_in_Microsoft_Windows,
@@ -66,12 +79,11 @@ Decisions and limits (honest list; this script was only parsed and run with
   The script refuses a shrink larger than Windows allows and says the largest
   possible value; it does not disable the page file or delete restore points.
 - At least 10 GB must stay free in Windows after the shrink.
-- While BitLocker is still encrypting, Windows may refuse to shrink; the error
-  is reported as it is.
-- The suspension covers 2 restarts from now. If the second system is installed
-  later, run this script again (or have the recovery key:
-  https://aka.ms/myrecoverykey).
+- r410: an encrypted volume is refused (it was suspended for 2 restarts
+  before); have the recovery key ready anyway: https://aka.ms/myrecoverykey.
 - MBR disks and dynamic disks are refused, not converted.
+- The shrink itself: Get-PartitionSupportedSize / Resize-Partition
+  https://learn.microsoft.com/en-us/powershell/module/storage/resize-partition
 #>
 [CmdletBinding()]
 param(
@@ -166,11 +178,15 @@ function Test-Admin {
 }
 function GB([double]$Bytes) { return ('{0:N1}' -f ($Bytes / 1GB)) }
 function Confirm-Step([string]$TextPl, [string]$TextEn) {
-    # Typed confirmation, as in Install-Charon.ps1. -Yes answers yes; -DryRun never asks.
+    # r410: a typed word of its own (ZMNIEJSZ / SHRINK), not the YES of Install-Charon.ps1: it changes the existing
+    # system. -Yes answers yes; -DryRun never asks.
     if ($Yes -or $DryRun) { return $true }
     Announce $TextPl $TextEn
-    $answer = Read-Host $(if ($UsePolish) { 'Aby kontynuować, wpisz TAK' } else { 'Type YES to continue' })
-    return ($answer -in @('TAK', 'tak', 'YES', 'yes'))
+    $answer = Read-Host $(if ($UsePolish) { 'Aby zmniejszyć, wpisz ZMNIEJSZ' } else { 'Type SHRINK to shrink' })
+    $answer = "$answer".Trim()
+    $ok = ($answer -eq $(if ($UsePolish) { 'ZMNIEJSZ' } else { 'SHRINK' })) -or ($answer -eq $(if ($UsePolish) { 'zmniejsz' } else { 'shrink' }))
+    Write-Log ('typed confirmation: {0}' -f $(if ($ok) { 'given' } else { 'not given' }))
+    return $ok
 }
 
 # ---- BitLocker state, read-only ---------------------------------------------------
@@ -252,27 +268,53 @@ function Invoke-Main {
     $maxShrink = $null
     if ($supported) { $maxShrink = [int64]$partition.Size - [int64]$supported.SizeMin }
     $maxText = '?'; if ($null -ne $maxShrink) { $maxText = GB $maxShrink }
-    Announce ("Windows, dysk {0}: rozmiar {1} GB, wolne {2} GB. Największe możliwe zmniejszenie: {3} GB. Chcesz zwolnić {4} GB." -f $mount, (GB $partition.Size), (GB $volume.SizeRemaining), $maxText, $SizeGB) `
-        ("Windows, drive {0}: size {1} GB, free {2} GB. Largest possible shrink: {3} GB. You asked to free {4} GB." -f $mount, (GB $partition.Size), (GB $volume.SizeRemaining), $maxText, $SizeGB)
+    Announce ("Windows, dysk {0}, rozmiar {1} GB, wolne {2} GB. Największe możliwe zmniejszenie: {3} GB. Chcesz zwolnić {4} GB." -f $mount, (GB $partition.Size), (GB $volume.SizeRemaining), $maxText, $SizeGB) `
+        ("Windows, drive {0}, size {1} GB, free {2} GB. Largest possible shrink: {3} GB. You asked to free {4} GB." -f $mount, (GB $partition.Size), (GB $volume.SizeRemaining), $maxText, $SizeGB)
 
     # 3. BitLocker
     $encryption = Get-EncryptionState $mount
-    Note ("BitLocker na {0}: {1}" -f $mount, $encryption.Text) ("BitLocker on {0}: {1} ({2})" -f $mount, $encryption.Text, $encryption.Source)
-    $suspend = $false; $prevent = $false
+    Note ("BitLocker na {0}, {1}" -f $mount, $encryption.Text) ("BitLocker on {0}, {1} ({2})" -f $mount, $encryption.Text, $encryption.Source)
+    # r410: refusals, not suspension. They are collected here and said with the others below.
+    $suspend = $false; $prevent = $false; $refusals = @()
     if (-not $encryption.Known) {
-        Announce 'Nie udało się odczytać stanu BitLockera. Jeśli dysk jest zaszyfrowany, przygotuj klucz odzyskiwania przed zmianą kolejności rozruchu.' `
-            'The BitLocker state could not be read. If the drive is encrypted, have the recovery key ready before the boot order changes.'
-    } elseif ($encryption.Protected -or $encryption.InProgress) {
-        $suspend = $true
-        Announce 'Dysk z Windows jest zaszyfrowany BitLockerem albo szyfrowanie trwa. Zmniejszenie partycji jest bezpieczne, ale po zmianie kolejności rozruchu Windows może zażądać klucza odzyskiwania. Dlatego ochrona zostanie zawieszona na dwa najbliższe restarty. Dysk pozostaje zaszyfrowany. Klucz odzyskiwania konta Microsoft: aka.ms/myrecoverykey.' `
-            'The Windows drive is encrypted with BitLocker, or encryption is in progress. Shrinking the partition is safe, but after the boot order changes Windows may ask for the recovery key. So protection will be suspended for the next two restarts. The drive stays encrypted. Recovery key of a Microsoft account: aka.ms/myrecoverykey.'
+        $refusals += @{ pl = "Nie udało się odczytać stanu BitLockera na dysku $mount, więc nie wiem, czy jest zaszyfrowany. Zaszyfrowanego dysku nie zmniejszam."
+                        en = "The BitLocker state of drive $mount could not be read, so I cannot tell whether it is encrypted. I do not shrink an encrypted drive." }
     } elseif ($encryption.Encrypted) {
-        Announce 'Dysk z Windows jest zaszyfrowany, ale ochrona jest wyłączona (czeka na aktywację, zwykle na konto Microsoft). Niczego tu nie zmieniam. Po włączeniu ochrony zmiana kolejności rozruchu może wymagać klucza odzyskiwania.' `
-            'The Windows drive is encrypted but protection is off (waiting for activation, usually for a Microsoft account). Nothing is changed here. Once protection is on, a changed boot order can require the recovery key.'
+        $refusals += @{ pl = "Dysk $mount jest zaszyfrowany BitLockerem ($($encryption.Text)). Zaszyfrowanego dysku nie zmniejszam. Wyłącz szyfrowanie poleceniem manage-bde -off $mount i poczekaj, aż manage-bde -status $mount pokaże pełne odszyfrowanie; potem uruchom ten skrypt jeszcze raz."
+                        en = "Drive $mount is encrypted with BitLocker ($($encryption.Text)). I do not shrink an encrypted drive. Turn encryption off with manage-bde -off $mount and wait until manage-bde -status $mount shows it fully decrypted; then run this script again." }
     } else {
         $prevent = $true
         Note 'Dysk z Windows nie jest zaszyfrowany. Wyłączę automatyczne szyfrowanie urządzenia, żeby nie zaczęło się później.' `
             'The Windows drive is not encrypted. Automatic device encryption will be prevented, so it does not start later.'
+    }
+    # hibernation: hiberfil.sys in the root of the Windows drive (Microsoft: without it the computer cannot hibernate)
+    $hiberfile = Join-Path "$mount\" 'hiberfil.sys'
+    $hibernation = $false
+    try { $hibernation = [bool](Get-Item -LiteralPath $hiberfile -Force -ErrorAction Stop) } catch { $hibernation = $false }
+    Note ("Hibernacja: {0}" -f $(if ($hibernation) { 'włączona (jest plik hiberfil.sys)' } else { 'wyłączona (brak pliku hiberfil.sys)' })) `
+        ("Hibernation: {0}" -f $(if ($hibernation) { 'on (hiberfil.sys exists)' } else { 'off (no hiberfil.sys)' }))
+    if ($hibernation) {
+        $refusals += @{ pl = "Hibernacja jest włączona: na dysku $mount jest plik hiberfil.sys. Jego nie da się przenieść, a zahibernowanego Windows drugi system nie może zapisywać. Wyłącz hibernację i szybkie uruchamianie poleceniem powercfg /hibernate off, jako administrator; potem uruchom ten skrypt jeszcze raz."
+                        en = "Hibernation is on: drive $mount holds the file hiberfil.sys. It cannot be moved, and a second system must not write to a hibernated Windows. Turn hibernation and fast start-up off with powercfg /hibernate off, as administrator; then run this script again." }
+    }
+    # the dirty bit (what fsutil dirty query shows): chkdsk has not finished on this volume
+    $dirty = $null
+    try { $dirty = [bool](Get-CimInstance -ClassName Win32_Volume -Filter ("DriveLetter='{0}'" -f $mount) -ErrorAction Stop).DirtyBitSet } catch { $dirty = $null }
+    if ($null -eq $dirty) {
+        try {
+            $text = (& (Join-Path $env:SystemRoot 'System32\fsutil.exe') dirty query $mount 2>&1 | Out-String)
+            # the English text of Microsoft's page; other languages leave $dirty unknown (refused)
+            if ($text -match 'is not dirty') { $dirty = $false } elseif ($text -match 'is dirty') { $dirty = $true }
+        } catch { }
+    }
+    Note ("Bit zabrudzenia woluminu {0}, {1}" -f $mount, $(if ($null -eq $dirty) { 'nieznany' } elseif ($dirty) { 'ustawiony' } else { 'nie ustawiony' })) `
+        ("Dirty bit of volume {0}, {1}" -f $mount, $(if ($null -eq $dirty) { 'unknown' } elseif ($dirty) { 'set' } else { 'not set' }))
+    if ($null -eq $dirty) {
+        $refusals += @{ pl = "Nie udało się odczytać, czy wolumin $mount jest oznaczony jako uszkodzony (bit zabrudzenia). Bez tego go nie zmniejszam."
+                        en = "Whether volume $mount is marked as needing a check (the dirty bit) could not be read. Without that I do not shrink it." }
+    } elseif ($dirty) {
+        $refusals += @{ pl = "Wolumin $mount jest oznaczony jako wymagający sprawdzenia (bit zabrudzenia ustawiony). Nie zmniejszam go. Uruchom Windows ponownie i pozwól programowi chkdsk dokończyć sprawdzanie, albo wpisz chkdsk $mount /f jako administrator; potem uruchom ten skrypt jeszcze raz."
+                        en = "Volume $mount is marked as needing a check (its dirty bit is set). I do not shrink it. Restart Windows and let chkdsk finish, or run chkdsk $mount /f as administrator; then run this script again." }
     }
 
     # 4. Secure Boot
@@ -285,7 +327,7 @@ function Invoke-Main {
     else { Note 'Stanu Secure Boot nie udało się odczytać (brak uprawnień albo tryb BIOS).' 'The Secure Boot state could not be read (no rights, or BIOS mode).' }
 
     # refusals before anything is changed (in -DryRun they are only reported)
-    $problems = @()
+    $problems = @() + $refusals
     if (-not $gpt) { $problems += @{ pl = 'Dysk nie jest GPT.'; en = 'The disk is not GPT.' } }
     if ($dynamic) { $problems += @{ pl = 'Dysk jest dyskiem dynamicznym.'; en = 'The disk is a dynamic disk.' } }
     if (-not $supported) { $problems += @{ pl = 'Windows nie podał największego możliwego zmniejszenia.'; en = 'Windows did not report the largest possible shrink.' } }
@@ -310,8 +352,9 @@ function Invoke-Main {
     if ($ClockUtc) { Note '  - zegar sprzętowy w UTC' '  - hardware clock in UTC' }
     Note ("  - zmniejszenie partycji {0} z {1} GB do {2} GB; {3} GB zostaje nieprzydzielone" -f $mount, (GB $partition.Size), (GB $newSize), $SizeGB) `
         ("  - shrink partition {0} from {1} GB to {2} GB; {3} GB stay unallocated" -f $mount, (GB $partition.Size), (GB $newSize), $SizeGB)
-    if (-not (Confirm-Step ("Charon zmniejszy partycję Windows o {0} GB. Zrób wcześniej kopię ważnych plików." -f $SizeGB) ("Charon will shrink the Windows partition by {0} GB. Back up important files first." -f $SizeGB))) {
-        Refuse 'Nic nie zmieniono.' 'Nothing was changed.'
+    if (-not (Confirm-Step ("Charon zmniejszy partycję Windows {0} na dysku {1} z {2} GB do {3} GB. Zrób wcześniej kopię ważnych plików. Aby zmniejszyć, wpisz słowo ZMNIEJSZ i naciśnij Enter." -f $mount, $disk.Number, (GB $partition.Size), (GB $newSize)) `
+                           ("Charon will shrink the Windows partition {0} on disk {1} from {2} GB to {3} GB. Back up important files first. To shrink, type the word SHRINK and press Enter." -f $mount, $disk.Number, (GB $partition.Size), (GB $newSize)))) {
+        Refuse 'Nie wpisano słowa ZMNIEJSZ. Nic nie zmieniono.' 'The word SHRINK was not typed. Nothing was changed.'
     }
 
     # 3 (action). BitLocker. Consent: -Yes, or the typed confirmation above.

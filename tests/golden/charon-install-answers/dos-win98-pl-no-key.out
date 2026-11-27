@@ -1,0 +1,20 @@
+# CharonDOS Windows profile, written by Charon's installer (r403); format: src/pc/PLAN.txt
+profile=WIN98
+lang=pl
+memory=128
+com1=bns
+sound=sb16
+net=ne2000
+reader=we20demo
+reader_setup=READER\WE20DEMO.ZIP
+disk=DISK.IMG
+disk_format=raw
+disk_create_mb=2048
+cdrom=SETUP.ISO
+boot=cdrom
+state=install
+setup_auto=yes
+setup_key=ABCDE12345FGHIJ67890KLMNO
+setup_name=Uzytkownik
+setup_computer=DOM
+setup_zone=Central European

@@ -1,0 +1,29 @@
+RHVoice voices in Charon (r409)
+===============================
+
+rhvoice.tts (RHVoice 1.18.5) offers every voice below whose data file is in
+EFI\HAK\synths\rhvoice\. Natan and Slt are the defaults and belong to the two
+language files (rhvoice-pl.chsp, rhvoice-en.chsp); every other voice is one
+optional file that may be deleted (rhvoice.manifest then still lists it and
+Charon speaks with the default voice of that language instead).
+Licences: LICENCES.txt and licences\. NON-COMMERCIAL: Cezary, Evgeniy-Eng, Lyubov
+(CC BY-NC-ND 4.0) - free to copy unchanged for non-commercial purposes only.
+
+Voice        Lang Version Licence               File (bytes)                         Source
+----------------------------------------------------------------------------------------------------------------------
+Natan        pl   4.12    CC0-1.0               rhvoice-pl.chsp (with the language)  https://github.com/RHVoice/natan-pol @ 42d2a7d7b60e
+Slt          en   4.1     CMU-ARCTIC            rhvoice-en.chsp (with the language)  https://github.com/RHVoice/slt-eng @ c17dded68322
+Alicja       pl   4.1     CC-BY-4.0             rhvoice-alicja.chsp (1471984)        https://github.com/RHVoice/alicja-pol @ 22274019eca0
+Cezary       pl   4.1     CC-BY-NC-ND-4.0       rhvoice-cezary.chsp (2167431)        https://github.com/RHVoice/cezary-pol @ c9f3bb6c66d0
+Magda        pl   4.46    CC-BY-4.0             rhvoice-magda.chsp (2240023)         https://github.com/RHVoice/magda-pol @ a14d3a9223ba
+Michal       pl   4.2     CC0-1.0               rhvoice-michal.chsp (1158273)        https://github.com/RHVoice/michal-pol @ e59be811263d
+Alan         en   4.0     RHVoice-unrestricted  rhvoice-alan.chsp (1019277)          https://github.com/RHVoice/alan-eng @ bb3fdb15b9c6
+Bdl          en   4.1     RHVoice-unrestricted  rhvoice-bdl.chsp (1089183)           https://github.com/RHVoice/bdl-eng @ ea6b944550af
+Clb          en   4.0     RHVoice-unrestricted  rhvoice-clb.chsp (1237301)           https://github.com/RHVoice/clb-eng @ e0aa06cf5033
+Dasha-Eng    en   4.2     CC-BY-SA-4.0          rhvoice-dasha-eng.chsp (1014877)     https://github.com/RHVoice/dasha-eng @ 3115c2666cd0
+Evgeniy-Eng  en   4.0     CC-BY-NC-ND-4.0       rhvoice-evgeniy-eng.chsp (1459047)   https://github.com/RHVoice/evgeniy-eng @ c483272eb7ff
+Ksp          en   4.5     CMU-ARCTIC            rhvoice-ksp.chsp (990238)            https://github.com/RHVoice/ksp-eng @ 858023095833
+Lyubov       en   4.1     CC-BY-NC-ND-4.0       rhvoice-lyubov.chsp (1458713)        https://github.com/RHVoice/lyubov-eng @ a32db8ee28c1
+
+RHVoice-unrestricted: no licence file in the voice repository; see LICENCES.txt.
+Names on other systems (Speech Dispatcher, Debian/Ubuntu, Arch, NVDA, SAPI 5): rhvoice-voices.tsv.

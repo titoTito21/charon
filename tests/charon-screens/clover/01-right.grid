@@ -1,0 +1,4 @@
+CHARON grid 56 116 0 0 0 Clover
+G25 89*00,19*f0|89*0000,19*040e|                                                                                         Clover Boot Options
+G37 2*00,7*f0|2*0000,7*040e|  F1:Help
+CHARON grid end

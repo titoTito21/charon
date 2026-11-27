@@ -1,0 +1,7 @@
+# Written by Charon: the Wi-Fi connection chosen in Charon (read by network.sh).
+CHARON_NET_TYPE=wifi
+CHARON_NET_MAC=3c:52:82:aa:bb:cc
+CHARON_NET_METHOD=dhcp
+CHARON_WIFI_SSID=Dom Kowalskich
+CHARON_WIFI_SECURITY=wpa-psk
+CHARON_WIFI_PSK=bardzo tajne haslo

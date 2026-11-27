@@ -10,8 +10,32 @@
 #include <efi/system-table.h>
 #include <efi/runtime-services.h>
 #include <efi/boot-services.h>
+#include "CharonClockZone.h"
 namespace hakefi {
 namespace systools {
+// r409: \EFI\HAK\clock.txt, written by the finish step of a multi-system plan, says that the
+// hardware clock keeps universal time and names the zone. Charon's clock tools then show and take
+// local time. Loaded when the boot menu starts (LoadClockSetting); without the file nothing changes.
+inline clockzone::Setting& ClockSetting() {static clockzone::Setting setting{false,nullptr};return setting;}
+inline void LoadClockSetting(efi_file_protocol* root) {
+    ClockSetting()=clockzone::Setting{false,nullptr};efi_file_protocol* file=nullptr;
+    if(!root || root->Open(root,&file,(char16_t*)u"\\EFI\\HAK\\clock.txt",EFI_FILE_MODE_READ,0)!=EFI_SUCCESS || !file)return;
+    char text[256];size_t size=sizeof(text);
+    if(file->Read(file,&size,text)==EFI_SUCCESS)ClockSetting()=clockzone::Parse(text,size);
+    file->Close(file);
+}
+// The clock reading as it is shown, and a shown time as it is stored.
+inline void ShownTime(efi_time& time,bool* summer=nullptr) {
+    if(summer)*summer=false;
+    if(!ClockSetting().universal)return;
+    const clockzone::Stamp shown=clockzone::Shown(ClockSetting(),clockzone::Stamp{time.Year,time.Month,time.Day,time.Hour,time.Minute,time.Second},summer);
+    time.Year=uint16_t(shown.year);time.Month=shown.month;time.Day=shown.day;time.Hour=shown.hour;time.Minute=shown.minute;
+}
+inline void StoredTime(uint16_t& year,uint8_t& month,uint8_t& day,uint8_t& hour,uint8_t& minute) {
+    if(!ClockSetting().universal)return;
+    const clockzone::Stamp stored=clockzone::Stored(ClockSetting(),clockzone::Stamp{year,month,day,hour,minute,0});
+    year=uint16_t(stored.year);month=stored.month;day=stored.day;hour=stored.hour;minute=stored.minute;
+}
 inline void Put(char16_t* out,size_t capacity,const char16_t* text) {
     size_t at=0;while(at+1<capacity && out[at])++at;
     while(at+1<capacity && text && *text)out[at++]=*text++;
@@ -255,17 +279,26 @@ inline efi_status ClockText(efi_runtime_services* runtime,bool pl,char16_t* out,
     const auto status=runtime->GetTime(&time,nullptr);
     if(status!=EFI_SUCCESS)return status;
     if(time.Month<1 || time.Month>12 || time.Day<1 || time.Day>31 || time.Hour>23 || time.Minute>59 || time.Second>59)return EFI_DEVICE_ERROR;
+    const bool universal=ClockSetting().universal;bool summer=false;ShownTime(time,&summer);   // r409
     static const char16_t* plDays[]={u"niedziela",u"poniedziałek",u"wtorek",u"środa",u"czwartek",u"piątek",u"sobota"};
     static const char16_t* enDays[]={u"Sunday",u"Monday",u"Tuesday",u"Wednesday",u"Thursday",u"Friday",u"Saturday"};
     static const char16_t* plMonths[]={u"stycznia",u"lutego",u"marca",u"kwietnia",u"maja",u"czerwca",u"lipca",u"sierpnia",u"września",u"października",u"listopada",u"grudnia"};
     static const char16_t* enMonths[]={u"January",u"February",u"March",u"April",u"May",u"June",u"July",u"August",u"September",u"October",u"November",u"December"};
     const unsigned weekday=Weekday(time.Year,time.Month,time.Day);
-    Put(out,capacity,pl?u"Zegar firmware: ":u"Firmware clock: ");
+    Put(out,capacity,universal?(pl?u"Czas lokalny: ":u"Local time: "):(pl?u"Zegar firmware: ":u"Firmware clock: "));
     Put(out,capacity,pl?plDays[weekday]:enDays[weekday]);Put(out,capacity,u", ");
     PutNumber(out,capacity,time.Day);Put(out,capacity,u" ");Put(out,capacity,pl?plMonths[time.Month-1]:enMonths[time.Month-1]);
     Put(out,capacity,u" ");PutNumber(out,capacity,time.Year);Put(out,capacity,pl?u", godzina ":u", ");
     PutNumber(out,capacity,time.Hour,2);Put(out,capacity,u":");PutNumber(out,capacity,time.Minute,2);
     Put(out,capacity,u":");PutNumber(out,capacity,time.Second,2);Put(out,capacity,u". ");
+    if(universal) {
+        char16_t zone[40];size_t n=0;for(const char* c=ClockSetting().zone->name;*c && n+1<40;++c)zone[n++]=char16_t(*c);
+        zone[n]=0;
+        Put(out,capacity,pl?u"Strefa ":u"Zone ");Put(out,capacity,zone);
+        Put(out,capacity,summer?(pl?u", czas letni. ":u", summer time. "):(pl?u", czas zimowy. ":u", standard time. "));
+        Put(out,capacity,pl?u"Zegar komputera trzyma czas uniwersalny.":u"The computer's clock keeps universal time.");
+        return EFI_SUCCESS;
+    }
     if(time.TimeZone==EFI_UNSPECIFIED_TIMEZONE)Put(out,capacity,pl?u"Strefa czasowa nieokreślona przez firmware.":u"Time zone not stated by firmware.");
     else if(time.TimeZone>=-1440 && time.TimeZone<=1440) {
         // UEFI: local time = UTC - TimeZone (minutes).
@@ -294,6 +327,7 @@ inline efi_status ReadClockFields(efi_runtime_services* runtime,uint16_t& year,u
     efi_time time{};const auto status=runtime->GetTime(&time,nullptr);
     if(status!=EFI_SUCCESS)return status;
     if(time.Month<1 || time.Month>12 || time.Day<1 || time.Day>31 || time.Hour>23 || time.Minute>59)return EFI_DEVICE_ERROR;
+    ShownTime(time);   // r409: the editor works in local time
     year=time.Year<2000?2000:time.Year>2099?2099:time.Year;month=time.Month;day=time.Day;hour=time.Hour;minute=time.Minute;
     return EFI_SUCCESS;
 }
@@ -301,6 +335,7 @@ inline efi_status ReadClockFields(efi_runtime_services* runtime,uint16_t& year,u
 // back afterwards (the minute may have advanced by one meanwhile).
 inline efi_status SetClock(efi_runtime_services* runtime,uint16_t year,uint8_t month,uint8_t day,uint8_t hour,uint8_t minute) {
     if(!runtime || !runtime->GetTime || !runtime->SetTime)return EFI_UNSUPPORTED;
+    StoredTime(year,month,day,hour,minute);   // r409: the user gave local time; the clock keeps universal time
     efi_time time{};auto status=runtime->GetTime(&time,nullptr);
     if(status!=EFI_SUCCESS)return status;
     time.Year=year;time.Month=month;time.Day=day;time.Hour=hour;time.Minute=minute;time.Second=0;time.Nanosecond=0;
@@ -325,6 +360,7 @@ inline efi_status WakeText(efi_runtime_services* runtime,bool pl,char16_t* out,s
     if(status==EFI_UNSUPPORTED) {Put(out,capacity,pl?u"To firmware nie obsługuje budzenia komputera o zadanej godzinie.":u"This firmware does not support a wake-up alarm.");return status;}
     if(status!=EFI_SUCCESS)return status;
     if(enabled && time.Month>=1 && time.Month<=12) {
+        ShownTime(time);   // r409
         Put(out,capacity,pl?u"Budzenie włączone: ":u"Wake-up alarm on: ");DateWords(pl,time.Year,time.Month,time.Day,time.Hour,time.Minute,out,capacity);Put(out,capacity,u".");
     } else Put(out,capacity,pl?u"Budzenie wyłączone.":u"Wake-up alarm off.");
     if(pending)Put(out,capacity,pl?u" Alarm już wystąpił.":u" The alarm has fired.");
@@ -332,6 +368,7 @@ inline efi_status WakeText(efi_runtime_services* runtime,bool pl,char16_t* out,s
 }
 inline efi_status SetWake(efi_runtime_services* runtime,uint16_t year,uint8_t month,uint8_t day,uint8_t hour,uint8_t minute) {
     if(!runtime || !runtime->GetTime || !runtime->SetWakeupTime || !runtime->GetWakeupTime)return EFI_UNSUPPORTED;
+    StoredTime(year,month,day,hour,minute);   // r409
     efi_time time{};auto status=runtime->GetTime(&time,nullptr);
     if(status!=EFI_SUCCESS)return status;
     time.Year=year;time.Month=month;time.Day=day;time.Hour=hour;time.Minute=minute;time.Second=0;time.Nanosecond=0;

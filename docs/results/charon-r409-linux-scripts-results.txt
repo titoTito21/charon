@@ -1,0 +1,610 @@
+Charon r409: the Linux post-install accessibility scripts, run for real
+=======================================================================
+Date: 2026-11-23. Source tree: work/charon-src-r395. Nothing was released, no EFI binary was rebuilt.
+
+The r408 notes said "Linux desktop scripts syntax-only". This round ran them. Test machines:
+VMware Workstation, the official cloud images of Debian 13.8 (debian-13-generic-amd64.qcow2),
+Ubuntu 26.04.1 (ubuntu-26.04-server-cloudimg-amd64.img), Arch (Arch-Linux-x86_64-cloudimg.qcow2)
+and Fedora 45 (Fedora-Cloud-Base-Generic-45-1.4.x86_64.qcow2), checksums verified, 4 CPUs, 4 GB,
+UEFI, HD audio, NAT; harness work/charon-r409-vm/vm.py (snapshot "pristine" before every run).
+WSL 2 and Docker do not work on this host (no "Virtual Machine Platform"), so no containers.
+The scripts were run exactly as the first start of a ready image runs them
+(firstboot.sh setup CONSOLE GUI READERS LOGIN DESKTOPS DUAL, then firstboot.sh done).
+Nobody listened: "speaks" below means measured from outside - the reader's process is there, the
+sound server or the reader holds /dev/snd, the PCM device is RUNNING while spd-say or Fenrir's
+sound command plays, the synthesizer's log says "Audio output initialized". Audible quality is
+not verified.
+
+NOT run (still unproven end to end, see the last section): the Debian installer (preseed,
+in-target chroot), the Ubuntu installer (autoinstall, curtin in-target chroot), Charon itself
+writing an image and its cloud-init seed, real hardware, GNOME, KDE Plasma, MATE, Cinnamon, LXQt.
+
+
+(Line numbers of speech.sh below are those of the state in which most of the runs were made;
+the last fixes of the day - the sound-server cookie and root's ALSA default - moved everything
+after line 830 down by about 30 lines. Search for the names given.)
+
+1. The four reported bugs: root cause and fix
+---------------------------------------------
+The r408 scripts were run unchanged on pristine Arch and Debian for comparison
+(firstboot.sh setup fenrir cthulhu orca,cthulhu,speakup,fenrir,emacspeak graphical
+i3-wm,lightdm,lightdm-gtk-greeter no).
+
+Bug 1, Cthulhu "not installed".
+  Arch, r408: installed (cthulhu 2026.10.31-7 from the Stormux repository). The user's guess
+    "the AUR is not enabled" does not apply to Cthulhu: the AUR has no cthulhu package at all
+    (https://aur.archlinux.org/rpc/v5/info?arg[]=cthulhu returns nothing); Stormux's own package
+    repository has it (https://packages.stormux.org/x86_64/stormux.db).
+  Debian, r408: NOT there after the first start. speech.sh only wrote and enabled
+    charon-cthulhu-build.service ("cthulhu is built at the first start with the network") and
+    never started it, although a ready image's first start IS a running system with a network.
+    Measured: `command -v cthulhu` empty after firstboot; built only during the second start
+    (2 min 9 s CPU), silently, and used only from the sign-in after that. In the i3 session of
+    that second start Orca ran, not Cthulhu.
+  Second cause, every system: the autostart entry tested `pgrep -x orca` for ANY user. The
+    sign-in screen's Orca (user lightdm) is still alive while the session starts, so the entry
+    concluded "a reader is running" and started none (measured on Debian: i3 session with no
+    reader at all).
+  Fix: speech.sh:305-345 the build service is started at once on a running system (log
+    /var/lib/charon/cthulhu-build.log, failures written there and retried at every start);
+    speech.sh:276-303 one script /usr/local/bin/charon-reader starts the chosen reader, looking
+    at this user's processes only (pgrep -U).
+  Verified r409: Debian 13 - built from source in the first start, /usr/local/bin/cthulhu,
+    cthulhu-braille, cthulhu-input-helper; `cthulhu --version` = 2026.10.31-master; running as
+    the test user in the i3 session after the restart. Arch - /usr/bin/cthulhu from Stormux,
+    running in the i3 session.
+
+Bug 2, "i33" = I38 "not installed".
+  I38 is not a package: Stormux's package "i38" is an empty meta package (depends on brave-bin,
+  thunderbird, mumble, cthulhu, fenrir ...; its .INSTALL only prints "git clone
+  https://git.stormux.org/storm/I38; ./i38.sh"). r408 did clone it and run "i38.sh -D", and the
+  file ~/.config/i3/config was written on Arch and Debian. What was broken around it:
+  - Debian and Ubuntu: i3-wm brings dex. With dex installed I38 does not start the reader from
+    its configuration but writes an autostart entry with `dex -t ~/.config/autostart -c READER`,
+    which failed: "Target directory does not exist: /home/USER/.config/autostart"
+    (/var/lib/charon/i38.log). I38 therefore started no reader at all.
+  - Debian: no sound server was installed with i3 (Arch got PipeWire from firstboot.sh, Debian
+    and Ubuntu nothing). Measured in the r408 i3 session: the user's speech-dispatcher logged
+    "ALSA ERROR: Cannot open audio device default (Permission denied)", "Opening audio failed",
+    spd-say hung (timeout): the desktop was silent.
+  - Debian and Ubuntu: `dconf update` was skipped silently because dconf-cli is not installed
+    with i3 or Xfce, while /etc/dconf/profile/user already named the database: every program
+    printed "unable to open file '/etc/dconf/db/local'" and none of Charon's desktop defaults
+    existed (the same would silence GNOME/MATE/Cinnamon's own start of Orca).
+  - With Stormux's i38lock installed, I38's default locks the screen two seconds after i3
+    starts (made for Stormux's automatic sign-in): a second password prompt right after LightDM.
+  Fix: speech.sh:135-160 (requirements in one transaction, optional ones one by one, PipeWire:
+    pipewire-audio on Debian/Ubuntu, pipewire-pulse pipewire-alsa wireplumber on Arch, i38lock
+    from Stormux on Arch), :205-213 (dconf-cli / dconf installed, result checked, the profile
+    removed and a problem reported when the database cannot be made), :410-460 charon-i38
+    (mkdir ~/.config/autostart first; output kept in /var/lib/charon/i38.log; the result checked;
+    the reader started only through charon-reader; the lock at start removed, the lock key kept).
+  Verified r409: Debian 13 and Arch - config written, after a restart i3 runs with Cthulhu,
+    speech-dispatcher, PipeWire with the sink "HD Audio Controller Analog Stereo".
+
+Bug 3, Fenrir without sounds.
+  Arch (Stormux's Fenrir, now written in Go, settings.toml): [presentation.sound] driver="pulse"
+    and Charon set PULSE_SERVER to a link that exists only while a user's sound server runs.
+    A console-only system, or the console before anybody signs in, has none. Measured on r408:
+    "sound unavailable or incomplete ... connect sound server: dial unix /run/pulse/native: no
+    such file or directory", Fenrir holds no /dev/snd descriptor. Fenrir's README: "Failures
+    never select a different audio driver".
+  Debian/Ubuntu (Python Fenrir 2025.0.x, settings.conf): sounds are played with sox ("play").
+    sox was installed but (a) sox's PulseAudio driver is called "pulseaudio", (b) a "play" that
+    started while the desktop's PipeWire was looking for the card took the card (through dmix),
+    hung in state PREPARED for minutes and left PipeWire with no sink at all - measured: the
+    whole i3 session silent, `wpctl status` without sinks, two stuck "play" processes.
+  Fix: speech.sh:509-568 Fenrir's packages and its sound settings (enabled, theme default,
+    the generic driver through /usr/local/bin/charon-fenrir-play with a 15 s limit: the signed-in
+    user's sound server OR the card, never both); speech.sh:826-915 charon-audio-share: the link
+    is made only when a sound server really holds the card (servercard), every console reader
+    waits for that before it starts when a session exists (ExecStartPre "sound", up to 15 s),
+    and the Go Fenrir's driver is written as "pulse" or "alsa" at each start; HOME=/root for
+    the reader services so that root's ALSA default is found.
+  Verified r409: Fedora and Arch at the console - driver "alsa", Fenrir holds /dev/snd; Arch
+    and Debian with a session - driver "pulse", Fenrir listed as a PipeWire client
+    ("/usr/bin/fenrir" in `pactl list short clients`), charon-fenrir-play rc=0 with the card
+    RUNNING, no stuck play process, the session's sink present.
+
+Bug 4, Emacspeak.
+  Arch: not in the repositories; r408 ran `pacman -S emacspeak emacspeak-espeak-server`, which
+    cannot work ("charon: emacspeak could not be installed", measured). Here the user's guess is
+    right: only the AUR has it (emacspeak 60.0-1, maintained by Storm Dragon), and it depends on
+    tclx, also AUR only (tclx 8.6.3-4, needs exactly tcl=8.6.16-1, which Arch has today).
+  Fix: speech.sh:98-133 aur(): an unprivileged account charon-build (no password, no shell)
+    clones https://aur.archlinux.org/NAME.git and runs makepkg; root installs the recipe's
+    dependencies (repositories first, AUR-only ones the same way) and then the built package
+    with pacman -U. speech.sh:619-650: Debian/Ubuntu emacs-nox + emacspeak +
+    emacspeak-espeak-server + sox; Fedora emacspeak (packaged, 60.0); Arch aur emacspeak; then
+    a check that the eSpeak speech server (tclespeak.so) and tclsh really exist.
+  Verified r409: Arch - tclx 8.6.3-4 and emacspeak 60.0-1 built and installed,
+    /usr/lib/emacspeak/tclespeak.so; Debian, Ubuntu - emacspeak 53.0 with
+    /usr/lib/emacspeak/tclespeak.so; Fedora - /usr/lib64/emacspeak/servers/native-espeak/tclespeak.so.
+    NOT verified: Emacspeak actually speaking on console 1 (needs a person at the console).
+
+Failures are no longer silent: every package manager's output goes to
+/var/lib/charon/speech-packages.log; whatever could not be done is collected in
+/var/lib/charon/speech.problems, spoken at the end of the first start (firstboot.sh:193-202,
+speech.sh:975-989) and printed at every console sign-in (/etc/profile.d/charon-problems.sh)
+until a later run succeeds.
+
+
+2. Other bugs found, by system
+------------------------------
+Arch
+  A1 Partial upgrade: firstboot.sh ran `pacman -Syy` and then `pacman -S PACKAGES` on an image
+     some weeks old; after r408's run 10 packages were out of date against the lists they were
+     installed from. Arch: "Partial upgrades are unsupported"
+     (https://wiki.archlinux.org/title/System_maintenance). Now `pacman -Syu --needed PACKAGES`
+     everywhere (firstboot.sh:28-40, speech.sh:41-55).
+  A2 The upgrade replaces the kernel (7.3.4 -> 7.3.5 in the test): the running kernel's modules
+     are gone. firstboot.sh:96-101 loads what the first start still needs before (vfat, uinput,
+     speakup_soft ...), and `firstboot.sh done` says so and restarts once (firstboot.sh:65-72).
+     Verified: after the restart 7.3.5, graphical.target, LightDM, Fenrir.
+  A3 pacman keyring: made when missing, archlinux-keyring brought up to date first
+     (https://wiki.archlinux.org/title/Pacman/Package_signing; firstboot.sh:52-56, speech.sh:65-70).
+  A4 The Stormux key and repository: every step checked and reported (speech.sh:78-96);
+     instructions as on https://stormux.org (key 52ADA49000F1FF0456F8AEEFB4CDE1CD56EF8E82,
+     [stormux] before [core], SigLevel = Required DatabaseOptional).
+Debian 13
+  D1 speech.log of an installation was always empty: `in-target CMD > file` redirects the output
+     of in-target, which sends the command's output to syslog
+     (https://salsa.debian.org/installer-team/debian-installer-utils/-/raw/master/in-target).
+     CharonWsInstall.h:405-408: the redirection happens inside the target. NOT run.
+  D2 xed (Cinnamon's editor) is in neither Debian nor Ubuntu: gedit (speech.sh:181).
+  D3 dconf-cli, pipewire-audio, dex: see bug 2.
+Ubuntu 26.04
+  U1 curtin binds the installer's /run into the chroot, so `[ -d /run/systemd/system ]` was true
+     inside the installer and speech.sh believed it was on a running system
+     (https://raw.githubusercontent.com/canonical/curtin/master/curtin/util.py, ChrootableTarget).
+     Both installers now pass CHARON_CHROOT=1 (CharonWsInstall2.h:83-85, CharonWsInstall.h:408;
+     speech.sh:59-62). NOT run.
+  U2 host name and user name were unquoted YAML scalars: a name such as "no", "on", "null" is a
+     truth value there and fails the autoinstall schema (identity.username must be a string)
+     and cloud-init's users[].name. Quoted in CharonWsInstall2.h:52,54 and
+     CharonWsInstall3.h:254,276,428. NOT run.
+Fedora 45
+  F1 The cloud image has kernel-core and kernel-modules-core only: no sound driver, no /dev/snd.
+     firstboot.sh:150-157 installs kernel-modules-$(uname -r) with the speech packages.
+     Verified: "HDA-Intel - HD-Audio Generic" appears, Fenrir holds /dev/snd.
+  F2 "espeakup" does not exist in Fedora; in one dnf transaction with espeak-ng it cancelled
+     everything. firstboot.sh:143-144.
+  F3 Fenrir has no Fedora package: built from https://git.stormux.org/storm/fenrir by
+     charon-fenrir-build.service (speech.sh:570-617; build-fenrir.sh fetches Go 1.27.2; the
+     configuration, keyboard layouts, punctuation, sounds and the service are installed as
+     Stormux's Arch package does; restorecon for SELinux). Verified with SELinux enforcing:
+     built in about 50 s, fenrirscreenreader.service active, 31 sound files, eSpeak NG through
+     Speech Dispatcher.
+  F4 The image's first-start line called grub-mkconfig, which Fedora does not have:
+     grub2-mkconfig -o /boot/grub2/grub.cfg (CharonWsInstall3.h:308;
+     https://docs.fedoraproject.org/en-US/quick-docs/grub2-bootloader/). NOT run.
+  F5 The dialogue said "Fedora has no package for console speech". Exact now
+     (CharonWsInstall3.h:71-72): no espeakup and no Fenrir package; Emacspeak, Orca, eSpeak NG,
+     Speech Dispatcher and BRLTTY are packaged. The entry stays "no speech": offering Fedora
+     with Fenrir built from source needs dialogue work (console reader forced to Fenrir, no
+     desktops) that was not done; the script side works (F1-F3).
+Every system
+  E1 The console reader and the desktop share one sound card: see bug 3 (the link only when a
+     sound server holds the card).
+  E2 Chromium and Electron: ACCESSIBILITY_ENABLED=1 in /etc/environment beside QT_ACCESSIBILITY,
+     QT_LINUX_ACCESSIBILITY_ALWAYS_ON and GNOME_ACCESSIBILITY (speech.sh:214-224; Chromium,
+     ui/accessibility/platform/atk_util_auralinux.cc names ACCESSIBILITY_ENABLED and
+     GNOME_ACCESSIBILITY). GTK_MODULES=gail:atk-bridge is deliberately not written (GTK 3 and 4
+     have the bridge built in; Debian's own Xsession script still sets it).
+  E3 Xfce: "Enable assistive technologies" made the default for every user
+     (xfce4-session, /general/StartAssistiveTechnologies, xfsm-manager.c line 838 of branch
+     xfce-4.20; https://docs.xfce.org/xfce/xfce4-settings/accessibility), speech.sh:225-238.
+  E5 `firstboot.sh done` stopped Speakup's voice on Debian (systemctl isolate): section 8, Xfce (a).
+  E6 Speakup and eSpeak NG silent while any sound server has the card; real PulseAudio refuses
+     root without its cookie: section 8, Xfce (b).
+  E7 The reader's autostart looked at every user's processes (the sign-in screen's Orca counted):
+     section 1, bug 1.
+  E4 Java and LibreOffice, when installed: libatk-wrapper-java / java-atk-wrapper-openjdk,
+     libreoffice-gtk3 (speech.sh:183-185,195).
+
+Package names: every name in speech.sh and firstboot.sh was looked up in the indexes downloaded
+on 2026-11-23: Debian trixie 13.8 main/non-free (deb.debian.org/debian/dists/trixie), Ubuntu
+resolute main/universe/restricted/multiverse (archive.ubuntu.com/ubuntu/dists/resolute), Arch
+core.db and extra.db (geo.mirror.pkgbuild.com), Fedora 45 Everything and updates primary.xml
+(dl.fedoraproject.org), the AUR RPC and stormux.db. Missing ones found: xed (Debian, Ubuntu),
+plasma-session-x11 (Debian; already guarded), firefox-esr (Ubuntu; already guarded), fenrir,
+emacspeak, tclx, cthulhu, i38 (Arch), espeakup, fenrir, rhvoice (Fedora).
+
+
+3. Stormux in "Linux for blind people": added
+----------------------------------------------
+https://stormux.org says: "You can grab the latest images for the Raspberry Pi 4, Raspberry Pi 5,
+and x86_64 systems from https://stormux.org/downloads". The listing has
+stormux-x86_64-2026-11-01.iso, 2 043 084 800 bytes, and stormux-x86_64-2026-11-01.iso.sha1sum
+(3b79025b1c2fab1deb74a3e67b89771cf27bc7b1). Downloaded and checked: the SHA-1 matches. It is an
+archiso image: \EFI\BOOT\BOOTx64.EFI (systemd-boot), default entry "Stormux Accessible Linux
+(x86_64, UEFI) with speech" (accessibility=on, archisolabel=STORMUX_X64); its root image enables
+stormux-speech.service, which starts Fenrir, signs root in on console 1 and holds
+/usr/local/bin/install-stormux and configure-stormux. So: bootable through Charon's existing ISO
+path, speaks in the live system (by its contents; it was not booted or listened to).
+Added in CharonWsInstall3.h:52-60 (line numbers of the headers are those of 2026-11-23, late
+morning; another agent was editing the same headers), pattern of the Slint entry: Speech::installer ("speaks in the
+installer"), Way::iso, 1950 megabytes, a spoken note. The address names a dated file: a new
+Stormux image needs a new address. As for the other entries of this group Charon does not check
+a checksum of ISO images. From a RAM disk the image must find the label STORMUX_X64 itself:
+the existing warning of RunIso applies; a USB stick is the safe way.
+"Stormux-style" Arch also exists now: the Arch ready image with Fenrir, Cthulhu and "i3 with I38"
+gets Stormux's repository, fenrir, cthulhu and i38lock (section 1).
+
+
+4. Linda (https://github.com/Mudb0y/linda): added as a desktop reader
+---------------------------------------------------------------------
+Read: readme.md, copying.txt (GPL 2 or later, as NVDA; "independent of NV Access"), the release
+list. Linda is NVDA 2026.3.1 for the Linux desktop (AT-SPI, PipeWire, eSpeak NG and openevv built
+in). "There are no distribution packages yet": only the Nix package manager, and "there is no
+ready-made download yet, so the first start compiles parts of Linda on your machine". It needs
+PipeWire and an X11 session, or in a Wayland session its service linda-keyd; the published
+linda-keyd packages answered 404 on 2026-11-23
+(https://github.com/Mudb0y/linda/releases/download/linda-keyd/linda-keyd_amd64.deb), so Wayland
+sessions cannot be served.
+Tried unattended, as root: Fedora 45 (dnf install nix; nix-daemon) and Arch (pacman nix):
+`nix --extra-experimental-features "nix-command flakes" profile install --profile
+/nix/var/nix/profiles/default github:Mudb0y/linda` finished with rc 0 in 10 min 44 s and
+10 min 47 s, /nix/store 7.5 GB. On Arch, in the X11 i3 session of the test user: nvda.log
+"NVDA initialized", "Keys are read from the X display", "Browse mode reads Firefox",
+"Accessibility status: switched IsEnabled on"; its python process is a PipeWire client with
+three sink inputs. Not listened to.
+Added: speech.sh:348-408 charon-linda-build.service (Nix from the system's own packages - Debian
+13 and Ubuntu nix-setup-systemd, Arch and Fedora nix, as Linda's readme says; refuses with fewer
+than 10 GB free; links /usr/local/bin/linda; log /var/lib/charon/linda-build.log; retried at every
+start); charon-reader starts Linda in X11 sessions (or with linda-keyd's socket), otherwise Orca,
+which also speaks until Linda is built. Dialogue: CharonWsReaders.h:24-27 the check box, :70-82 the
+question "which reader starts on the desktop" now over Orca, Cthulhu and Linda.
+Verified from a pristine Arch image (section 8): the service installed Nix and Linda by itself
+(the build survived the restart that ends the first start and was resumed), linked
+/usr/local/bin/linda, and after the next sign-in to i3 charon-reader started Linda (process
+.../share/linda/source/linda.py, nvda.log "Buffer rendered by the engine ... Firefox", a PipeWire
+client). NOT verified: the service on Debian and Ubuntu (their Nix is the distribution's 2.26 /
+2.3x; Linda's readme says its non-NixOS routes "have had far less use"), and on Fedora beyond the
+manual install above.
+
+
+5. RHVoice
+----------
+Packages (indexes of 2026-11-23): Debian 13 rhvoice 1.14.0-2, speech-dispatcher-rhvoice,
+rhvoice-english, rhvoice-polish ... in the component non-free (voices under CC BY-NC-ND);
+Ubuntu 26.04 the same names, 1.14.0-3, multiverse; Arch rhvoice 1.16.5-1,
+rhvoice-language-LANG, rhvoice-voice-NAME in extra; Fedora 45: no package (a Copr is not used).
+speech.sh:678-763: asked for by the word "rhvoice" in the READERS list or CHARON_SYNTH=rhvoice.
+Debian: the component non-free is switched on in /etc/apt/sources.list.d/charon-non-free.sources
+(logged). RHVoice becomes Speech Dispatcher's DefaultModule, so Orca, Cthulhu and Fenrir speak
+with it; Speakup (espeakup) and Emacspeak keep eSpeak NG, which is all they can use. No voice
+for the system's language, no package, or a missing sd_rhvoice: eSpeak NG stays and the problem
+is logged, shown and spoken ("RHVoice is not packaged for Fedora: eSpeak NG speaks instead" -
+measured on Fedora).
+The voice by name (CHARON_VOICE, RHVoice's own lower-case name): Arch installs
+rhvoice-voice-NAME; Debian and Ubuntu's language packages hold all voices of a language (checked
+in the .deb files: rhvoice-polish = alicja cezary magda michal natan; rhvoice-english = alan bdl
+clb evgeniy-eng lyubov slt). Order: the named voice; another voice of the same language
+(reported); eSpeak NG (reported). Written to: RHVoiceDefaultVoice in
+/etc/speech-dispatcher/modules/rhvoice.conf where the module has that setting (1.14: Debian,
+Ubuntu), both Fenrirs' module and voice settings, /var/lib/charon/rhvoice-voice.
+NOT done: Orca's and Cthulhu's own per-user voice choice (their settings files differ between
+Orca 48, 50 and 51 and were not verified); with RHVoice 1.16 (Arch) Speech Dispatcher's unnamed
+default voice is chosen by RHVoice by language, not by this name.
+The mapping table tests/charon-r409-rhvoice-voices-results.txt did not exist yet when this was
+written; the names above come from the package indexes.
+Verified: Debian, Ubuntu, Arch - installed, DefaultModule rhvoice, sd_rhvoice running for the
+greeter's and the user's speech-dispatcher; Debian rhvoice.log "Audio output initialized",
+spd-say -o rhvoice rc 0 with the card RUNNING.
+
+
+6. Charon's voice settings carried over (script side only)
+----------------------------------------------------------
+Today nothing of Charon's synthesizer, voice, rate, pitch or punctuation reaches the Linux
+scripts: the answer-file generators pass CONSOLE GUI READERS LOGIN only. speech.sh:8-22 now
+reads, from the environment or from /var/lib/charon/voice.conf (NAME=value lines):
+  CHARON_SYNTH        rhvoice | espeak
+  CHARON_VOICE        RHVoice's name of the voice, lower case (natan, magda, slt ...)
+  CHARON_RATE         5..20   Charon's "rate" member, tenths (10 = 100 percent)
+  CHARON_PITCH        5..20   Charon's "pitch" member
+  CHARON_PUNCTUATION  none | some | most | all
+and applies them (speech.sh:765-824) to Speech Dispatcher (DefaultRate, DefaultPitch -100..100,
+DefaultPunctuationMode), both Fenrirs, and Speakup's soft synthesizer (a drop-in for espeakup
+writes /sys/accessibility/speakup/soft/rate, pitch and punc_level). Verified on Ubuntu with
+rate 14, pitch 8, most: speechd.conf 40 / -20 / "most"; Fenrir 0.70 / 0.40 / most; Speakup
+sysfs read back 4 3 2. The scales differ per synthesizer: close, not identical. Orca and Cthulhu
+keep their own per-user rate, pitch and punctuation.
+WHAT THE EFI SIDE STILL HAS TO DO: write the file voice.conf (the five lines above, from the
+settings record: synthKey/synthVoice -> CHARON_SYNTH and CHARON_VOICE, rate, pitch, punctuation)
+next to speech.sh in each path - Debian: into the add-on archive as charon/voice.conf; Ubuntu:
+\charon-install\ubuntu\voice.conf so that it lands in /run/charon; ready images:
+\EFI\HAK\voice.conf on the new system's EFI partition. The three copy commands already take the
+file when it is there (CharonWsInstall.h:403, CharonWsInstall2.h:80, CharonWsInstall3.h:301).
+
+
+7. Desktops: what is set up, and what was run
+---------------------------------------------
+For every desktop (speech.sh:162-303): Orca, AT-SPI, Speech Dispatcher with eSpeak NG (or
+RHVoice), BRLTTY/BrlAPI/liblouis, event sounds, the environment variables of E2 in
+/etc/environment (read by pam_env for the console, X11, Wayland and the greeter), the reader's
+language from the system's locale, the sound card unmuted before the readers start
+(charon-unmute.service), the console reader as well (Speakup with espeakup, or Fenrir) so that
+the system speaks when the graphical session fails, and one sound card shared by both (E1).
+Sign-in screen: GDM gets screen-reader-enabled in its dconf database; LightDM's GTK greeter gets
+reader=orca and a11y-states=+reader (and the GSettings switch of slick-greeter and
+arctica-greeter); SDDM has no screen reader support, so LightDM replaces it (Plasma, LXQt) - when
+that fails it is now reported as a problem instead of a log line.
+
+  desktop     Debian 13            Ubuntu 26.04          Arch                 what is specific
+  i3 + I38    RUN, passed          RUN: installed only   RUN, passed          section 1, bug 2
+  Xfce        RUN (section 8)      not run (mirror)      not run              E3, LightDM GTK greeter
+  GNOME       not run              not run               not run              GDM dconf, Wayland only; Orca by GNOME's own setting
+  MATE        not run              not run               not run              dconf (org.mate ... at/visual), Brisk Menu fallback
+  Cinnamon    not run              not run               not run              dconf (org.cinnamon), slick-greeter
+  KDE Plasma  not run              not run               not run              SDDM -> LightDM; X11 session where packaged (Debian kwin-x11, Ubuntu plasma-session-x11); Arch: Wayland only
+  LXQt        not run              not run               not run              SDDM -> LightDM; autostart entry
+  console     RUN, passed          RUN, passed           RUN, passed          Fedora too (Fenrir from source)
+
+"RUN, passed" for i3 + I38 means, measured after the restart that ends the first start:
+graphical.target; LightDM active; at the sign-in screen Orca, at-spi-bus-launcher,
+speech-dispatcher with sd_rhvoice and PipeWire running as the user lightdm and PipeWire holding
+the card (Arch: PCM RUNNING, owner pipewire of lightdm); the console reader switched to that sound
+server; after signing the test user in (a test-only LightDM autologin - not part of the scripts)
+i3, Cthulhu, speech-dispatcher and PipeWire as that user, the sink present, spd-say rc 0 with the
+card RUNNING. Nobody typed a password at the greeter or listened.
+Not set up at all (stated, not hidden): screen lock and blanker settings of the desktops (GNOME's
+and Xfce's lock screens are left as shipped); first-run wizards (gnome-initial-setup, Plasma's and
+Ubuntu's welcome) are neither disabled nor tested with speech; the Wayland/X11 choice is made
+only for Plasma. No desktop was removed from the dialogue: none of the untested ones is known to
+be silent, but none of them is proven either.
+
+
+8. What was executed, per system
+--------------------------------
+Every run starts from the snapshot "pristine" of the official image. "first start" =
+firstboot.sh setup ... and firstboot.sh done, as Charon's cloud-init seed runs them.
+
+Arch (cloud image of 2026-11, kernel 7.3.4 -> 7.3.5)
+  r408 scripts, first start (fenrir cthulhu orca,cthulhu,speakup,fenrir,emacspeak graphical
+    i3-wm,lightdm,lightdm-gtk-greeter no): 5 min 13 s. Result: cthulhu yes, I38 config yes,
+    emacspeak MISSING ("could not be installed"), Fenrir running but "sound unavailable ... dial
+    unix /run/pulse/native: no such file", 10 packages left out of date, kernel not upgraded.
+  r409 scripts, first start with voice.conf (rhvoice, voice alan, rate 11) and
+    "fenrir linda orca,cthulhu,linda,speakup,fenrir,emacspeak graphical i3-wm,... no":
+    9 min 29 s, speech.problems empty. Installed: orca 51.2, cthulhu 2026.10.31 (Stormux),
+    fenrir 2026.10.31 (Stormux), i38lock, tclx + emacspeak 60.0 (AUR, built as charon-build),
+    rhvoice 1.16.5 with rhvoice-voice-alan, I38 config for the user, LightDM. "done": said the
+    kernel was updated and restarted. After the restart, measured at the real sign-in screen (no
+    automatic sign-in): kernel 7.3.5, graphical.target; as the user lightdm: lightdm-gtk-greeter,
+    orca, speech-dispatcher with sd_rhvoice, pipewire, wireplumber, pipewire-pulse; pipewire and
+    wireplumber hold /dev/snd; Fenrir's driver "pulse" and its sound command rc 0 with the PCM
+    RUNNING. Then, with a test-only LightDM autologin: i3, Linda (after its build finished),
+    PipeWire, no i38lock at start, the reader started through charon-reader.
+    Emacspeak: `emacspeak -nw` in a pseudo-terminal as the user starts
+    "/usr/bin/tclsh .../emacspeak/servers/espeak" (its eSpeak speech server). Not listened to.
+Debian 13.8
+  r408 scripts, same arguments: no Cthulhu after the first start (built at the second start
+    only); in the i3 session of the second start Orca with a speech-dispatcher that could not
+    open any audio device ("ALSA ERROR: Cannot open audio device default (Permission denied)",
+    spd-say timed out); "unable to open file '/etc/dconf/db/local'" from every program.
+  r409 scripts, Polish locale (pl_PL.UTF-8), voice.conf (rhvoice, voice natan, rate 12, pitch 9,
+    most), "fenrir cthulhu orca,cthulhu,speakup,fenrir,emacspeak graphical i3-wm,... no":
+    15 min 32 s, speech.problems empty. Installed: orca 48.1, fenrir 2025.0.2 (Python), emacspeak
+    53 + emacspeak-espeak-server, rhvoice 1.14 (non-free switched on) with RHVoiceDefaultVoice
+    "Natan", DefaultLanguage "pl", DefaultRate 20, DefaultPitch -10, DefaultPunctuationMode
+    "most"; Cthulhu built from source by the service started in the same first start. After
+    "done", at the real sign-in screen: graphical.target; lightdm-gtk-greeter, orca,
+    speech-dispatcher with sd_rhvoice and PipeWire as lightdm, PipeWire holds the card, Fenrir's
+    sound command rc 0 with the PCM RUNNING. In an earlier r409 run (English), with the test-only
+    autologin and after a restart: i3, Cthulhu, PipeWire sink "HD Audio Controller Analog Stereo",
+    spd-say -o rhvoice and -o espeak-ng rc 0 with the PCM RUNNING, rhvoice.log "Audio output
+    initialized". Emacspeak's eSpeak server process starts (as on Arch).
+    A bug of this round found by the Polish locale and fixed: the Python Fenrir's rate and
+    pitch were written as "0,60" (awk used the locale's decimal comma); now LC_ALL=C
+    (speech.sh:797-798). The fix was made after this run; the corrected line was not run again
+    in a Polish system.
+  Xfce (task-xfce-desktop), r409:
+    first start with network.conf (Ethernet, DHCP) and "speakup orca orca,speakup graphical
+    task-xfce-desktop no": 7 min 39 s, speech.problems empty; network.sh wrote
+    /etc/netplan/90-charon.yaml before the first download. At the real sign-in screen:
+    graphical.target, lightdm-gtk-greeter, orca and speech-dispatcher as lightdm, PulseAudio (which
+    Debian's Xfce brings, not PipeWire) holds the card. With the test-only autologin: xfce4-session,
+    xfce4-panel, at-spi-bus-launcher, orca (started by charon-reader), speech-dispatcher;
+    xfconf-query -c xfce4-session -p /general/StartAssistiveTechnologies = true;
+    the panel's environment holds QT_ACCESSIBILITY=1, QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1,
+    GNOME_ACCESSIBILITY=1, ACCESSIBILITY_ENABLED=1 (and Debian's own GTK_MODULES=gail:atk-bridge);
+    spd-say rc 0 with the PCM RUNNING.
+    Two more bugs showed here, both older than this round, both fixed and re-run on this machine:
+    (a) `firstboot.sh done` used "systemctl isolate graphical.target". Isolating stops what the
+        target does not pull in; Debian's espeakup.service is wanted by sound.target only, so
+        Speakup's voice was stopped the moment the sign-in screen came up (measured: espeakup
+        "inactive (dead)" 4 s after the switch). Now "systemctl start graphical.target"
+        (firstboot.sh:77-81); re-run: lightdm active and espeakup active.
+    (b) Speakup's espeakup and eSpeak NG play through ALSA. While a sound server has the card,
+        root's ALSA default "sysdefault" answers "Device or resource busy" (measured with aplay),
+        and real PulseAudio refuses root altogether ("Access denied") without its owner's cookie
+        - so Speakup was silent whenever anybody, even the sign-in screen, had a session, and
+        Fenrir could not use a PulseAudio server either. charon-audio-share now keeps a copy of
+        the server's cookie for the readers (PULSE_COOKIE) and points root's ALSA default at the
+        sound server through ALSA's pulse plug-in while one has the card (libasound2-plugins /
+        alsa-plugins / alsa-plugins-pulseaudio are installed for it), speech.sh "setlink".
+        Re-run: aplay as root rc 0 while the greeter's, then the user's, PulseAudio holds the
+        card; espeakup active. NOT verified: espeakup's own sound (it speaks only what is on the
+        text console in front, and nobody listened).
+
+Ubuntu 26.04.1
+  r409 scripts (an earlier state of this round), "speakup orca orca,speakup,fenrir,emacspeak,
+    rhvoice graphical i3-wm,lightdm,lightdm-gtk-greeter no": completed, speech.problems empty:
+    orca 50.1, espeakup enabled and active with speakup loaded, fenrir (switched off, as asked),
+    emacspeak 53 with tclespeak.so, rhvoice 1.14.0-3 (multiverse) as DefaultModule, I38 config,
+    LightDM. Then speech.sh again with voice.conf: section 6. NOT done on Ubuntu: a restart, the
+    sign-in screen, a session; the Xfce run (xubuntu-desktop) was given up after 47 minutes -
+    archive.ubuntu.com delivered 30 to 70 kB/s to this host ("Pobrano 20,5 MB w 11min 12s").
+Fedora 45 (SELinux enforcing)
+  r409 scripts, "fenrir none fenrir,emacspeak graphical none no" with voice.conf rhvoice:
+    2 min 37 s. kernel-modules installed, HDA sound card present; emacspeak 60.0; Fenrir built
+    from source by its service (finished about a minute later), fenrirscreenreader.service
+    active, Fenrir and Speech Dispatcher's module hold /dev/snd, driver "alsa"; the one problem
+    "RHVoice is not packaged for Fedora: eSpeak NG speaks instead" logged, in speech.problems and
+    passed to charon_say. No desktop on Fedora (the dialogue offers none).
+All four: tools/charon-os is not touched by any of this.
+
+
+8a. The network chosen in Charon (new: src/linux/network.sh)
+-----------------------------------------------------------
+How Charon connects today (src/efi/CharonWsNet.h): Ethernet or Wi-Fi through the firmware's
+drivers, DHCP only; Wi-Fi WPA2-PSK through the firmware's supplicant; enterprise networks are
+refused ("Sieci firmowe z logowaniem 802.1X nie są obsługiwane"). The passphrase is typed into a
+static buffer and wiped (memset) as soon as the firmware has taken it: it is NOT kept anywhere,
+so today nothing could hand it to an installed system. No install path gets any network
+configuration from Charon: Debian's preseed says netcfg/choose_interface auto, Ubuntu's and
+Arch's kernel lines say ip=dhcp / ip=:::::eth0:dhcp, the ready images' seed has no
+network-config (cloud-init's default: DHCP on the wired adapter).
+
+Script side, done and tested: network.sh (300 lines; compiled in as networkScript, written to
+\EFI\HAK\network.sh of a ready image and copied by its first start, CharonWsInstall3.h:301,441).
+  network.sh apply   reads /var/lib/charon/network.conf (mode 600, root):
+      CHARON_NET_TYPE ethernet|wifi      CHARON_NET_MAC aa:bb:cc:dd:ee:ff (may be empty)
+      CHARON_NET_METHOD dhcp|static      CHARON_NET_ADDRESS 192.168.1.10/24
+      CHARON_NET_GATEWAY                 CHARON_NET_DNS a,b        CHARON_NET_PROXY http://host:port
+      CHARON_WIFI_SSID                   CHARON_WIFI_SECURITY open|wpa-psk|enterprise
+      CHARON_WIFI_PSK (8..63 characters, or 64 hex digits)        CHARON_WIFI_COUNTRY PL, US ...
+    and writes the connection for the network manager the system has:
+      NetworkManager - a keyfile /etc/NetworkManager/system-connections/charon-TYPE.nmconnection,
+        600 root, autoconnect (https://networkmanager.dev/docs/api/latest/nm-settings-keyfile.html);
+      netplan - /etc/netplan/90-charon.yaml, 600 (https://netplan.readthedocs.io/en/stable/netplan-yaml/),
+        checked with `netplan generate` before `netplan apply`;
+      systemd-networkd - /etc/systemd/network/05-charon.network, and for Wi-Fi iwd's
+        /var/lib/iwd/SSID.psk, 600 (https://iwd.wiki.kernel.org/networkconfigurationsettings).
+    Wi-Fi: the WPA2 key is computed from the passphrase (PBKDF2) and stored instead of it; the
+    passphrase is removed from network.conf after a successful apply and from the EFI partition
+    by firstboot.sh; it is written to no log. The regulatory domain goes to
+    /etc/modprobe.d/charon-regdom.conf (cfg80211 ieee80211_regdom), netplan's regulatory-domain
+    and iwd's Country. Missing pieces are installed when a network is there (wpasupplicant / iwd /
+    NetworkManager-wifi, iw, the adapters' firmware: Debian firmware-iwlwifi, firmware-realtek,
+    firmware-atheros, firmware-brcm80211, firmware-misc-nonfree with the component
+    non-free-firmware switched on; Ubuntu, Arch, Fedora linux-firmware). What cannot be done yet
+    is a spoken/printed problem and is tried again at every start (charon-network.service).
+    Enterprise Wi-Fi: refused with a message, exit 3, nothing written (for the administrator layer).
+  network.sh wait N  a default route and a name server that answers.
+  firstboot.sh:102-126: apply, then wait - six seconds, then up to five minutes with a double
+    tone every ten seconds and a sentence (spoken only when a synthesizer is already installed) -
+    before any package is fetched; the old retry at the next start stays.
+Tested for real (VMs):
+  - Ethernet with DHCP, bound to the adapter's address: applied on Fedora (NetworkManager),
+    Debian (netplan) and Arch (systemd-networkd); the network stayed usable.
+  - Wi-Fi with WPA2 on the kernel's simulated radios (mac80211_hwsim) against a hostapd access
+    point whose name is `Dom Kowalskich "5G" ąę` and whose passphrase holds quotes, a dollar sign
+    and a backslash: Debian 13 (netplan, wpa_supplicant) - connected in 5 s, the access point
+    logged AP-STA-CONNECTED and EAPOL-4WAY-HS-COMPLETED; Fedora 45 (NetworkManager) - the access
+    point logged "WPA: pairwise key handshake completed (RSN)", NetworkManager's supplicant state
+    "completed" (then waiting for an address: the test access point has no DHCP server).
+  - Files only (the system's own tool accepted them): a static address on Fedora (nmcli reads back
+    manual 192.168.50.10/24, gateway, two name servers) and Debian (netplan generate; the
+    generated networkd file has Address, Gateway, DNS); open Wi-Fi on all three; on Arch the iwd
+    file (name "=446f6d...psk" for a name with other characters, PreSharedKey equal to the
+    independently computed key). The key stored by NetworkManager, netplan/wpa_supplicant and
+    iwd equals PBKDF2(passphrase, name) computed separately. Refusals: enterprise rc 3, a short
+    passphrase rc 2, a static address without prefix and gateway rc 2.
+  - First start with a network.conf (Ethernet, DHCP): the Debian Xfce run of section 8.
+NOT tested: Wi-Fi with iwd actually associating (iwd took both simulated radios; file-validated
+only); Ubuntu (same netplan as Debian, not run); a real Wi-Fi adapter; a proxy; the wait when
+there really is no network; a desktop's NetworkManager taking over from netplan/networkd after
+the desktop is installed (on Debian and Ubuntu images the connection stays with netplan and
+systemd-networkd, where NetworkManager shows the adapter as unmanaged).
+The hard limit, stated plainly: the ready images contain no wpa_supplicant, no iwd and no Wi-Fi
+firmware (checked on all four images). On a machine with Wi-Fi only, the first start therefore
+has no network to fetch them with; network.sh says so ("connect a network cable once") and
+finishes at the first start that has a network. Only Charon putting those packages onto the
+disk, or an image that has them, removes this limit.
+
+WHAT THE EFI SIDE STILL HAS TO DO (nothing of this was changed; CharonWsNet.h and the generators
+are being edited by others):
+  1. Keep what the user chose: adapter address, Ethernet or Wi-Fi, the network's name, security,
+     and the passphrase (today wiped in WifiJoin) - in memory only, in a buffer that is cleared
+     after the answer files are written; never in the settings record, a saved answer set or a
+     trace. The country from Charon's language/region setting.
+  2. Ready images: write \EFI\HAK\network.conf (the fields above) beside network.sh; it must be on
+     the list of files that are never copied to other media (the \EFI\HAK exclusion list).
+  3. Debian (https://www.debian.org/releases/trixie/example-preseed.txt, appendix B.4.2): in the
+     preseed that is already inside the initrd - d-i netcfg/choose_interface select IFACE,
+     d-i netcfg/wireless_essid string NAME, d-i netcfg/wireless_security_type select wpa,
+     d-i netcfg/wireless_wpa string PASSPHRASE; for a static address netcfg/disable_autoconfig
+     boolean true, netcfg/get_ipaddress, netcfg/get_netmask, netcfg/get_gateway,
+     netcfg/get_nameservers, netcfg/confirm_static boolean true. Checked: the netboot installer
+     Charon starts does contain wpasupplicant-udeb and nic-wireless-modules (MANIFEST.udebs of
+     trixie, netboot and netboot/gtk) but no firmware (manual 6.4), so Wi-Fi works there only
+     with adapters that need none, unless Debian's firmware.cpio.gz (497 MB,
+     https://cdimage.debian.org/cdimage/firmware/trixie/current/) is appended to the initrd.
+     The installer itself saves the connection it used into the installed system.
+  4. Ubuntu (https://canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html,
+     "network": netplan version 2, wifis / access-points / password; it is applied in the
+     installer and copied to the installed system). But Charon starts Ubuntu's installer from
+     the network (ip=dhcp iso-url=...): the initial RAM disk fetches the ISO before any Wi-Fi
+     can exist, so this path needs a cable; Wi-Fi would need the ISO on a disk or stick.
+  5. Arch started from the network: the same - the initial RAM disk fetches the system over a
+     cable (ip=...); once it runs, iwd is there (iwctl --passphrase PASS station wlan0 connect
+     NAME, or a file /var/lib/iwd/NAME.psk as network.sh writes it).
+  6. Fedora: Charon uses no kickstart; the ready image is served by network.conf (item 2).
+
+
+9. Host checks
+--------------
+- sh -n and bash -n (Git Bash) on src/linux/*.sh: no errors. shellcheck is not installed.
+- tools/gen-charon-linux-scripts.py (now six scripts: network.sh added): PASS;
+  src/efi/CharonLinuxScripts.h regenerated from src/linux.
+- tools/charon-os/tests/run-tests.py (Python 3.15): 108 passed, 0 failed (as before).
+- The boot unit with the edited headers: clang++ (work/llvm-23.1.5) -fsyntax-only
+  src/efi/HAKBootEFI.cpp with Charon's flags (-Wall -Wextra -Werror, -DHAK_CHARON_HTTPS): no
+  diagnostics. No object, no EFI image was built.
+NEEDS A REBUILD to take effect: the Charon boot manager (HAKBOOT.EFI) - the scripts are compiled
+in through CharonLinuxScripts.h, and CharonWsInstall.h, CharonWsInstall2.h, CharonWsInstall3.h and
+CharonWsReaders.h changed.
+
+
+10. Still unproven or open
+--------------------------
+- A full Debian installation (preseed) and a full Ubuntu installation (autoinstall): speech.sh
+  runs there in a chroot (CHARON_CHROOT=1); the I38 clone as the new user, the deferred builds
+  and D1/U1/U2 were not run in an installer.
+- Charon writing a ready image and its seed: the cloud-init user-data edits (quoting, voice.conf,
+  grub2-mkconfig) were compiled, not run.
+- Findings of the answer-file audit that were NOT changed (they need dialogue or disk logic and a
+  test in the firmware): Debian "use the free space" takes the biggest gap of ANY disk
+  (partman-auto biggest_free: https://salsa.debian.org/installer-team/partman-auto/-/raw/master/automatically_partition/biggest_free/choices);
+  Ubuntu's use_gap with match size: largest likewise (subiquity/server/controllers/storage.py);
+  Debian's netboot installer carries no firmware and "non-free firmware" only enables the
+  component (https://www.debian.org/releases/trixie/amd64/ch06s04.en.html) - firmware-linux,
+  firmware-sof-signed, firmware-iwlwifi, firmware-realtek, firmware-misc-nonfree exist in
+  trixie/non-free-firmware and are not installed; the Arch netboot line names eth0
+  (ip=:::::eth0:dhcp; Arch's own script uses ip=dhcp with BOOTIF); the full name is not cleaned
+  of quotes and colons; Debian's URLs say dists/stable.
+- GNOME, MATE, Cinnamon, KDE Plasma, LXQt: nothing run (section 7). Typing a password at a
+  sign-in screen with speech: not done on any system (the sessions were entered by a test-only
+  automatic sign-in).
+- The last version of speech.sh (cookie, ALSA default, one reader start) was run on Debian only
+  (Xfce) and, for the single reader start and Linda, on Arch; Fedora and Ubuntu ran earlier
+  states of this round. A final clean run of all four with the final files was not made.
+- Emacspeak speaking on console 1; Speakup audible; braille; real sound hardware; Secure Boot.
+- Orca's and Cthulhu's own voice, rate and punctuation from Charon's settings (sections 5, 6).
+- Fedora stays "no speech" in the dialogue although Fenrir can be built there (F5).
+- Linda in Wayland sessions (no linda-keyd package to install).
+- speech.sh grew from 481 to 1021 lines (80 kilobytes); network.sh adds 300 (19 kilobytes). Both travel inside the
+  boot manager and onto the new system's EFI partition.
+- Wi-Fi-only machines and ready images; the EFI side of the network and of voice.conf (8a, 6).
+
+
+Sources
+-------
+https://stormux.org/  https://stormux.org/downloads/  https://stormux.org/add-stormux.sh
+https://packages.stormux.org/x86_64/stormux.db (cthulhu, fenrir, i38, i38lock, yay)
+https://git.stormux.org/storm/cthulhu  https://git.stormux.org/storm/fenrir  https://git.stormux.org/storm/I38
+https://aur.archlinux.org/packages/emacspeak  https://aur.archlinux.org/packages/tclx  (PKGBUILD, .SRCINFO)
+https://wiki.archlinux.org/title/System_maintenance  https://wiki.archlinux.org/title/Pacman/Package_signing
+  https://wiki.archlinux.org/title/Makepkg  (the wiki refused automated reading on 2026-11-23:
+  these three pages are cited from knowledge of their content, not re-read)
+https://github.com/Mudb0y/linda (readme.md)  https://github.com/RHVoice/RHVoice (doc/en/Configuration-file.md)
+https://www.debian.org/releases/trixie/example-preseed.txt  https://www.debian.org/releases/trixie/amd64/apbs04.en.html
+https://canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html
+https://raw.githubusercontent.com/canonical/cloud-init/main/doc/rtd/reference/datasources/nocloud.rst
+https://docs.fedoraproject.org/en-US/quick-docs/grub2-bootloader/
+https://docs.xfce.org/xfce/xfce4-settings/accessibility  https://gitlab.xfce.org/xfce/xfce4-session (xfsm-manager.c)
+https://chromium.googlesource.com/chromium/src/+/refs/heads/main/ui/accessibility/platform/atk_util_auralinux.cc
+Package indexes: deb.debian.org/debian/dists/trixie, archive.ubuntu.com/ubuntu/dists/resolute,
+geo.mirror.pkgbuild.com/{core,extra}/os/x86_64, dl.fedoraproject.org/pub/fedora/linux/{releases,updates}/45

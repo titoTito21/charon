@@ -30,7 +30,7 @@ import subprocess
 import sys
 
 PROGRAM = 'charon-bootmanager'
-RELEASE = 'r408'
+RELEASE = 'r409'
 EFI_GUID = '8be4df61-93ca-11d2-aa0d-00e098032b8c'
 CHARON_NAMES = ('Charon', 'Charon czytnik')            # the installers' boot entry descriptions
 CHARON_FILES = ('\\efi\\hak\\hakboot.efi', '\\efi\\hak\\shimx64.efi', '\\efi\\hak\\grubx64.efi')

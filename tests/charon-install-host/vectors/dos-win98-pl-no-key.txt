@@ -1,0 +1,10 @@
+# CharonDOS, Polish, Windows 98 from a disc with Window-Eyes and a product key.
+lang=pl
+flow=dos
+arg profile=WIN98
+arg reader=we20demo
+arg medium=SETUP.ISO
+arg setup_auto=1
+arg setup_key=ABCDE12345FGHIJ67890KLMNO
+arg setup_name=Uzytkownik
+arg setup_computer=DOM

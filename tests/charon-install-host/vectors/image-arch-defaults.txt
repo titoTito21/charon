@@ -1,0 +1,7 @@
+# Ready image (arch), express mode, Enter at every question.
+lang=en
+flow=image
+mode=quick
+arg entry=2
+keys=ENTER ENTER "test" ENTER "test" ENTER
+keys=ENTER ENTER

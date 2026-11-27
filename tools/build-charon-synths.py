@@ -13,6 +13,10 @@ work/lzma-sdk-dl/lzma2606.7z (LZMA SDK 26.06, public domain), and
 work/rhvoice-dl/RHVoice (git checkout of RHVoice 1.18.5, core.autocrlf=false,
 with the submodules data/languages/{Polish,English} and data/voices/{natan,slt}),
 work/rhvoice-dl/{lgpl-2.1.txt,cmu_us_slt_arctic-COPYING.txt} (licence texts),
+r409: the other Polish and English voices listed in src/synth/rhvoice/VOICES.tsv:
+git clones of their repositories at the commits RHVoice 1.18.5 pins, in
+work/rhvoice-voices-r409/download/<repository> (CHARON_RHVOICE_VOICES), and
+download/meta/cc-by-4.0-legalcode.txt (creativecommons.org),
 work/llvm-src-dl/llvm-project-23.1.5.src.tar.xz (libc++/libc++abi/libunwind).
 --test runs the staged .tts files in tts-host-loader and compares their audio
 sample by sample with hosted builds of the same engine sources. Archives are
@@ -29,6 +33,8 @@ from concurrent.futures import ThreadPoolExecutor
 import hashlib, json, lzma, os, re, shutil, struct, subprocess, sys, tarfile, zipfile
 
 root = Path(__file__).resolve().parents[1]           # outputs/nvda-haiku
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import charon_private_paths
 container = root.parents[1]                          # kont
 work = container / 'work'
 llvm = Path(os.environ.get('CHARON_LLVM', work / 'llvm-23.1.5/bin'))
@@ -145,9 +151,16 @@ def musl_sources():
         out += sorted(arch_files.values())
     return out
 
+_private_map = []
+def PRIVATE_MAP():
+    if not _private_map:
+        _private_map.extend(charon_private_paths.prefix_map((build, 'build'), (root, 'charon'), (work, 'work'), (container, 'host')))
+    return _private_map
+
 def compile_c(source, output, flags, compiler=None):
     compiler = compiler or (clangxx if str(source).endswith('.cpp') else clang)
-    run([compiler, *flags, '-c', source, '-o', output]); return output
+    # r410: no absolute path of the build computer in __FILE__ strings or debug information.
+    run([compiler, *flags, *PRIVATE_MAP(), '-c', source, '-o', output]); return output
 
 def build_libc():
     out = build / 'libc'; out.mkdir()
@@ -338,8 +351,10 @@ def link_module(name, objects, keep_eh=False, constructors=False):
         report_eh = add_eh_frame_relocations(elf)
         (out / 'eh-relocations.json').write_text(json.dumps(report_eh))
     tts = out / (name + '.tts')
-    run([imagetool, 'GenImage', '-c', 'PE', '-t', 'UEFI_DRIVER', '-b', '0x100000', '-o', tts, elf])
+    # r410: bare names (ImageTool copies the ELF's path, as given, into the PE debug entry).
+    run([imagetool, 'GenImage', '-c', 'PE', '-t', 'UEFI_DRIVER', '-b', '0x100000', '-o', tts.name, elf.name], cwd=out)
     harden(tts)
+    charon_private_paths.check(tts)
     report = verify_pe(tts)
     (out / 'pe.json').write_text(json.dumps(report, indent=2))
     return tts, report
@@ -391,10 +406,13 @@ def zlib_crc(data):
     import zlib
     return zlib.crc32(data) & 0xffffffff
 
-def manifest(path, fields, voices, tts, abi=2):
+def manifest(path, fields, voices, tts, abi=2, licences=None):
     lines = [f'# Charon synthesizer module manifest (CharonSynthModule.h, ABI {abi})', f'abi = {abi}']
     lines += [f'{k} = {v}' for k, v in fields]
     lines += [f'voice = {i} | {n} | {l}' for i, n, l in voices]
+    # r409: the licence of each voice's data (Charon ignores keys it does not know;
+    # "non-commercial" marks voices that may not be used commercially).
+    if licences: lines += [f'voice-licence = {i} | {licences[i]}' for i, _, _ in voices]
     lines.append(f'sha256 = {sha256(tts)}')
     path.write_text('\n'.join(lines) + '\n', encoding='utf-8', newline='\n')
 
@@ -546,7 +564,30 @@ def build_cxx_runtime():
 
 # ================================================================ RHVoice
 RHVOICE_LANGUAGES = {'Polish': {'license'}, 'English': set()}   # names left out of the data pack
-RHVOICE_VOICES = {'natan': 'Natan', 'slt': 'Slt'}
+# r409: every Polish and English voice (src/synth/rhvoice/VOICES.tsv is the one list; the
+# module's table in rhvoice_module.cpp is checked against it). Base voices live in their
+# language's pack, each other voice in its own pack <charon_id>.chsp.
+VOICES_TSV = synth / 'rhvoice/VOICES.tsv'
+VOICE_DOWNLOADS = Path(os.environ.get('CHARON_RHVOICE_VOICES', work / 'rhvoice-voices-r409/download'))
+def load_voice_rows():
+    lines = [l for l in VOICES_TSV.read_text(encoding='utf-8').splitlines() if l and not l.startswith('#')]
+    header = lines[0].split('\t')
+    return [dict(zip(header, l.split('\t'))) for l in lines[1:]]
+VOICE_ROWS = load_voice_rows()
+RHVOICE_VOICES = {r['voice_dir']: r['rhvoice_name'] for r in VOICE_ROWS if r['base_pack'] == 'yes'}
+EXTRA_VOICES = [r for r in VOICE_ROWS if r['base_pack'] != 'yes']
+assert list(RHVOICE_VOICES) == ['natan', 'slt'] and [r['charon_id'] for r in VOICE_ROWS[:2]] == ['rhvoice-natan', 'rhvoice-slt']
+assert len(VOICE_ROWS) <= 16, 'CharonSynthModule.h: voiceCount <= 16'
+def voice_source(row):
+    """The voice's data directory: the RHVoice checkout's submodule when it is populated, else the clone."""
+    d = RHVOICE / 'data/voices' / row['voice_dir']
+    if not (d / 'voice.info').exists(): d = VOICE_DOWNLOADS / row['repository'].rsplit('/', 1)[1]
+    assert (d / 'voice.info').exists(), ('voice data missing', row['charon_id'], d)
+    head = subprocess.run(['git', '-C', str(d), 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
+    assert head == row['commit'], ('voice commit', row['charon_id'], head, row['commit'])
+    info = dict(l.split('=', 1) for l in (d / 'voice.info').read_text(encoding='utf-8').split())
+    assert info['name'] == row['rhvoice_name'] and info['language'] == row['rhvoice_language'] and info['format'] == '4', (row['charon_id'], info)
+    return d
 RHVOICE_RATE = '16000'   # one quality level; RHVoice falls back to it when 24 kHz is absent
 
 def hts_plane_ranges(data):
@@ -580,6 +621,17 @@ def rhvoice_data_files():
             raw = p.read_bytes()
             files.append((f'data/voices/{voice}/{rel}', raw, hts_plane_ranges(raw) if rel.endswith('voice.data') else []))
     return files, skipped
+
+def rhvoice_voice_files(row):
+    """One voice's files, relative to its directory (the layout of its own pack)."""
+    vdir = voice_source(row); files = []
+    for rel in ('voice.info', 'voice.params', f'{RHVOICE_RATE}/voice.data', f'{RHVOICE_RATE}/bpf.txt', f'{RHVOICE_RATE}/eq.txt'):
+        p = vdir / rel
+        if not p.exists(): continue
+        raw = p.read_bytes()
+        files.append((rel, raw, hts_plane_ranges(raw) if rel.endswith('voice.data') else []))
+    assert any(f[0].endswith('voice.data') for f in files), row['charon_id']
+    return files
 
 def rhvoice_sources():
     tree = src / 'rhvoice'; tree.mkdir()
@@ -623,6 +675,12 @@ def build_rhvoice():
                              '-I' + str(synth / 'common')]))
     objects.append(compile_c(synth / 'common/synth_ctors.c', out / 'glue-ctors.o', target + codegen + libc_public + ['-std=c11']))
     tts, report = link_module('rhvoice', objects + [cxxrt] + libc_objects, keep_eh=True, constructors=True)
+    module_source = (synth / 'rhvoice/rhvoice_module.cpp').read_text(encoding='utf-8')
+    for r in VOICE_ROWS:   # the module's table and VOICES.tsv name the same voices
+        assert f'{{"{r["charon_id"]}", ' in module_source and f', "{r["rhvoice_name"]}", ' in module_source, ('module table', r['charon_id'])
+        assert r['base_pack'] == 'yes' or f'"/{r["charon_id"]}.chsp"' in module_source, ('module pack', r['charon_id'])
+    assert module_source.count('{"rhvoice-') == len(VOICE_ROWS), 'module table has other voices than VOICES.tsv'
+    for r in VOICE_ROWS: voice_source(r)   # pinned commits, also of the base voices
     files, skipped = rhvoice_data_files()
     # One pack per voice: its language and its voice (ABI 2 Prepare loads one).
     groups = {'rhvoice-pl.chsp': ('data/languages/Polish/', 'data/voices/natan/'),
@@ -631,11 +689,19 @@ def build_rhvoice():
     assert sum(v['files'] for v in per.values()) == len(files)
     stats = dict(raw=sum(v['raw'] for v in per.values()), packed=sum(v['packed'] for v in per.values()), packs=per)
     stats['skipped'] = skipped
+    # r409: one pack per further voice.
+    extra_files = {r['charon_id']: rhvoice_voice_files(r) for r in EXTRA_VOICES}
+    extra = dict(zip(extra_files, parallel(lambda i: write_pack(out / f'{i}.chsp', extra_files[i]), list(extra_files), workers=4)))
+    stats['packs'].update({f'{i}.chsp': v for i, v in extra.items()})
+    stats['raw'] += sum(v['raw'] for v in extra.values()); stats['packed'] += sum(v['packed'] for v in extra.values())
+    stats['base_packed'] = sum(v['packed'] for v in per.values()); stats['extra_packed'] = sum(v['packed'] for v in extra.values())
+    for r in EXTRA_VOICES:   # the hosted reference build reads the plain files
+        files += [(f'data/voices/{r["voice_dir"]}/{rel}', raw, ranges) for rel, raw, ranges in extra_files[r['charon_id']]]
     upstream = [RHVOICE / 'data/languages' / l for l in RHVOICE_LANGUAGES] + [RHVOICE / 'data/voices' / v for v in RHVOICE_VOICES]
     stats['upstream_bytes'] = sum(p.stat().st_size for d in upstream for p in d.rglob('*') if p.is_file() and '.git' not in p.parts)
     results['rhvoice'] = dict(pe=report, pack=stats)
     host_inputs['rhvoice'] = dict(tree=s, cxx=cxx_sources, c=c_sources, files=files, config=cfg)
-    return tts, [out / g for g in groups]
+    return tts, [out / g for g in groups] + [out / f'{r["charon_id"]}.chsp' for r in EXTRA_VOICES]
 
 # EFI headers are included as <efi/...> (as in build-charon-windows.py).
 shutil.copytree(root / 'src/efi/haiku', build / 'include/efi')
@@ -651,8 +717,9 @@ MANIFESTS = {
                [('espeak-pl', 'eSpeak NG polski', 'pl'), ('espeak-en', 'eSpeak NG English', 'en')]),
     'rhvoice': ([('name', 'RHVoice'), ('version', '1.18.5'), ('module', 'rhvoice.tts'), ('data', 'rhvoice'),
                  ('licence', 'GPL-2.0-or-later')],
-                [('rhvoice-natan', 'Natan', 'pl'), ('rhvoice-slt', 'Slt', 'en')]),
+                [(r['charon_id'], r['spoken_name'], r['language']) for r in VOICE_ROWS]),
 }
+BASE_VOICES = [(r['charon_id'], r['spoken_name'], r['language']) for r in VOICE_ROWS if r['base_pack'] == 'yes']
 
 LICENCES_TXT = '''Charon synthesizer modules (r393): licences
 ===========================================
@@ -683,9 +750,59 @@ rhvoice.tts + rhvoice/{{rhvoice-pl,rhvoice-en}}.chsp
   Voice data is shipped byte-identical to upstream (16 kHz model only), only
   losslessly compressed: LZMA, with a reversible float32 byte-plane
   reordering of the HTS pdf blocks in voice.data; every file is checked
-  against its CRC-32 after decompression. Neither voice has a
-  no-derivatives or non-commercial condition (Alan was not used because its
-  repository carries no licence statement).
+  against its CRC-32 after decompression. The two base voices have no
+  no-derivatives or non-commercial condition.
+
+rhvoice/rhvoice-<voice>.chsp: the other Polish and English voices (r409)
+  Optional data: rhvoice.tts offers a voice when its pack is present, and
+  any of these files may be deleted. Each pack holds one voice's files of
+  the 16 kHz model, byte-identical to its repository at the commit that
+  RHVoice 1.18.5 pins, compressed as above (no change to the model: the
+  packing is a technical format change, not an adaptation). Full list with
+  commits, versions and download addresses: RHVOICE-VOICES.txt.
+
+  NON-COMMERCIAL VOICES - Cezary (Polish), Evgeniy-Eng and Lyubov (English):
+  Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International
+  (licences/cc-by-nc-nd-4.0.txt, also licences/cezary-LICENSE.txt). They may be copied and shared unchanged,
+  with credit, for non-commercial purposes only; they may not be used
+  commercially or modified. Charon is distributed free of charge. Anyone who
+  wants to sell or commercially use a copy of Charon must first delete
+  rhvoice-cezary.chsp, rhvoice-evgeniy-eng.chsp and rhvoice-lyubov.chsp (or
+  obtain permission: rhvoice@tiflo.org for Evgeniy-Eng and Lyubov, see their
+  READMEs).
+    Cezary: Jan Staszczyk (speaker), Paulina Gajoch (initiative), Tomasz
+    Bilecki (audio editing), Zvonimir Stanecic (training, packaging).
+    licences/cezary-README.md
+    Evgeniy-Eng: Evgeny Chebatkov (speaker); RHVoice Lab: Artem Plaksin,
+    Sergey Parshakov, Denis Shishkin, Beka Gozalishvili.
+    licences/evgeniy-eng-README.md
+    Lyubov: Lyubov Sablina (speaker); RHVoice Lab: Artem Plaksin, Sergey
+    Parshakov, Beka Gozalishvili, Zvonimir Stanecic. licences/lyubov-README.md
+
+  Alicja, Magda (Polish): Creative Commons Attribution 4.0 International
+  (licences/cc-by-4.0.txt).
+    Alicja: Magdalena Marciniszyn (speaker), Arkadiusz Swietnicki
+    (initiative), Tomasz Bilecki (audio editing), Zvonimir Stanecic
+    (training, packaging). licences/alicja-README.md
+    Magda: Magda Roczen (speaker), Roman Roczen (audio editing), Grzegorz
+    Zlotowicz (training, packaging). licences/magda-README.md
+  Michal (Polish): CC0-1.0 / public domain (licences/michal-LICENSE.txt).
+    Michal Dziwisz (speaker), Tomasz Bilecki, Zvonimir Stanecic.
+    licences/michal-README.md
+  Dasha-Eng (English): Creative Commons Attribution-ShareAlike 4.0
+  International (licences/dasha-eng-LICENSE.txt). Copyright (C) 2026 Nikita
+  Tseykovets, Zvonimir Stanecic; Anton Chazov (audio editing).
+  licences/dasha-eng-README.md
+  Ksp (Indian English): CMU ARCTIC licence (licences/ksp-LICENSE.txt),
+  Carnegie Mellon University; RHVoice voice by Dorota Krac and Zvonimir
+  Stanecic. licences/ksp-README.md
+  Alan (Scottish English), Bdl, Clb (American English): their repositories
+  (github.com/RHVoice/alan-eng, bdl-eng, clb-eng) carry no licence file.
+  RHVoice's licence document (licences/rhvoice-License.md) lists
+  restrictions for some voices and none for these three, and RHVoice has
+  distributed them with the engine from its first releases; Debian files
+  them under RHVoice's GPL-2.0-or-later data. They are shipped here on that
+  basis, unchanged.
 
 Runtime parts in both modules
   musl 1.2.5 (MIT, licences/musl-COPYRIGHT.txt), LZMA SDK 26.06 LzmaDec
@@ -708,7 +825,8 @@ def stage(directory):
         shutil.copy(tts, synths / f'{name}.tts'); (synths / name).mkdir()
         for pack in packs: shutil.copy(pack, synths / name)
         fields, voices = MANIFESTS[name]
-        manifest(synths / f'{name}.manifest', fields, voices, synths / f'{name}.tts', abi=3 if name == 'espeak' else 2)   # r397: eSpeak has SetPersona
+        licences = {r['charon_id']: r['licence'] + (' | non-commercial' if r['non_commercial'] == 'yes' else '') for r in VOICE_ROWS} if name == 'rhvoice' else None
+        manifest(synths / f'{name}.manifest', fields, voices, synths / f'{name}.tts', abi=3 if name == 'espeak' else 2, licences=licences)   # r397: eSpeak has SetPersona
     lic = synths / 'licences'; lic.mkdir()
     sources = {'musl-COPYRIGHT.txt': musl / 'COPYRIGHT', 'lzma-sdk.txt': src / 'lzma-sdk/DOC/lzma-sdk.txt'}
     if 'espeak' in products: sources['espeak-ng-COPYING.txt'] = host_inputs['espeak']['tree'] / 'COPYING'
@@ -718,8 +836,48 @@ def stage(directory):
                         'natan-LICENSE.txt': RHVOICE / 'data/voices/natan/LICENSE',
                         'cmu_us_slt_arctic-COPYING.txt': work / 'rhvoice-dl/cmu_us_slt_arctic-COPYING.txt',
                         'slt-README.md': RHVOICE / 'data/voices/slt/README.md',
+                        'rhvoice-License.md': RHVOICE / 'doc/en/License.md',
+                        'cc-by-nc-nd-4.0.txt': RHVOICE / 'licenses/by-nc-nd-4.0.txt',
+                        'cc-by-4.0.txt': VOICE_DOWNLOADS / 'meta/cc-by-4.0-legalcode.txt',
                         'llvm-LICENSE.txt': src / 'llvm/llvm-project-23.1.5.src/libcxx/LICENSE.TXT'})
+    if 'rhvoice' in products:
+        for r in EXTRA_VOICES:   # r409: every further voice's own licence file and README (attribution)
+            d = voice_source(r); v = r['voice_dir']
+            for name in ('README.md', 'LICENSE', 'license'):
+                if (d / name).exists(): sources.setdefault(f'{v}-README.md' if name.endswith('.md') else f'{v}-LICENSE.txt', d / name)
+        assert sha256(sources['cc-by-4.0.txt']) == '9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411', 'CC BY 4.0 text'
     for k, p in sources.items(): shutil.copy(p, lic / k)
+    if 'rhvoice' in products:
+        # r409: the voice list for people (which file is which voice, its licence, where it came from),
+        # the machine-readable list, and what a package without the further voices consists of.
+        shutil.copy(VOICES_TSV, synths / 'rhvoice-voices.tsv')
+        sizes = {r['charon_id']: (synths / 'rhvoice' / f'{r["charon_id"]}.chsp').stat().st_size for r in EXTRA_VOICES}
+        text = ['RHVoice voices in Charon (r409)', '===============================', '',
+                'rhvoice.tts (RHVoice 1.18.5) offers every voice below whose data file is in',
+                'EFI\\HAK\\synths\\rhvoice\\. Natan and Slt are the defaults and belong to the two',
+                'language files (rhvoice-pl.chsp, rhvoice-en.chsp); every other voice is one',
+                'optional file that may be deleted (rhvoice.manifest then still lists it and',
+                'Charon speaks with the default voice of that language instead).',
+                'Licences: LICENCES.txt and licences\\. NON-COMMERCIAL: Cezary, Evgeniy-Eng, Lyubov',
+                '(CC BY-NC-ND 4.0) - free to copy unchanged for non-commercial purposes only.', '',
+                f'{"Voice":<12} {"Lang":<4} {"Version":<7} {"Licence":<21} {"File (bytes)":<36} Source', '-' * 118]
+        for r in VOICE_ROWS:
+            f = (f'rhvoice-{r["language"]}.chsp (with the language)' if r['base_pack'] == 'yes'
+                 else f'{r["charon_id"]}.chsp ({sizes[r["charon_id"]]})')
+            text.append(f'{r["rhvoice_name"]:<12} {r["language"]:<4} {r["version"]:<7} {r["licence"]:<21} {f:<36} {r["repository"]} @ {r["commit"][:12]}')
+        text += ['', 'RHVoice-unrestricted: no licence file in the voice repository; see LICENCES.txt.',
+                 'Names on other systems (Speech Dispatcher, Debian/Ubuntu, Arch, NVDA, SAPI 5): rhvoice-voices.tsv.', '']
+        (synths / 'RHVOICE-VOICES.txt').write_text('\r\n'.join(text), encoding='utf-8', newline='')
+        base = Path(directory).resolve() / 'rhvoice-base/EFI/HAK/synths'; base.mkdir(parents=True)
+        manifest(base / 'rhvoice.manifest', MANIFESTS['rhvoice'][0], BASE_VOICES, synths / 'rhvoice.tts', abi=2,
+                 licences={r['charon_id']: r['licence'] for r in VOICE_ROWS})
+        (Path(directory).resolve() / 'rhvoice-voice-pack.json').write_text(json.dumps(dict(
+            note='EFI/HAK/synths holds every voice. A package without the further voices leaves out extra_files '
+                 'and takes rhvoice.manifest from rhvoice-base/EFI/HAK/synths (the same module, two voices listed).',
+            base_files=['rhvoice.tts', 'rhvoice.manifest', 'rhvoice/rhvoice-pl.chsp', 'rhvoice/rhvoice-en.chsp'],
+            extra_files=[f'rhvoice/{r["charon_id"]}.chsp' for r in EXTRA_VOICES],
+            non_commercial_files=[f'rhvoice/{r["charon_id"]}.chsp' for r in EXTRA_VOICES if r['non_commercial'] == 'yes'],
+            extra_bytes=sum(sizes.values()), sizes=sizes), indent=2), encoding='utf-8', newline=NL)
     (synths / 'LICENCES.txt').write_text(LICENCES_TXT.format(espeak=ESPEAK_COMMIT, rhvoice=git_head(RHVOICE),
         natan=git_head(RHVOICE / 'data/voices/natan'), slt=git_head(RHVOICE / 'data/voices/slt')), encoding='utf-8', newline=NL)
     return synths
@@ -744,7 +902,12 @@ def host_tests(stage_dir):
         report[name] = {}
         # One process per scenario: each voice prepared alone (start/Prepare
         # time, memory of that voice), then both voices with WAV output.
-        for voices_arg, out in (('0', '-'), ('1', '-'), ('0,1', str(wavs))):
+        count = len(MANIFESTS[name][1])
+        scenarios = [('0', '-'), ('1', '-')]
+        if name == 'rhvoice':   # r409: each further voice alone (WAV <id>.wav), then stepping through all of them
+            scenarios += [(str(i), str(wavs)) for i in range(2, count)]
+            scenarios += [('@all', '-'), ('@' + ','.join(str(i) for i in list(range(count)) + [0, 5, 1, 9, 0, 3, 3, 12, 1, 0]), '-')]
+        for voices_arg, out in scenarios + [('0,1', str(wavs))]:
             result = subprocess.run([str(loader), str(Path(stage_dir).resolve()), name, out, voices_arg,
                                      symbols['synth_diagnostic'], symbols['synth_stderr_tail']], capture_output=True, text=True)
             log.write(result.stdout + result.stderr)
@@ -773,7 +936,8 @@ def host_tests(stage_dir):
         exe = tests / 'rhvoice-reference.exe'
         run([clangxx] + cxxf + [synth / 'host/rhvoice-reference.cpp'] + objs + ['-o', exe])
         run([exe, refdata / 'data', tests / 'rhvoice-config', 'Natan', sentences['pl'], tests / 'rhvoice-pl.raw',
-             'Slt', sentences['en'], tests / 'rhvoice-en.raw'])
+             'Slt', sentences['en'], tests / 'rhvoice-en.raw'] +
+            [a for r in EXTRA_VOICES for a in (r['rhvoice_name'], sentences[r['language']], tests / f'{r["charon_id"]}.raw')])
     for name in products:
         for lang in ('pl', 'en'):
             ref = __import__('array').array('h', (tests / f'{name}-{lang}.raw').read_bytes())
@@ -781,6 +945,12 @@ def host_tests(stage_dir):
             same = ref == mod
             report[name][f'reference_{lang}'] = dict(samples=len(mod), reference_samples=len(ref), identical=same)
             assert same, f'{name} {lang}: module audio differs from the hosted reference build'
+    if 'rhvoice' in products:   # r409: every further voice, sample for sample
+        for r in EXTRA_VOICES:
+            ref = __import__('array').array('h', (tests / f'{r["charon_id"]}.raw').read_bytes())
+            mod = wav_samples(wavs / f'{r["charon_id"]}.wav')
+            report['rhvoice'][f'reference_{r["charon_id"]}'] = dict(samples=len(mod), reference_samples=len(ref), identical=ref == mod)
+            assert ref == mod and len(mod) > 8000, f'{r["charon_id"]}: module audio differs from the hosted reference build'
     (Path(stage_dir).resolve() / 'test-wav/host-test-results.json').write_text(json.dumps(report, indent=2))
     results['host_tests'] = report
     return report

@@ -1,0 +1,27 @@
+Europe/Warsaw ->
+        <TimeZone>Central European Standard Time</TimeZone>
+Europe/London ->
+        <TimeZone>GMT Standard Time</TimeZone>
+Europe/Berlin ->
+        <TimeZone>W. Europe Standard Time</TimeZone>
+Europe/Paris ->
+        <TimeZone>Romance Standard Time</TimeZone>
+Europe/Madrid ->
+        <TimeZone>Romance Standard Time</TimeZone>
+Europe/Rome ->
+        <TimeZone>W. Europe Standard Time</TimeZone>
+Europe/Kyiv ->
+        <TimeZone>FLE Standard Time</TimeZone>
+Europe/Prague ->
+        <TimeZone>Central Europe Standard Time</TimeZone>
+America/New_York ->
+        <TimeZone>Eastern Standard Time</TimeZone>
+America/Chicago ->
+        <TimeZone>Central Standard Time</TimeZone>
+America/Denver ->
+        <TimeZone>Mountain Standard Time</TimeZone>
+America/Los_Angeles ->
+        <TimeZone>Pacific Standard Time</TimeZone>
+UTC ->
+        <TimeZone>UTC</TimeZone>
+Mars/Olympus ->
